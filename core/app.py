@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI
 
 from core.config import Settings, get_settings
+from core.db.session import init_db
 from core.logging import configure_logging
 
 logger = logging.getLogger("concierge")
@@ -14,7 +15,13 @@ logger = logging.getLogger("concierge")
 async def lifespan(app: FastAPI):
     settings = get_settings()
     configure_logging(settings.log_level)
-    logger.info("Concierge starting (env=%s debug=%s)", settings.env, settings.debug)
+    init_db()
+    logger.info(
+        "Concierge starting (env=%s debug=%s db=%s)",
+        settings.env,
+        settings.debug,
+        settings.database_path,
+    )
     yield
     logger.info("Concierge shutting down")
 
