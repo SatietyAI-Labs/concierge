@@ -2,26 +2,11 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
 from core.db.base import Base
 from core.db.models import Request
 from core.ingest import tool_requests as ti
-
-
-@pytest.fixture
-def db_session():
-    engine = create_engine(
-        "sqlite:///:memory:", connect_args={"check_same_thread": False}
-    )
-    Base.metadata.create_all(engine)
-    session = sessionmaker(bind=engine)()
-    try:
-        yield session
-    finally:
-        session.close()
-        Base.metadata.drop_all(engine)
 
 
 def test_parse_filename_valid():

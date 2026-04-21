@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 
+from core.api import packs, tools
 from core.config import Settings, get_settings
 from core.db.session import init_db
 from core.logging import configure_logging
@@ -37,6 +38,9 @@ def create_app() -> FastAPI:
     @app.get("/health")
     def health(settings: Settings = Depends(get_settings)):
         return {"status": "ok", "env": settings.env, "version": "0.1.0"}
+
+    app.include_router(tools.router)
+    app.include_router(packs.router)
 
     return app
 

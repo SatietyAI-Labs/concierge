@@ -173,6 +173,100 @@ def ingest_directory(root: Path, session: Session) -> IngestStats:
     return stats
 
 
+_EXPORT_SECTIONS: list[tuple[str, list[tuple[str, str]]]] = [
+    (
+        "Request",
+        [
+            ("Task context", "task_context"),
+            ("Tool suggested", "tool_suggested"),
+            ("Category", "category"),
+            ("Install method", "install_method"),
+            ("Discovered", "discovered"),
+        ],
+    ),
+    (
+        "Recommendation",
+        [
+            ("Why this tool", "why_this_tool"),
+            ("Alternatives considered", "alternatives_considered"),
+            ("Risk/cost", "risk_cost"),
+            ("Confidence", "confidence"),
+            ("Source", "source"),
+            ("Evidence", "evidence"),
+        ],
+    ),
+    (
+        "Approval",
+        [
+            ("Decision", "decision"),
+            ("Conditions", "conditions"),
+            ("Date", "date"),
+        ],
+    ),
+    (
+        "Install",
+        [
+            ("Command run", "command_run"),
+            ("Verification", "verification"),
+            ("Date", "date"),
+        ],
+    ),
+    (
+        "First Use",
+        [
+            ("Task", "task"),
+            ("Result", "result"),
+            ("Date", "date"),
+        ],
+    ),
+    (
+        "Outcome",
+        [
+            ("Verdict", "verdict"),
+            ("Notes", "notes"),
+            ("Date", "date"),
+        ],
+    ),
+]
+
+def export_to_markdown(req: Request) -> str:
+    """Render a Request back to the canonical tool-request markdown format.
+
+    Inverse of `parse_request_file`. Round-trip preserves semantic content:
+    parse(export(parse(x))) == parse(x). Emission is presence-driven — a
+    section is emitted only if present in `parsed_data`, and a field is
+    emitted only if its key exists in the section dict (even when the
+    value is empty string).
+    """
+    parsed = req.parsed_data or {}
+    lines: list[str] = [
+        f"status: {req.status}",
+        "",
+        f"# Tool Request: {req.tool_name}",
+        "",
+    ]
+
+    for section_name, fields in _EXPORT_SECTIONS:
+        section_key = section_name.lower().replace(" ", "_")
+        section_data = parsed.get(section_key)
+        if section_data is None:
+            continue
+        lines.append(f"## {section_name}")
+        lines.append("")
+        for label, key in fields:
+            if key not in section_data:
+                continue
+            raw_value = section_data[key]
+            if key == "discovered":
+                value_str = "true" if raw_value else "false"
+            else:
+                value_str = str(raw_value)
+            lines.append(f"- **{label}:** {value_str}".rstrip())
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def _upsert_request(
     session: Session, parsed: ParsedRequest, stats: IngestStats
 ) -> None:

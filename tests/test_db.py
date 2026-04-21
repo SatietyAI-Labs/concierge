@@ -1,28 +1,12 @@
 import sqlite3
 from pathlib import Path
 
-import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
 from core.config import Settings
 from core.db import models
 from core.db.base import Base
 from core.db.session import make_engine
-
-
-@pytest.fixture
-def db_session():
-    engine = create_engine(
-        "sqlite:///:memory:", connect_args={"check_same_thread": False}
-    )
-    Base.metadata.create_all(engine)
-    session = sessionmaker(bind=engine)()
-    try:
-        yield session
-    finally:
-        session.close()
-        Base.metadata.drop_all(engine)
 
 
 def test_all_four_tables_in_metadata():
