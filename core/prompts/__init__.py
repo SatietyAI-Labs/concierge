@@ -18,11 +18,15 @@ build-time regeneration via `make sync-prompts`.
 from core.prompts.tool_awareness import (
     TOOL_AWARENESS_PROTOCOL__FROM_TOOL_AWARENESS_MD,
 )
+from core.prompts.tool_discovery import (
+    TOOL_DISCOVERY_PROTOCOL__FROM_TOOL_DISCOVERY_SKILL,
+)
 from core.prompts.tool_recommendation import (
     TOOL_RECOMMENDATION_PROTOCOL__FROM_TOOL_RECOMMENDATION_MD,
 )
 
 __all__ = [
     "TOOL_AWARENESS_PROTOCOL__FROM_TOOL_AWARENESS_MD",
+    "TOOL_DISCOVERY_PROTOCOL__FROM_TOOL_DISCOVERY_SKILL",
     "TOOL_RECOMMENDATION_PROTOCOL__FROM_TOOL_RECOMMENDATION_MD",
 ]

@@ -50,6 +50,7 @@ drift risk entirely. Named and deferred per DECISIONS `[2026-04-21
 |---|---|---|---|---|---|---|---|
 | X3 | `TOOL_AWARENESS_PROTOCOL__FROM_TOOL_AWARENESS_MD` | `core/prompts/tool_awareness.py` | `_legacy/agent-skills/shared/tool-awareness.md` | `7d1d2f04` | 2026-03-24 11:21 PDT | 9619 | 2026-04-21 15:43 PDT (SESSION-2026-04-21-02) |
 | X4 | `TOOL_RECOMMENDATION_PROTOCOL__FROM_TOOL_RECOMMENDATION_MD` | `core/prompts/tool_recommendation.py` | `_legacy/agent-skills/shared/tool-recommendation.md` | `a014fe22` | 2026-04-13 18:03 PDT | 9571 | 2026-04-21 16:14 PDT (SESSION-2026-04-21-02) |
+| X6 | `TOOL_DISCOVERY_PROTOCOL__FROM_TOOL_DISCOVERY_SKILL` | `core/prompts/tool_discovery.py` | `_legacy/openclaw-workspace/skills/tool-discovery/SKILL.md` | `64b9b365` | 2026-04-13 20:46 PDT | 5223 | 2026-04-21 16:25 PDT (SESSION-2026-04-21-02) |
 
 ---
 
@@ -117,3 +118,44 @@ drift risk entirely. Named and deferred per DECISIONS `[2026-04-21
 - **Session:** `SESSION-2026-04-21-02`.
 - **Extractor:** Claude Code Opus 4.7 (`claude-opus-4-7[1m]`).
 - **Verify with:** `pytest tests/test_prompts.py::TestToolRecommendationFragment`
+
+### `2026-04-21 16:25 PDT` — X6 initial extract
+
+- **Constant:** `TOOL_DISCOVERY_PROTOCOL__FROM_TOOL_DISCOVERY_SKILL`
+- **Module:** `core/prompts/tool_discovery.py`
+- **Source:** `_legacy/openclaw-workspace/skills/tool-discovery/SKILL.md`
+- **Source SHA-256:**
+  `64b9b365ba2f9b66eb1832e17214d4599af426a5ba92d6b8f49919fc25a628ca`
+- **Source mtime:** `2026-04-13 20:46:25 -0700`
+- **Source bytes:** `5223`
+- **Section extracted:** full document body below the YAML frontmatter
+  (source lines 6-111). YAML `name:` / `description:` fields excluded
+  (skill-loader metadata, not prompt content).
+- **Fidelity:** VERBATIM. No backslash or triple-quote hazards in
+  source; no escaping applied. Drift-check confirms byte-for-byte
+  parity.
+- **Demo-critical:** classification §C.5.3 flags this as the headline
+  example of the prompt-fragment pattern — the green/yellow/red
+  signal-table content is prompt-fragment material, not a Python
+  scoring function. N8 smoke assertion (`csvstat > pandas` for
+  "analyze a CSV") validates this fragment's effectiveness inside
+  Opus 4.7's system prompt.
+- **OpenClaw coupling preserved:** pipeline README path
+  (`~/.satiety-pipeline/outbox/tool-requests/README.md`), catalog path
+  (`~/satiety-docs/TOOL-CATALOG.md`), and the catalog section names
+  ("Installed" / "Not Installed"). Lightest coupling footprint of the
+  prompt-fragment set — worked example uses generic pandoc, no fleet
+  agent names, no MCP tool IDs.
+- **Constant naming note:** DECISIONS `[2026-04-21 05:50]` mitigation
+  #3 suggested `DISCOVERY_SIGNALS__FROM_TOOL_DISCOVERY_SKILL` as an
+  illustrative example, but that name only describes the signal-table
+  subsection. Chose `TOOL_DISCOVERY_PROTOCOL__FROM_TOOL_DISCOVERY_SKILL`
+  for structural consistency with X3/X4's `{SOURCE}_PROTOCOL__FROM_{…}`
+  pattern, since this file also covers a whole-document protocol
+  (search → evaluate → file → follow-up). Drift visibility (the
+  governing requirement) is preserved.
+- **Header style:** pointer-style (per X4 precedent). Refers to
+  `core/prompts/tool_awareness.py` for the shared conventions.
+- **Session:** `SESSION-2026-04-21-02`.
+- **Extractor:** Claude Code Opus 4.7 (`claude-opus-4-7[1m]`).
+- **Verify with:** `pytest tests/test_prompts.py::TestToolDiscoveryFragment`

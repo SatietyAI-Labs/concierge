@@ -23,6 +23,7 @@ import pytest
 
 from core.prompts import (
     TOOL_AWARENESS_PROTOCOL__FROM_TOOL_AWARENESS_MD,
+    TOOL_DISCOVERY_PROTOCOL__FROM_TOOL_DISCOVERY_SKILL,
     TOOL_RECOMMENDATION_PROTOCOL__FROM_TOOL_RECOMMENDATION_MD,
 )
 
@@ -170,6 +171,45 @@ class TestToolRecommendationFragment:
             source_relpath="_legacy/agent-skills/shared/tool-recommendation.md",
             test_nodeid=(
                 "tests/test_prompts.py::TestToolRecommendationFragment::"
+                "test_matches_source_body_verbatim"
+            ),
+        )
+
+
+class TestToolDiscoveryFragment:
+    """X6 — tool-discovery/SKILL.md → TOOL_DISCOVERY_PROTOCOL__FROM_TOOL_DISCOVERY_SKILL
+
+    Demo-critical per classification §C.5.3 and Phase E Risk 1. The
+    signal-table content is the headline example of prompt-fragment
+    material. N8 smoke fixture assertion depends on this fragment
+    functioning correctly inside Opus 4.7's system prompt.
+    """
+
+    def test_constant_is_nonempty_string(self):
+        assert isinstance(TOOL_DISCOVERY_PROTOCOL__FROM_TOOL_DISCOVERY_SKILL, str)
+        assert len(TOOL_DISCOVERY_PROTOCOL__FROM_TOOL_DISCOVERY_SKILL) > 0
+
+    def test_signal_phrases_present(self):
+        """Distinctive substrings sampled from four regions of the body.
+        Late-middle phrase is inside the demo-critical signal table.
+        """
+        fragment = TOOL_DISCOVERY_PROTOCOL__FROM_TOOL_DISCOVERY_SKILL
+        assert "Tool Discovery -- Finding What You Don't Know About" in fragment  # top
+        assert "Search patterns by domain" in fragment  # middle
+        assert "| GitHub stars | 1000+ | 100-999 | Under 100 |" in fragment  # demo-critical
+        assert "This is how the catalog grows organically" in fragment  # bottom
+
+    def test_no_yaml_frontmatter_leaked_in(self):
+        fragment = TOOL_DISCOVERY_PROTOCOL__FROM_TOOL_DISCOVERY_SKILL
+        assert not fragment.startswith("---")
+        assert "name: tool-discovery" not in fragment
+
+    def test_matches_source_body_verbatim(self):
+        _assert_fragment_matches_source(
+            fragment=TOOL_DISCOVERY_PROTOCOL__FROM_TOOL_DISCOVERY_SKILL,
+            source_relpath="_legacy/openclaw-workspace/skills/tool-discovery/SKILL.md",
+            test_nodeid=(
+                "tests/test_prompts.py::TestToolDiscoveryFragment::"
                 "test_matches_source_body_verbatim"
             ),
         )
