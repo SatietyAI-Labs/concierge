@@ -3,7 +3,7 @@
 *Deliverable of Phase C per `docs/concierge-claude-code-plan-v3.md`.*
 *Session:* `SESSION-2026-04-21-02` (morning alignment was Session 01).
 *Generated:* 2026-04-21.
-*Effort:* `xhigh` (adjusted from `max` per 2026-04-21 08:15 decision —
+*Effort:* `xhigh` (adjusted from `max` per 2026-04-21 04:45 decision —
 see DECISIONS.md).
 
 Every existing Concierge component inventoried in Phase A receives
@@ -142,7 +142,7 @@ continues to use the file as-is; extraction is one-directional.
 extraction physically lands as a Python string constant composed
 into `POST /recommend`'s Opus 4.7 system prompt, **not** as
 reimplemented Python logic. This is prompt-fragment composition, not
-code lifting. The 2026-04-21 10:30 DECISIONS.md entry explains why
+code lifting. The 2026-04-21 05:50 DECISIONS.md entry explains why
 EXTRACT (vs. pure-Python EXTRACT or ADAPT) is the correct framing
 and names the source-of-truth coupling risk + the structural
 mitigations (header-comment provenance, verbose constant names,
@@ -191,7 +191,7 @@ for OpenClaw; Concierge consumes it one-way.
 *Extraction-pattern note:* see row #3; this is the demo-critical
 instance of the pattern — the signal-table content is prompt-fragment
 material, not reimplemented as a Python scoring function. 2026-04-21
-10:30 DECISIONS.md entry explains why.
+05:50 DECISIONS.md entry explains why.
 
 #### 7. tool-lifecycle SKILL.md — **EXTRACT** — 1h — Day 2 — Easy
 
@@ -743,7 +743,7 @@ row #12 for the full "why not REWRITE" argument.
   Opus 4.7 system prompt, not as reimplemented Python logic. This
   jump from Phase B's "algorithm spec" framing to Phase C's
   "prompt-fragment composition" framing is the most load-bearing
-  decision in Phase C and is logged at `[2026-04-21 10:30] Skill-
+  decision in Phase C and is logged at `[2026-04-21 05:50] Skill-
   extraction pattern: EXTRACT as prompt fragments (not pure Python,
   not ADAPT)` in DECISIONS.md. The decision entry covers why
   pure-Python EXTRACT (~+15h budget blow, discovery can't reasonably
@@ -808,7 +808,7 @@ ANSWERED 2026-04-21 — **one re-review requested and completed at
 skill files (#3, #4, #6, #7) and SOUL delta (#8). Three alternatives
 considered (EXTRACT-as-prompt-fragment / pure-Python EXTRACT /
 ADAPT). Outcome: **EXTRACT stands with structural mitigations.**
-Full reasoning logged at `[2026-04-21 10:30]` in DECISIONS.md and
+Full reasoning logged at `[2026-04-21 05:50]` in DECISIONS.md and
 elevated in §C.5.3 above. No other re-reviews requested; all other
 classifications stand as-written. Effort dropped back to `xhigh`
 after the re-review completed.
@@ -883,7 +883,7 @@ scope-excluded).
 - **EXTRACT-as-prompt-fragment (not pure-Python, not ADAPT)** for
   skill files #3, #4, #6, #7, #8. Re-reviewed at `max` effort per
   Q4 answer; decision and structural mitigations logged at
-  `[2026-04-21 10:30]` in DECISIONS.md; elevated in §C.5.3.
+  `[2026-04-21 05:50]` in DECISIONS.md; elevated in §C.5.3.
 
 **Effort totals:**
 - Existing-component non-RETIRE work: **6.5h**
@@ -915,7 +915,7 @@ Per `docs/concierge-operations-protocol.md` §Phase C and
       triggered; pre-sequenced pull-out ladder in §C.4.4)
 - [x] Max-effort re-review completed on EXTRACT-as-prompt-fragment
       pattern (rows #3/#4/#6/#7/#8) per Q4 signoff feedback; outcome
-      logged at `[2026-04-21 10:30]` in DECISIONS.md
+      logged at `[2026-04-21 05:50]` in DECISIONS.md
 - [x] Lewie has reviewed and signed off on classifications
       (2026-04-21 — see DECISIONS.md)
 

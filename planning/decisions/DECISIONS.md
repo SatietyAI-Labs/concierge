@@ -246,7 +246,7 @@ conservative than the v2-blueprint framing would have suggested).
 
 ---
 
-## [2026-04-21 08:15] — Phase C effort level adjusted from max to xhigh
+## [2026-04-21 04:45] — Phase C effort level adjusted from max to xhigh
 
 **Context:** The v3 execution plan (`docs/concierge-claude-code-plan-v3.md`
 §Phase C and the ops protocol §Effort-level guidance) both call for `max`
@@ -297,7 +297,7 @@ re-evaluated at the time.
 
 ---
 
-## [2026-04-21 10:30] — Skill-extraction pattern: EXTRACT as prompt fragments (not pure Python, not ADAPT)
+## [2026-04-21 05:50] — Skill-extraction pattern: EXTRACT as prompt fragments (not pure Python, not ADAPT)
 
 **Context:** Phase B (2026-04-20) established that `tool-discovery/SKILL.md`
 and `tool-lifecycle/SKILL.md` are **authoritative algorithm specifications**
@@ -445,7 +445,7 @@ improvement candidate).
 
 ---
 
-## [2026-04-21 11:15] — Phase C approved; classification.md finalized; proceeding to Phase D
+## [2026-04-21 05:55] — Phase C approved; classification.md finalized; proceeding to Phase D
 
 **Context:** Phase C — Classification was completed earlier in the
 session (46.5h grand total, yellow-flag triggered, four Q&As answered,
@@ -484,7 +484,7 @@ this session at `xhigh` effort; ops protocol phase-gate audit trail
 
 ---
 
-## [2026-04-21 13:00] — Phase D approved; dependency-graph.md finalized; proceeding to Phase E
+## [2026-04-21 06:10] — Phase D approved; dependency-graph.md finalized; proceeding to Phase E
 
 **Context:** Phase D — Dependency Graph completed mid-session.
 Deliverable: `planning/dependency-graph.md` with 32 tracked build-
@@ -548,7 +548,7 @@ if Day 2 runs on time); ops protocol phase-gate audit trail
 
 ---
 
-## [2026-04-21 17:30] — Tuesday evening sprint reframed from stretch to required (post-Phase-F)
+## [2026-04-21 07:00] — Tuesday evening sprint reframed from stretch to required (post-Phase-F)
 
 **Context:** Phase F build-plan.md was initially drafted with the Tuesday
 evening sprint as a **stretch goal** (recommended-if-energy-permits; N1+N2
@@ -640,12 +640,12 @@ closed), §F.10 (summary updated); `planning/executive-summary.md`
 
 ---
 
-## [2026-04-21 17:45] — Phase E and Phase F approved; session close sequence initiated
+## [2026-04-21 07:05] — Phase E and Phase F approved; session close sequence initiated
 
 **Context:** Phase E (Gap Analysis) delivered earlier this session with
 all checkpoint items complete but Lewie's sign-off deferred to bundle
 with Phase F. Phase F (Build Plan) delivered with the post-summary
-Tuesday-evening reframe (see [17:30] entry) captured. At session close,
+Tuesday-evening reframe (see [07:00] entry) captured. At session close,
 Lewie approved both together as part of the close-out sequence.
 
 **Decision:** Phase E is approved. `planning/gap-analysis.md` is final.
@@ -658,7 +658,7 @@ taken as implicitly accepted at signoff absent pushback. Recorded here
 so a later session doesn't re-litigate.
 
 **Reasoning:** Phase E and Phase F both met all checkpoint items and the
-Tuesday-evening reframe (logged separately at [17:30]) was the only
+Tuesday-evening reframe (logged separately at [07:00]) was the only
 content change between the Phase F summary and signoff. Bundled sign-off
 is the ops-protocol-consistent pattern when a later phase's signoff
 naturally closes an earlier phase's pending review — analogous to Phase D
@@ -679,5 +679,114 @@ signoff box now checked); ops protocol phase-gate audit trail (Phase E
 → Phase F → session close observable in sequence via DECISIONS.md);
 session transition — this is the last decision log entry before the
 SESSION-2026-04-21-01.md snapshot writes.
+
+---
+
+## [2026-04-21 08:28] — Operating protocol refinements: timestamp discipline + pace-independent execution
+
+**Context:** Two operating-protocol refinements surfaced during the
+Day 1 morning review when false afternoon/evening timestamps in
+SESSION-2026-04-21-01.md and DECISIONS.md — baked in from
+plan-language rather than reality — required a backfill correction
+pass. The root cause was two-fold: (1) lack of timestamp discipline
+(narrative/plan-language times getting used as historical claims
+without verification against `date`), and (2) conflation of
+goal-sequencing with clock-locked milestones (the "Tuesday evening
+sprint" naming + "10pm Cut 4 floor" wall-clock anchors were assumed
+to require execution in literal evening hours, which created friction
+when the planning-tail phases and the N1 scaffold all finished by
+mid-morning). Lewie surfaced both issues and directed the refinements
+below.
+
+**Decisions:**
+
+**Update 1 — Timestamp discipline.** Going forward, every timestamp
+written into any project file (SESSION snapshots, DECISIONS entries,
+today.md, any other planning or build doc) uses the actual output of
+`date` called at the moment of writing. No interpretation of
+plan-language. No pattern-matching against "plausible" times. No
+extrapolation from narrative context. Call `date`, use the result,
+move on. For historical events that weren't timestamped at the moment
+they happened, reconstruct from file mtimes (as in the Task 1
+correction pass earlier this morning, 2026-04-21) — file mtime is
+observed data, not extrapolation; the correction pass itself was
+protocol-consistent. Extrapolated times unsupported by either a
+`date` call or an mtime anchor should be flagged as reconstructed,
+not stamped as observed.
+
+**Update 2 — Pace-independent plan execution.** The build-plan.md
+day-by-day structure (Day 1 = N1+N2, Day 2 = N3/N4/N5/N6, etc.)
+describes **goal sequencing**, not clock-locked milestones. Finishing
+a day's goals in 3 hours instead of 14 is progress ahead of plan,
+not a scheduling anomaly to reconcile. Specific practical
+implications:
+
+1. **"Tuesday evening sprint"** is a name for the N1+N2 goal
+   sequence; completing it in morning hours is on-plan, not
+   off-pattern. The "evening" adjective stays in the name as a
+   legacy label; it is not a wall-clock constraint.
+2. **"10pm Cut 4 hard floor"** was an anchor for a long evening
+   session. For morning work it does not apply as a wall-clock
+   trigger. Cut 4 still fires on its *content* trigger (N1+N2 not
+   both committed-and-tested before moving to Day 2's sequence) —
+   but the content trigger is what fires it, not the clock.
+3. **Health checks trigger on sustained-work thresholds**, not
+   clock times. Indicators: hours of focused work elapsed, mental
+   sharpness, whether Lewie has eaten, whether rest has been taken
+   since last major work block. The "~8pm local" anchor in
+   build-plan.md §F.2.1 is a legacy proxy for "~3h after sprint
+   start" in an evening-session framing; for a morning session the
+   equivalent trigger is the same proxy (sustained-work elapsed),
+   not the literal clock time.
+4. **Between sequence goals, Lewie can stop at any time for any
+   reason** — food, life, the hackathon acceptance email, rest.
+   The plan's cadence is his, not the document's.
+
+**Reasoning:**
+
+*Update 1.* Plan-language timestamps (11:15, 13:00, 17:30, 17:45,
+18:00) got baked into DECISIONS entries and the SESSION snapshot for
+Phases C, D, E, F, the Q1 reframe, and the session close. All six
+were wrong; all real work happened between 04:30 and ~07:05 today.
+The failure mode is subtle: plans discuss expected times; narrative
+writing absorbs those as historical claims; once baked in, they're
+hard to distinguish from real observations. `date` as a hard
+discipline breaks that loop by making the source of truth observable
+rather than synthesized.
+
+*Update 2.* Treating Day-N plan blocks as clock-bound creates false
+pressure (late-night cutoffs, specific PM triggers) when the actual
+work is sequential and pace-agnostic. Morning-pace execution is a
+feature, not a bug. The build plan's named hours are
+reference-anchors for energy budgeting in a long-session context,
+not rules. Reframing around sustained-work thresholds preserves the
+safety-valve intent (don't push through fatigue) without importing
+clock-calendar friction that doesn't match the actual session shape.
+
+**Reversibility:** N/A — these are hygiene refinements that codify
+discipline we should have had from Day 0. Not overridable by later
+sessions without an explicit counter-decision logged here.
+
+**Decided by:** Lewie (both updates directed in chat after reviewing
+the Task 1 correction pass + the gap audit results) + Claude Code
+(logging this entry, applying Update 1's `date` discipline to the
+timestamp on this entry itself).
+
+**Affects:**
+- All future DECISIONS entries, session snapshots, today.md updates,
+  and any other planning/build doc writing — timestamp discipline
+  applies globally
+- `planning/build-plan.md` §F.2.1 "Tuesday evening" framing and
+  "10pm Cut 4 trigger" — reinterpreted as goal-sequence name +
+  content-trigger, not wall-clock rule (documents themselves
+  unchanged; interpretation rule changes)
+- Health-check criteria in build-plan.md §F.2.1 — re-anchored to
+  sustained-work state, not 8pm local clock
+- Cut 4 trigger interpretation — fires if N1+N2 aren't
+  committed-and-tested before moving to Day 2's sequence
+  (content-based), regardless of wall-clock time
+- Task tracker items #6 (health check) and #9 (Cut 4) — reframed in
+  the current task list following this entry to drop the clock
+  anchors
 
 ---

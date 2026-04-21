@@ -80,7 +80,7 @@ dormant-badge).
 
 1. **Tuesday evening sprint framing:** RESOLVED 2026-04-21 — **required**,
    N1+N2 health-check-gated, 10pm Cut 4 trigger. See DECISIONS
-   `[2026-04-21 17:30]`.
+   `[2026-04-21 07:00]`.
 2. **Level-3 escalation destination:** Claude.ai chat (not mid-build) —
    implicitly accepted at Phase F signoff.
 

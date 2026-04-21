@@ -33,7 +33,7 @@ of other items. Organized below as two tables for readability.
 |---|---|---|---|---|
 | X1 | TOOL-MANIFEST.md (shared ingest with X2) | 1.5h | Day 1 | Read-in for N3 ingest |
 | X2 | TOOL-CATALOG.md (shared with X1) | (shared) | Day 1 | Read-in for N3 ingest |
-| X3 | tool-awareness.md → prompt fragment | 0.5h | Day 2 | Prompt-fragment extract (see DECISIONS 2026-04-21 10:30) |
+| X3 | tool-awareness.md → prompt fragment | 0.5h | Day 2 | Prompt-fragment extract (see DECISIONS 2026-04-21 05:50) |
 | X4 | tool-recommendation.md → prompt fragment | 0.5h | Day 2 | Prompt-fragment extract |
 | X6 | tool-discovery SKILL.md → prompt fragment | 1.0h | Day 2 | Prompt-fragment extract; demo-critical instance |
 | X7 | tool-lifecycle SKILL.md → hybrid | 1.0h | Day 2 | Thresholds/tag-schema to Python constants; review protocol to prompt fragment |

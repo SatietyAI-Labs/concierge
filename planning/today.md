@@ -7,12 +7,12 @@ same continuous session. Each is signed off and logged:
 
 | Phase | Signed off | Deliverable |
 |---|---|---|
-| Phase C — Classify | 2026-04-21 11:15 | `planning/classification.md` (46.5h total, 4-cut ladder → 43h) |
-| Phase D — Dependency Graph | 2026-04-21 13:00 | `planning/dependency-graph.md` (critical path 27.5h strict; 32 items; ladder-integrity verified) |
+| Phase C — Classify | 2026-04-21 05:55 | `planning/classification.md` (46.5h total, 4-cut ladder → 43h) |
+| Phase D — Dependency Graph | 2026-04-21 06:10 | `planning/dependency-graph.md` (critical path 27.5h strict; 32 items; ladder-integrity verified) |
 | Phase E — Gap Analysis | 2026-04-21 (this session) | `planning/gap-analysis.md` (7 FULL / 2 PARTIAL / 0 NEW; top-5 risks) |
 
-See DECISIONS.md for the sign-off entries (Phase C: 2026-04-21 11:15;
-Phase D: 2026-04-21 13:00). Phase E sign-off is pending Phase F
+See DECISIONS.md for the sign-off entries (Phase C: 2026-04-21 05:55;
+Phase D: 2026-04-21 06:10). Phase E sign-off is pending Phase F
 signoff at session close (bundled).
 
 ## Remaining work for today — Phase F
@@ -39,7 +39,7 @@ Wait for Lewie sign-off before session close.
 
 ## Day 1 build work (Tuesday evening — REQUIRED sprint)
 
-Per DECISIONS `[2026-04-21 17:30]` framing change, the Tuesday
+Per DECISIONS `[2026-04-21 07:00]` framing change, the Tuesday
 evening sprint is **required**, not stretch. Post-Phase-F-signoff:
 
 - **N1 — FastAPI project skeleton (1h)** — REQUIRED

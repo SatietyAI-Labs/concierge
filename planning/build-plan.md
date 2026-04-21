@@ -25,7 +25,7 @@ Phase F makes no original architectural decisions. Its inputs are:
   ten Phase F carry-forwards (`planning/gap-analysis.md`)
 
 Decisions logged at DECISIONS.md entries 2026-04-20 18:15, 19:45, 21:00
-and 2026-04-21 08:15, 10:30, 11:15, 13:00.
+and 2026-04-21 04:45, 05:50, 05:55, 06:10.
 
 ---
 
@@ -67,8 +67,8 @@ approach change, schema change).
 
 **Already complete this morning (4:30-6:30am):**
 
-- Phase C — Classify → signed off 11:15
-- Phase D — Dependency Graph → signed off 13:00
+- Phase C — Classify → signed off 05:55
+- Phase D — Dependency Graph → signed off 06:10
 - Phase E — Gap Analysis → signed off bundled with Phase F at session close
 
 **Midday-afternoon (~2-3h):**
@@ -79,7 +79,7 @@ approach change, schema change).
 **Evening — REQUIRED foundation sprint (~3-5h, starts post-signoff):**
 
 The Tuesday evening sprint is required, not stretch. Per DECISIONS
-`[2026-04-21 17:30]` framing change: with Day 2 carrying 15-19.5h
+`[2026-04-21 07:00]` framing change: with Day 2 carrying 15-19.5h
 of work depending on Tuesday-eve completion, pre-doing N1+N2 tonight
 reduces Day 2 from infeasible (~19.5h) to near-the-top-of-feasible
 (~15.5h). Operator energy assessed as adequate for 4-6 more hours
@@ -185,7 +185,7 @@ pressure is the fallback path, not the default.
 |---|---|---|---|
 | N3 | Markdown-to-SQLite ingest (finish, or all of it if only N1+N2 done Tue eve) | 0.5-2.0h | Scenario A: finish only (if partial); Scenario B/health-check: all 2h |
 | N4 | Catalog API endpoints (`GET /tools`, `GET /tools/{id}`, `GET /packs`) + markdown export (unless Cut 4 executed, which strips the export) | 1.0-2.0h | **Day 2 first-checkpoint criterion: `curl GET /tools` returns structured JSON** |
-| X3 | tool-awareness.md → prompt-fragment constant | 0.5h | Per DECISIONS 2026-04-21 10:30 — header-comment provenance, verbose constant name |
+| X3 | tool-awareness.md → prompt-fragment constant | 0.5h | Per DECISIONS 2026-04-21 05:50 — header-comment provenance, verbose constant name |
 | X4 | tool-recommendation.md → prompt-fragment constant | 0.5h | Same pattern |
 | X11 | outbox-housekeeping.sh verify crontab + doc heartbeat path | 0.5h | Off-path; fit any gap |
 
@@ -540,7 +540,7 @@ phase); confirmed Day 2 evening (N8 fixture assertion).
 - N8 row in §F.2.2 evening block — "fixture-driven recommendation
   assertion (`csvstat` ranks above `pandas`)"
 - Per-constant header-comment provenance per DECISIONS 2026-04-21
-  10:30 structural mitigation (structural, not day-plan)
+  05:50 structural mitigation (structural, not day-plan)
 
 ### F.6.2 Risk 2 — Stdio proxy shim debugging under time pressure (P:Medium-High / I:High)
 
@@ -619,7 +619,7 @@ operator-context reframing — **required, not stretch goal.**
 Scope: N1 + N2 required (health-check-gated between them), N3
 stretch. Cut 4 trigger rewritten to fire at 10pm local Tuesday if
 N1+N2 aren't both committed-and-tested. Full reasoning in
-DECISIONS `[2026-04-21 17:30]` entry. Day 2 rebalanced in §F.2.2
+DECISIONS `[2026-04-21 07:00]` entry. Day 2 rebalanced in §F.2.2
 with Scenario A/B/C structure.
 
 **Q2 (Day 3 overflow absorbing — Level-3 posture):** Day 3 is
@@ -653,8 +653,8 @@ Per `docs/concierge-claude-code-plan-v3.md` §Phase F checkpoint:
 - [x] Protected demo floor explicit (§F.5 — 17 items, ~27h)
 - [x] Level-3 escalation items named, not pre-sequenced (§F.7)
 - [x] Lewie has reviewed and signed off on Phase F (2026-04-21 — see
-      DECISIONS.md `[2026-04-21 17:30]` framing change and
-      `[2026-04-21 17:45]` Phase E + Phase F bundled approval)
+      DECISIONS.md `[2026-04-21 07:00]` framing change and
+      `[2026-04-21 07:05]` Phase E + Phase F bundled approval)
 
 Additional phase-gate traceability:
 

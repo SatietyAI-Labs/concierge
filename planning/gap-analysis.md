@@ -129,7 +129,7 @@ tile — this is Level-3 escalation territory, not ladder-deferrable.
 shim; shim exposes N11 `concierge_recommend` meta-tool; meta-tool
 forwards task context to N6 `POST /recommend`; N6 composes a
 system prompt from X3 + X4 + X6 + X7 (prompt-fragment extracts per
-DECISIONS 2026-04-21 10:30), calls Opus 4.7 with task + catalog
+DECISIONS 2026-04-21 05:50), calls Opus 4.7 with task + catalog
 (from N4) + memory (from N5), returns ranked recommendations;
 shim passes the result back to Claude Code as the meta-tool's
 output.
@@ -206,7 +206,7 @@ Day 4.
 **Build-path notes:** discovery relies on Opus 4.7's knowledge of
 the tool ecosystem; we're explicitly not crawling registries on
 demo day. This is demo-scoped heuristic, not a long-running
-discovery crawler — per DECISIONS 2026-04-21 10:30 reasoning
+discovery crawler — per DECISIONS 2026-04-21 05:50 reasoning
 (pure-Python EXTRACT would have required a crawler subsystem,
 rejected). The risk is Opus 4.7 proposing something odd for the
 fixture scenario; mitigation is scenario tuning in Phase F.
@@ -287,7 +287,7 @@ half the demo story.
    before committing the constant — confirm the model reads the
    prompt the way the markdown intends.
 3. The per-constant header-comment provenance (DECISIONS
-   2026-04-21 10:30 structural mitigation) preserves the source
+   2026-04-21 05:50 structural mitigation) preserves the source
    byte-range for rapid re-transcription if the first paste is
    wrong.
 
@@ -501,7 +501,7 @@ demo-recording day.
    assertion (csvstat > pandas) + round-trip markdown parse check.
 2. **Day 2 evening N10 pull-forward** remains the default plan,
    not a contingency (already logged in DECISIONS 2026-04-21
-   13:00).
+   06:10).
 3. **Day 3 morning starts with N9 spike** (0.5h time-box, commit
    to Approach 2 if ambiguous).
 4. **Day 5 rehearsal — 5 clean runs** per ops protocol is calibrated
