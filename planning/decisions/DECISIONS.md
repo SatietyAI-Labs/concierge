@@ -790,3 +790,60 @@ timestamp on this entry itself).
   anchors
 
 ---
+
+## [2026-04-21 10:01] — Cut 4 NOT fired: N1+N2 both committed-and-tested
+
+**Context:** Per build-plan.md §F.4 (as reinterpreted under the
+pace-independent framing logged at [2026-04-21 08:28] Update 2), Cut 4
+fires if N1+N2 are not both committed-and-tested before moving to
+Day 2's sequence. The "10pm local Tuesday" wall-clock anchor in the
+original Cut 4 trigger no longer applies under Update 2; the trigger
+is content-based.
+
+**State evaluated:**
+
+- **N1** — FastAPI skeleton. Committed at `df9c48f`. `pytest` 3/3
+  green. `uvicorn core.app:app` boots; `GET /health` returns 200 with
+  `{"status":"ok","env":"dev","version":"0.1.0"}`. Lifespan logging
+  fires cleanly.
+- **N2** — SQLite schema + SQLAlchemy 2.x models. Committed at
+  `a377c21`. `pytest` 11/11 green (3 smoke + 8 db). `init_db()`
+  materializes concierge.db with all four tables (packs, tools,
+  requests, memory_events), 8/11/13/7 columns respectively, and 15
+  explicit indexes covering lookup columns (slug, status, filename,
+  folder, event_type, occurred_at, is_active, is_in_manifest,
+  pack_id, category, tool_slug, source). On-disk schema verified via
+  raw `sqlite3` connection in two dedicated pytest tests.
+
+Both content criteria satisfied. Cut 4 does **not** fire.
+
+**Decision:** Cut 4 status: **NOT FIRED.** N3 (markdown-to-SQLite
+ingest, 1-2h per build-plan §F.2.1 as stretch-only on Day 1)
+therefore retains its full scope — the markdown-export portion that
+Cut 4 would have deferred stays in-scope for Day 2.
+
+**Reasoning:** Content trigger is observable: (1) both commits exist
+in `git log` (`df9c48f` + `a377c21`), (2) both test suites pass, (3)
+on-disk SQLite schema materialized and verified. Under Update 2's
+pace-independent framing, the wall-clock "10pm" anchor is
+inapplicable; the content trigger is the operative gate and it
+resolves cleanly.
+
+**Reversibility:** Cut 4 cannot "re-fire" once its content trigger
+has resolved. If Day 2 surfaces schema defects requiring material
+rework on N2, that's a separate scope concern and would be logged
+as its own DECISIONS entry (not a re-firing of Cut 4).
+
+**Decided by:** Claude Code (evaluation per the content trigger) —
+no Lewie decision required; Cut 4's trigger is observable state,
+not a judgment call. Entry logged for audit trail consistency with
+ops protocol.
+
+**Affects:** `planning/build-plan.md` §F.2.1 Day 1 checkpoint box
+"Cut 4 status" — resolvable as "not-needed" (both N1+N2 done);
+`planning/today.md` — Tuesday evening sprint section closeable;
+Day 2 scope — N3 retains full markdown-export work per original
+§F.2.2 morning block 1 table. Session close-out snapshot should
+record Cut 4 NOT FIRED as the Day 1 sprint outcome.
+
+---
