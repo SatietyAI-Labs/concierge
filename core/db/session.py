@@ -24,7 +24,7 @@ def get_engine() -> Engine:
 
 @lru_cache
 def get_session_factory() -> sessionmaker[Session]:
-    return sessionmaker(bind=get_engine(), autocommit=False, autoflush=False)
+    return sessionmaker(bind=get_engine(), autocommit=False, autoflush=True)
 
 
 def get_db() -> Iterator[Session]:
