@@ -34,6 +34,10 @@ from adapters.claude_code.jsonrpc import (
     serialize,
 )
 from adapters.claude_code.logging_setup import configure_stderr_logging
+from adapters.claude_code.backing_server_registry import (
+    BackingServerRegistry,
+    install_backing_server_routing,
+)
 from adapters.claude_code.meta_tools import register_meta_tools
 from adapters.claude_code.meta_tools.http_client import aclose as _aclose_meta_tools_client
 
@@ -135,17 +139,28 @@ def _pid() -> int:
 
 
 async def _run_with_cleanup() -> int:
-    """Compose the dispatcher + register N11 meta-tools, then run the
-    main loop. The `finally` block closes the shared meta-tools httpx
-    AsyncClient so shutdown under SIGTERM or abrupt exit does not
-    leak a "AsyncClient used without explicit close" warning into
-    the soak-phase log stream.
+    """Compose the dispatcher + register N11 meta-tools + install
+    N13 backing-server routing, then run the main loop.
+
+    The finally block tears down backing servers (N13) and closes
+    the meta-tools httpx AsyncClient (N11) so shutdown under SIGTERM
+    or abrupt exit does not leak warnings or orphaned subprocesses
+    into the soak-phase log stream.
     """
     dispatcher = build_default_dispatcher()
     register_meta_tools(dispatcher)
+    # V1: empty backing-server registry. N13 ships the plumbing;
+    # real backing-server registrations are a Day-5-or-later slot.
+    # install_backing_server_routing replaces the dispatcher's
+    # default tools/list and tools/call handlers with ones that
+    # consult the registry first, falling through to meta-tools
+    # when no prefix matches.
+    registry = BackingServerRegistry()
+    install_backing_server_routing(dispatcher, registry)
     try:
         return await run(dispatcher=dispatcher)
     finally:
+        await registry.shutdown_all()
         await _aclose_meta_tools_client()
 
 
