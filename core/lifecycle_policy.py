@@ -1,4 +1,4 @@
-"""Tool-lifecycle constants extracted from the tool-lifecycle skill.
+"""Tool-lifecycle policy constants extracted from the tool-lifecycle skill.
 
 **First extract in the `python-constants` class.** Sibling extract to
 X7-A in `core/prompts/tool_lifecycle.py`. Where prompt-fragment
@@ -7,6 +7,13 @@ at compose time, a python-constants extract captures the structured
 data the source prose describes — for consumption by Python code
 (lifecycle scanners, promotion/demotion endpoints, weekly-review
 cron integration), not by Opus.
+
+This module holds **policy constants** (thresholds, status vocabularies,
+transition rules). The write-side of the lifecycle store — file/DB
+operations, request parsing, status transitions — lives under
+`core/lifecycle_store/` (N7). The rename from `core/lifecycle.py` to
+`core/lifecycle_policy.py` was made per DECISIONS [2026-04-22 08:34]
+to disambiguate policy-from-operations at import-read time.
 
 Distinctions from the prompt-fragment class:
 
@@ -17,7 +24,7 @@ Distinctions from the prompt-fragment class:
 | Fidelity | verbatim markdown body/section | values re-authored from prose |
 | Drift check | byte-for-byte vs source slice | source-cross-check: assert source prose still contains the literal numeric phrases / value lists the constants re-author |
 | Consumer | Opus 4.7 system prompt | Python code (lifecycle scanner, endpoints, cron) |
-| Module home | `core/prompts/` | application module (`core/lifecycle.py` for this one) |
+| Module home | `core/prompts/` | application module (`core/lifecycle_policy.py` for this one) |
 
 Future python-constants extracts cite this module as precedent —
 examples expected include X11 cron thresholds (if not ultimately

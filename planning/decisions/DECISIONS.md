@@ -1349,3 +1349,98 @@ OpenClaw adapter (Phase 2) — will define its own preamble without
 touching fragments.
 
 ---
+
+## [2026-04-22 08:34] — Rename: `core/lifecycle.py` → `core/lifecycle_policy.py`
+
+**Context:** N7 (Day 2 afternoon, this session) introduces a new
+package `core/lifecycle_store/` for the operations side of the
+lifecycle surface — request-file parser, atomic writer, DB/filesystem
+reconciliation, transition service, API-layer orchestration. The
+existing module `core/lifecycle.py` holds the X7-B policy constants
+(status vocabularies, transition rules, thresholds).
+
+With both landing in the same codebase, `core/lifecycle.py` vs.
+`core/lifecycle_store/` reads at import time as a layered pair of
+the same thing ("`lifecycle_store` is the persistent store backing
+`lifecycle`?"). A reader encountering both for the first time has
+to trace imports to realize they are *different concerns* — policy
+data vs. operational plumbing — that happen to share a domain
+noun. That ambiguity compounds across future modules (a hypothetical
+`lifecycle_service`, `lifecycle_scheduler`, etc. would extend it).
+
+Lewie flagged the naming at the N7 state-check (session chat) and
+directed the rename before N7 starts so nobody learns the wrong
+pair first.
+
+**Options considered:**
+
+- **(a) Keep `core/lifecycle.py` + `core/lifecycle_store/`.** No
+  change. Reader grounds the distinction via each module's header.
+- **(b) Rename `core/lifecycle.py` → `core/lifecycle_policy.py`
+  (chosen).** Policy vs. store reads unambiguously at the import
+  line; no header-read required to resolve the pair.
+- **(c) Namespace both under `core/lifecycle/` as a package:
+  `core/lifecycle/policy.py` + `core/lifecycle/store/`.** Tightest
+  coupling in the filesystem tree, but adds an empty `__init__.py`
+  for no runtime benefit and widens the rename blast radius.
+
+**Decision:** (b). Rename `core/lifecycle.py` →
+`core/lifecycle_policy.py` and `tests/test_lifecycle.py` →
+`tests/test_lifecycle_policy.py`. Use `git mv` so history follows.
+Update the single `from core.lifecycle import ...` in the test file
+to `from core.lifecycle_policy import ...`. Update docstring
+cross-references in `core/prompts/tool_lifecycle.py`,
+`core/prompts/SKILL_FRAGMENT_SYNC_LOG.md`, and `tests/test_prompts.py`.
+Add a module-docstring note in `core/lifecycle_policy.py` referencing
+this DECISIONS entry so the rename is self-documenting.
+
+Historical session snapshot (`SESSION-2026-04-21-02.md`) left
+unchanged — it is a frozen record of state at close of Day 1
+session 02, not a live reference.
+
+**Reasoning:**
+
+1. **Import-line readability is the metric.** `from core.lifecycle
+   import TOOL_SELECTION_STATUS_VALUES` and `from
+   core.lifecycle_store.service import LifecycleService` shown on
+   two adjacent lines in a reader's editor do not disambiguate
+   which is policy and which is operations. `from
+   core.lifecycle_policy import ...` + `from
+   core.lifecycle_store.service import ...` does disambiguate,
+   instantly, without requiring the reader to open the modules.
+
+2. **Future-proofing against layered-same-thing reads.** The
+   `X_store` pattern already exists in common Python idiom as "the
+   persistent store for domain X" (e.g. `session_store`,
+   `credential_store`). Keeping one side of the pair named `X` and
+   the other `X_store` recruits exactly that idiom and therefore
+   exactly that misreading.
+
+3. **Blast radius is small and observable.** One live import
+   reference (test file), four docstring cross-references, one
+   sync-log table entry. `pytest -q` passing after the rename
+   confirms the runtime surface is intact; grep for `core.lifecycle\b`
+   and `core/lifecycle.py` confirms the text surface is clean.
+
+4. **Timing: before N7 starts.** Renaming after N7 ships would cost
+   more (more imports, more tests, more tendrils). Doing it now
+   keeps the change contained to a sub-10-file edit.
+
+**Reversibility:** Easy. `git mv` back + re-update the imports.
+No content changes in the constants themselves; just the module
+name and references.
+
+**Decided by:** Lewie (directive in chat at N7 state-check) +
+Claude Code (execution + this log entry).
+
+**Affects:** `core/lifecycle_policy.py` (renamed from
+`core/lifecycle.py`); `tests/test_lifecycle_policy.py` (renamed
+from `tests/test_lifecycle.py`); `core/prompts/tool_lifecycle.py`
+(docstring cross-refs updated); `core/prompts/SKILL_FRAGMENT_SYNC_LOG.md`
+(module-home references updated across all table rows and history
+entries referencing X7-B); `tests/test_prompts.py` (one docstring
+cross-ref updated); forthcoming `core/lifecycle_store/` package
+(N7 — will cite policy imports as `from core.lifecycle_policy
+import ...`).
+
+---

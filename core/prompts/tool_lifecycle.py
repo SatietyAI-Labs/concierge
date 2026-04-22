@@ -9,7 +9,7 @@ and the scoping notes unique to this source.
 **First selective extract in the fragment set.** X3/X4/X6 were
 whole-body verbatim extracts. X7 is a "partial hybrid" per
 classification §C.5.3: promotion/demotion thresholds and the tag
-schema become Python constants (see `core/lifecycle.py`); *only*
+schema become Python constants (see `core/lifecycle_policy.py`); *only*
 the weekly-review protocol is the prompt-fragment part. Future
 selective extracts cite this module as precedent.
 
@@ -22,7 +22,7 @@ What is NOT in this fragment (deliberately left in `_legacy/` only):
       automatic" policy
 
 Those sections are either captured as Python constants in
-`core/lifecycle.py` (the structured data) or are OpenClaw-side
+`core/lifecycle_policy.py` (the structured data) or are OpenClaw-side
 agent prose that Concierge does not need to consume.
 
 Source
@@ -65,9 +65,9 @@ Preserved verbatim in the constant:
 - MCP tool name: `memory__memory_search`
 - Numeric thresholds appear as prose references ("5+ occurrences in
   30 days", "in 90 days", "older than 7 days"). The canonical
-  value-form lives in `core/lifecycle.py`; the prose-form here stays
+  value-form lives in `core/lifecycle_policy.py`; the prose-form here stays
   because it is how the LLM will naturally read the criteria.
-  Drift between the two is detected by `tests/test_lifecycle.py`'s
+  Drift between the two is detected by `tests/test_lifecycle_policy.py`'s
   source-cross-check (asserts the literal phrases stay in source).
 """
 

@@ -25,7 +25,7 @@ A Python module with semantically-named values (ints, frozensets,
 tuples, dicts) re-authored from structured data that the skill
 file's prose describes. The constants are consumed by Python code
 (lifecycle scanners, endpoints, cron) — not by Opus. First extract
-in this class: X7-B (`core/lifecycle.py`).
+in this class: X7-B (`core/lifecycle_policy.py`).
 
 ### How the classes differ
 
@@ -36,7 +36,7 @@ in this class: X7-B (`core/lifecycle.py`).
 | Fidelity | verbatim markdown | values re-authored from prose |
 | Drift check | byte-for-byte vs source (or sliced section) | source-cross-check asserts the prose that anchors each value still appears in source |
 | Consumer | Opus 4.7 system prompt | Python code |
-| Module home | `core/prompts/<name>.py` | application module (e.g. `core/lifecycle.py`) |
+| Module home | `core/prompts/<name>.py` | application module (e.g. `core/lifecycle_policy.py`) |
 | Test home | `tests/test_prompts.py::Test<…>Fragment` | `tests/test_<area>.py` |
 
 ## Purpose
@@ -111,7 +111,7 @@ most of the drift risk. Named and deferred per DECISIONS
 
 | # | Module | Source (repo-relative) | Source SHA-256 (first 8) | Source mtime | Source bytes | Extracts (named constants) | Extracted |
 |---|---|---|---|---|---|---|---|
-| X7-B | `core/lifecycle.py` | `_legacy/openclaw-workspace/skills/tool-lifecycle/SKILL.md` | `79128223` | 2026-04-13 21:09 PDT | 7158 | `TOOL_SELECTION_MEMORY_TAG`, `TOOL_SELECTION_STATUS_VALUES`, `TOOL_SELECTION_STATUS_TRANSITIONS`, `TOOL_SELECTION_CONTENT_FIELDS`, `PROMOTION_MIN_USES`, `PROMOTION_WINDOW_DAYS`, `DEMOTION_INACTIVITY_DAYS`, `STALE_PENDING_DAYS` | 2026-04-21 16:50 PDT (SESSION-2026-04-21-02) |
+| X7-B | `core/lifecycle_policy.py` | `_legacy/openclaw-workspace/skills/tool-lifecycle/SKILL.md` | `79128223` | 2026-04-13 21:09 PDT | 7158 | `TOOL_SELECTION_MEMORY_TAG`, `TOOL_SELECTION_STATUS_VALUES`, `TOOL_SELECTION_STATUS_TRANSITIONS`, `TOOL_SELECTION_CONTENT_FIELDS`, `PROMOTION_MIN_USES`, `PROMOTION_WINDOW_DAYS`, `DEMOTION_INACTIVITY_DAYS`, `STALE_PENDING_DAYS` | 2026-04-21 16:50 PDT (SESSION-2026-04-21-02) |
 
 ---
 
@@ -257,7 +257,7 @@ command.
   notification at tail, MCP tool name `memory__memory_search`, and
   the numeric thresholds in prose form ("5+ occurrences in 30 days",
   "in 90 days", "older than 7 days"). Numeric drift between the
-  prose-form here and the python-constants form in `core/lifecycle.py`
+  prose-form here and the python-constants form in `core/lifecycle_policy.py`
   is detected by the source-cross-check test in `test_lifecycle.py`.
 - **Header style:** pointer-style (per X4 precedent). Refers to
   `core/prompts/tool_awareness.py` for the shared conventions, plus
@@ -269,7 +269,7 @@ command.
 
 ### `2026-04-21 16:50 PDT` — X7-B initial extract *(class: python-constants, FIRST OF CLASS)*
 
-- **Module:** `core/lifecycle.py`
+- **Module:** `core/lifecycle_policy.py`
 - **Source:** `_legacy/openclaw-workspace/skills/tool-lifecycle/SKILL.md`
 - **Source SHA-256:**
   `79128223564dcb63bc4c50763eefc6545e6151c7ccfb56a34d6a5adf895299d4`
@@ -309,7 +309,7 @@ command.
      phrases (e.g. "Used 5+ times in the last 30 days") still appear
      in source. Prompt fragments use byte-for-byte verbatim matching
      against a sliced section.
-  5. *Module home* — application module (`core/lifecycle.py`), not
+  5. *Module home* — application module (`core/lifecycle_policy.py`), not
      `core/prompts/`. Prompt fragments belong in `core/prompts/`; a
      python-constants extract lives wherever its consuming code will
      live.

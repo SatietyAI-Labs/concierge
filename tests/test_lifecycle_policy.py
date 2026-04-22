@@ -1,4 +1,4 @@
-"""Tests for `core.lifecycle` — the python-constants extract from
+"""Tests for `core.lifecycle_policy` — the python-constants extract from
 tool-lifecycle/SKILL.md (X7-B).
 
 Companion to `tests/test_prompts.py::TestToolLifecycleWeeklyReviewFragment`
@@ -29,7 +29,7 @@ from pathlib import Path
 
 import pytest
 
-from core.lifecycle import (
+from core.lifecycle_policy import (
     DEMOTION_INACTIVITY_DAYS,
     PROMOTION_MIN_USES,
     PROMOTION_WINDOW_DAYS,
@@ -148,8 +148,8 @@ class TestStructuralConsistency:
         )
 
     def test_threshold_values(self):
-        """Lock in the numeric values so a silent edit in core/lifecycle.py
-        fails a test rather than going unnoticed.
+        """Lock in the numeric values so a silent edit in
+        `core/lifecycle_policy.py` fails a test rather than going unnoticed.
         """
         assert PROMOTION_MIN_USES == 5
         assert PROMOTION_WINDOW_DAYS == 30
@@ -161,7 +161,7 @@ class TestSourceCrossCheck:
     """Drift detection — assert the source prose still contains the
     literal phrases that anchor each constant's value. If source is
     edited (e.g. "5+ times" → "6+ times") without re-authoring
-    `core/lifecycle.py`, these tests fail and force a joint re-sync
+    `core/lifecycle_policy.py`, these tests fail and force a joint re-sync
     of the Python constants and X7-A's prompt fragment.
     """
 

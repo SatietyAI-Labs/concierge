@@ -259,7 +259,7 @@ class TestToolLifecycleWeeklyReviewFragment:
     First selective extract in the prompt-fragment class. Drift-check
     compares against a sliced H2 section rather than the whole file
     body. The companion python-constants extract (X7-B) lives at
-    `core/lifecycle.py`.
+    `core/lifecycle_policy.py`.
     """
 
     def test_constant_is_nonempty_string(self):
