@@ -338,6 +338,97 @@ class TestProtocolVersionEnvOverride:
                 proc.wait()
 
 
+class TestWrapperScriptInvocation:
+    """Verify `scripts/concierge-shim` invoked as an executable —
+    the way Claude Code's MCP spawn invokes it — picks up the
+    correct Python interpreter with all dependencies importable.
+
+    Regression guard: the original wrapper had
+    `#!/usr/bin/env python3`, which resolved via PATH. Claude Code's
+    MCP spawn supplies an env that typically does not include the
+    project venv's bin directory, so `/usr/bin/env` found the system
+    `python3` — which lacks pydantic and every other Concierge dep.
+    Every existing e2e test bypassed this path by spawning via
+    `sys.executable` (the pytest runner's interpreter, which IS the
+    venv python). This test exercises the wrapper the way Claude
+    Code does.
+    """
+
+    def test_wrapper_spawns_without_venv_activation(self):
+        """Invoke the wrapper with a PATH that does NOT include the
+        venv bin dir. Before the shebang fix this produced
+        ModuleNotFoundError on pydantic. After the fix, the
+        absolute-path shebang invokes the venv Python directly and
+        all imports succeed.
+        """
+        wrapper = REPO_ROOT / "scripts" / "concierge-shim"
+        assert wrapper.exists(), f"wrapper not found at {wrapper}"
+        assert os.access(wrapper, os.X_OK), f"wrapper not executable"
+
+        # Scrub PATH to system paths only — this simulates the env
+        # Claude Code's MCP spawn gives us (no venv activation). HOME
+        # is preserved because some deps read it for cache dirs.
+        minimal_env = {
+            "PATH": "/usr/bin:/bin",
+            "HOME": os.environ.get("HOME", "/tmp"),
+        }
+
+        # Empty-stdin spawn: shim should start, hit EOF, exit 0.
+        # Anything other than exit=0 + clean stderr means an import
+        # or startup failure that this test is designed to catch.
+        proc = subprocess.Popen(
+            [str(wrapper)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=str(REPO_ROOT),
+            env=minimal_env,
+        )
+        # Close stdin immediately to trigger graceful shutdown
+        assert proc.stdin is not None
+        proc.stdin.close()
+
+        try:
+            returncode = proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            pytest.fail("wrapper did not exit within 10s after stdin EOF")
+
+        stderr_text = (
+            proc.stderr.read().decode("utf-8", errors="replace")
+            if proc.stderr
+            else ""
+        )
+        stdout_text = (
+            proc.stdout.read().decode("utf-8", errors="replace")
+            if proc.stdout
+            else ""
+        )
+
+        assert returncode == 0, (
+            f"wrapper exited with code {returncode}. "
+            f"stderr:\n{stderr_text}\nstdout:\n{stdout_text}"
+        )
+
+        # Explicit assertions on the specific failure modes we want
+        # to catch at the test level (not just via exit-code). If
+        # the shebang regresses to `#!/usr/bin/env python3` these
+        # would surface as ModuleNotFoundError lines in stderr.
+        assert "ModuleNotFoundError" not in stderr_text, (
+            f"wrapper hit ModuleNotFoundError — shebang may have "
+            f"regressed to system Python. stderr:\n{stderr_text}"
+        )
+        assert "ImportError" not in stderr_text, (
+            f"wrapper hit ImportError. stderr:\n{stderr_text}"
+        )
+        # Positive assertion: the shim actually started. The
+        # startup log confirms main() ran past all imports.
+        assert "shim.startup" in stderr_text, (
+            f"expected shim.startup log line; full stderr:\n{stderr_text}"
+        )
+
+
 class TestStderrLoggingActive:
     def test_startup_logs_on_stderr(self, shim):
         """At least a `shim.startup` INFO line on stderr — confirms

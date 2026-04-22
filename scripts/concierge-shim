@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/home/satiety/.venvs/concierge-hackathon/bin/python3
 """Concierge Claude Code stdio proxy shim — entrypoint wrapper.
 
 Claude Code's MCP configuration references this script path.
@@ -25,6 +25,24 @@ Exit codes:
 All logging goes to stderr. Stdout is reserved for JSON-RPC 2.0
 framing; a single contaminating byte kills the Claude Code MCP
 client.
+
+## Shebang choice (see commit "fix: shim wrapper must use venv
+Python, not system Python")
+
+Absolute path to the venv interpreter. The previous
+`#!/usr/bin/env python3` resolved via PATH, which meant Claude
+Code's MCP spawn — with no venv activation — hit the system
+python3 and raised ModuleNotFoundError on pydantic. The venv's
+python3 is a symlink to /usr/bin/python3 on this host; the venv
+site-packages discovery relies on the INVOCATION path (argv[0]),
+not on PATH resolution. Absolute-shebang invocation keeps that
+discovery working regardless of the caller's env.
+
+Machine-specific: the absolute path is tied to this host's venv
+location (`/home/satiety/.venvs/concierge-hackathon/`). Porting
+to a different machine requires either updating this shebang or
+moving to a `pip install -e .` console-scripts entry. The latter
+is a post-hackathon cleanup.
 """
 import sys
 from pathlib import Path
