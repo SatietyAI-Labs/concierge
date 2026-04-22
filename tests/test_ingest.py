@@ -198,9 +198,13 @@ def test_ingest_handles_missing_root_gracefully(
 
 
 def test_ingest_real_legacy_corpus(db_session: Session):
-    from core.config import get_settings
+    from pathlib import Path
 
-    root = get_settings().lifecycle_root
+    # Read-only legacy corpus — bypasses `settings.lifecycle_root`
+    # (isolated-by-default post-pivot) and reads the symlink target
+    # directly so the test exercises real fixture files regardless
+    # of operational config.
+    root = Path(__file__).resolve().parent.parent / "_legacy" / "tool-requests"
     if not root.exists():
         pytest.skip(f"legacy lifecycle root unavailable: {root}")
 

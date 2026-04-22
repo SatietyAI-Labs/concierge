@@ -54,9 +54,16 @@ def test_export_round_trip_real_legacy_file(tmp_path: Path):
     from core.config import get_settings
 
     import pytest
+    from pathlib import Path
 
-    root = get_settings().lifecycle_root
-    sample = root / "resolved" / "2026-04-13-1100-tree-for-codebase-nav.md"
+    # Legacy-corpus test — reads the read-only `_legacy/tool-requests/`
+    # symlink directly (not `settings.lifecycle_root`, which under the
+    # operational-first pivot defaults to an isolated empty folder per
+    # DECISIONS [2026-04-21 18:00]).
+    legacy_root = (
+        Path(__file__).resolve().parent.parent / "_legacy" / "tool-requests"
+    )
+    sample = legacy_root / "resolved" / "2026-04-13-1100-tree-for-codebase-nav.md"
     if not sample.exists():
         pytest.skip(f"real legacy fixture unavailable: {sample}")
 

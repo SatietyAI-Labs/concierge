@@ -22,10 +22,17 @@ class Settings(BaseSettings):
 
     project_root: Path = PROJECT_ROOT
     database_path: Path = PROJECT_ROOT / "concierge.db"
-    lifecycle_root: Path = PROJECT_ROOT / "_legacy" / "tool-requests"
 
     memory_dir: Path = Path.home() / ".concierge-memory"
     memory_embedding_model: str = "all-MiniLM-L6-v2"
+
+    # Lifecycle-store root (N7). Isolated default — mirrors the
+    # memory-isolation pattern per DECISIONS [2026-04-21 18:00]. The
+    # `_legacy/tool-requests/` symlink points at Alfred's live
+    # production folder; writing there mid-soak risks contaminating
+    # Alfred's production cron with Concierge-under-development
+    # output. Opt-in to the shared store via `CONCIERGE_LIFECYCLE_ROOT`.
+    lifecycle_root: Path = Path.home() / ".concierge-lifecycle"
 
     # Anthropic / recommendation engine (N6).
     # API key resolution falls back to the SDK-default env var

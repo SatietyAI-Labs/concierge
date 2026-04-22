@@ -1,0 +1,178 @@
+"""Atomic file operations for the three-folder lifecycle store.
+
+Two write primitives:
+
+1. `write_new_request(...)` — build full markdown from a
+   `NewRequestDraft`, write atomically to `pending/<filename>`.
+2. `update_status_line(...)` — read an existing file, replace the
+   first-line status, write atomically back to the **same folder
+   the file is currently in** (which may not be where it started,
+   if the cron moved it between read and write).
+
+Both use tempfile + `os.replace` so cron-side readers never see a
+truncated or partially-written file. File encoding is UTF-8 with
+`\\n` line endings; the source corpus was written this way and the
+cron's awk parsing assumes it.
+"""
+from __future__ import annotations
+
+import logging
+import os
+import re
+import tempfile
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+from core.ingest.tool_requests import export_to_markdown, slugify
+from core.lifecycle_store.schema import NewRequestDraft
+
+
+logger = logging.getLogger(__name__)
+
+
+_STATUS_LINE_RE = re.compile(r"^status:\s*\S.*$", re.MULTILINE)
+
+
+def generate_filename(*, tool_name: str, when: Optional[datetime] = None) -> str:
+    """Build a `YYYY-MM-DD-HHMM-<slug>.md` filename from a tool
+    name. `when=None` defaults to `datetime.now()`.
+
+    Filename slug is derived from the tool name via the shared
+    `slugify(...)` helper (N3 parser) so the filename sort order
+    matches the DB-side tool_slug sort.
+    """
+    dt = when if when is not None else datetime.now()
+    stem = f"{dt:%Y-%m-%d-%H%M}-{slugify(tool_name)}"
+    return f"{stem}.md"
+
+
+def build_markdown(draft: NewRequestDraft) -> str:
+    """Render a `NewRequestDraft` into the canonical X10 markdown
+    format. Delegates section composition to the shared
+    `export_to_markdown(...)` — we construct a synthetic
+    `Request`-shaped object so the shared exporter does the lifting.
+    """
+    # Reuse N3's exporter by projecting the draft into the shape
+    # `export_to_markdown` expects (an object with `.status`,
+    # `.tool_name`, `.parsed_data`). Constructing a real Request
+    # here would couple writer to SQLAlchemy; a lightweight
+    # stand-in keeps the writer testable in isolation.
+
+    class _Stand:
+        pass
+
+    stand = _Stand()
+    stand.status = "pending"
+    stand.tool_name = draft.tool_name
+    request_section = {
+        "task_context": draft.task_context or "",
+        "tool_suggested": draft.tool_name,
+        "category": draft.category or "",
+        "install_method": draft.install_method or "",
+        "discovered": draft.is_discovered,
+    }
+    recommendation_section = {
+        "why_this_tool": draft.why_this_tool or "",
+        "alternatives_considered": draft.alternatives_considered or "",
+        "risk_cost": draft.risk_cost or "",
+        "confidence": draft.confidence or "",
+    }
+    if draft.source is not None:
+        recommendation_section["source"] = draft.source
+    if draft.evidence is not None:
+        recommendation_section["evidence"] = draft.evidence
+
+    # Approval stub so the file shape matches what operators
+    # (humans + Alfred) expect to fill in. All fields empty; the
+    # parser tolerates empty values.
+    approval_section: dict = {"decision": "", "conditions": "", "date": ""}
+
+    stand.parsed_data = {
+        "request": request_section,
+        "recommendation": recommendation_section,
+        "approval": approval_section,
+    }
+    return export_to_markdown(stand)
+
+
+def _atomic_write(path: Path, content: str) -> None:
+    """Write `content` to `path` atomically.
+
+    tempfile + `os.replace` keeps any reader — including the X11
+    cron mid-scan — from ever observing a partial write. The temp
+    file lives in the same directory as the target so `os.replace`
+    is a same-filesystem rename.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path_str = tempfile.mkstemp(
+        dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp"
+    )
+    tmp_path = Path(tmp_path_str)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fp:
+            fp.write(content)
+            fp.flush()
+            os.fsync(fp.fileno())
+        os.replace(tmp_path, path)
+    except Exception:
+        # Clean up the tempfile on failure; best-effort.
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise
+
+
+def write_new_request(
+    *,
+    lifecycle_root: Path,
+    draft: NewRequestDraft,
+    filename: str,
+) -> Path:
+    """Write a new `pending/` file from a draft. Returns the path.
+
+    Fails loudly if the file already exists — overwriting an
+    existing request would corrupt the cron's state machine. The
+    caller (service layer) generates the filename and is responsible
+    for ensuring uniqueness.
+    """
+    target = lifecycle_root / "pending" / filename
+    if target.exists():
+        raise FileExistsError(
+            f"request file already exists: {target.name} — refusing to overwrite"
+        )
+    content = build_markdown(draft)
+    _atomic_write(target, content)
+    logger.info(
+        "lifecycle.write_new filename=%s bytes=%d folder=pending",
+        filename,
+        len(content),
+    )
+    return target
+
+
+def update_status_line(*, path: Path, new_status: str) -> None:
+    """Replace the first-line `status:` in an existing file with
+    `new_status`, atomically. Body of the file is otherwise
+    preserved byte-for-byte.
+
+    Raises `ValueError` if the file does not contain a parseable
+    status line (defensive — the parser validates shape at read
+    time, but a caller who passes a raw file this function hasn't
+    seen gets a clear failure mode rather than a silent no-op).
+    """
+    content = path.read_text(encoding="utf-8")
+    new_line = f"status: {new_status}"
+    updated, n = _STATUS_LINE_RE.subn(new_line, content, count=1)
+    if n == 0:
+        raise ValueError(
+            f"file {path.name} has no status line to update (path={path})"
+        )
+    _atomic_write(path, updated)
+    logger.info(
+        "lifecycle.update_status filename=%s new_status=%s folder=%s",
+        path.name,
+        new_status,
+        path.parent.name,
+    )
