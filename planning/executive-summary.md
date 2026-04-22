@@ -3,6 +3,14 @@
 *Built with Opus 4.7 hackathon | 2026-04-21 through 2026-04-26 | Solo builder*
 *Companion to `planning/build-plan.md` — read this first.*
 
+> **End-state pivot (2026-04-21, DECISIONS `[18:00]`):** primary end-state
+> shifted from "recorded 3-minute demo video submitted to hackathon by
+> Sunday" to "Concierge running live on Lewie's daily Claude Code
+> sessions for 48+ continuous hours." Demo is a byproduct of the
+> shakedown, not a separately-rehearsed scripted take. Hackathon
+> submission is still the Day-6 milestone, but posture depends on
+> whether the operational gate has been met.
+
 ## What gets built
 
 Platform-agnostic tool-awareness layer for AI agents. Three deliverables:
@@ -21,7 +29,7 @@ Platform-agnostic tool-awareness layer for AI agents. Three deliverables:
 | Grand total effort | **46.5h** (yellow-flag ≥40h, red not tripped) |
 | Full-ladder total | 43h (saves 3.5h across 4 pre-sequenced cuts) |
 | Critical path (strict serial) | 27.5h of the 46.5h |
-| Protected demo floor | 17 items / ~27h non-cuttable |
+| Protected core (was "demo floor") | 17 items / ~27h non-cuttable; plus an operational-first unwritten superset (error handling, logging, graceful degradation, X11-actually-running) per DECISIONS [18:00] |
 | Classification tally | 12 LIFT / 7 EXTRACT / 0 ADAPT / 0 REWRITE / 5 RETIRE |
 
 ## Day-by-day at a glance
@@ -32,8 +40,8 @@ Platform-agnostic tool-awareness layer for AI agents. Three deliverables:
 | 2 | Wed 04-22 | Service core + N10 pull-forward (~15.5h — Scenario A target) | N3/N4 finish + X3/X4/X6/X7/X11 + N5/N6/N7/N8 + N10 | none pre-sequenced |
 | 3 | Thu 04-23 | Adapter integration (critical-path day) | N9→N14 + X8 + X13 | **Cut 3** first, then **Cut 2** |
 | 4 | Fri 04-24 | UI three sections (sequential focus) | N15→N20 + N19 | **Cut 1** if N18 slips past 6 PM |
-| 5 | Sat 04-25 | Stabilization + 5-consecutive-clean rehearsal | bug fixes, fragment tuning, record backup take | — |
-| 6 | Sun 04-26 | Recording + submission | demo video, README, submit | — |
+| 5 | Sat 04-25 | **Operational shakedown day 1** (first 24h of 48h gate) | live use on real Claude Code sessions; reactive bug fix; X11 cron verification against real input | — |
+| 6 | Sun 04-26 | **Operational gate close + submission posture** | t=48h assessment; submit with posture matching gate outcome | — |
 
 ## Four Phase E adjustments (all embedded as day-plan items)
 
@@ -57,13 +65,14 @@ Platform-agnostic tool-awareness layer for AI agents. Three deliverables:
 gap-report, N19 token-win, N5 memory wrapper, N16 filter/search, N18
 dormant-badge).
 
-## Top-5 risks
+## Top-6 risks (Risk 6 added post-pivot 2026-04-21)
 
 1. **Prompt-fragment correctness** (H/H) — Day 2 N8 fixture assertion catches
 2. **Stdio shim debugging** (M-H/H) — Day 2 eve pull-forward buys debug time
-3. **Day 3 serial-tail cascade** (M-H/M) — Cut 3 is first trigger
-4. **Opus 4.7 recommendation variance** (M/H) — temperature=0 + Day 5 rehearsal
+3. **Day 3 serial-tail cascade** (M-H / L-M post-pivot) — Cut 3 is first trigger; impact eased since Days 5-6 no longer demo-rehearsal
+4. **Opus 4.7 recommendation variance** (M / M post-pivot) — temperature=0 + 48h shakedown surfaces variance naturally
 5. **Markdown parser surfacing late** (M/M-H) — Day 2 round-trip check catches
+6. **Operational regressions during 48h shakedown** (M/M-H) — git-tag stable points + graceful degradation limit blast radius
 
 ## Operating posture
 

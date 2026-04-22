@@ -31,20 +31,42 @@ and 2026-04-21 04:45, 05:50, 05:55, 06:10.
 
 ## F.1 Mission framing
 
-**Deliverable by Day 4 (Friday) evening:** a working end-to-end
-Concierge demo — Claude Code session talking to a FastAPI service
-that queries SQLite + ChromaDB memory, routes through Opus 4.7 for
-recommendations, writes to a shared filesystem lifecycle store, and
-renders a three-section HTMX UI in the browser.
+*Updated 2026-04-21 per DECISIONS `[2026-04-21 18:00]` — operational-
+first pivot. Original framing (recorded demo video as the end-state by
+Day 6) is superseded. The reworked framing below treats operational
+use as primary and demo recording as a byproduct, per Lewie's
+mid-session announcement that the event is underway without a
+confirmed acceptance email.*
 
-**Deliverable by Day 6 (Sunday) evening:** demo video recorded,
-README + submission docs complete, hackathon entry submitted.
+**Primary end-state (2026-04-21 pivot):** Concierge running **live on
+Lewie's daily Claude Code sessions for 48+ continuous hours** before
+declaring the build "done." The operational-shakedown gate
+supersedes the 5-consecutive-clean-demo-rehearsal gate.
 
-**Priority hierarchy (from CLAUDE.md):** AI quality → build smoothness
-→ Day-4 substantive completion → token cost explicitly not a priority.
+**Day 4 deliverable (operational milestone):** the protected
+operational core (§F.5) runs end-to-end against Lewie's real
+workflow — Claude Code session talking to the FastAPI service,
+SQLite + ChromaDB memory queried, Opus 4.7 serving recommendations
+with graceful degradation when memory is unavailable, lifecycle
+store + cron integration verified on real input, three-section HTMX
+UI browsable. This sets up Days 5-6 for the 48h shakedown.
 
-**Protected demo floor (§F.5):** 17 items / 26-28h that cannot be cut
-without demo-scenario damage.
+**Day 6 deliverable (conditional):** if the 48h operational gate has
+been met, submit hackathon entry with a demo video recorded from
+live usage. If the gate has not been met, either (a) submit with a
+"running live, N hours of uptime, M recommendations served" footnote
+or (b) slip submission in favor of operational integrity. Judgment
+call at the time, not pre-committed.
+
+**Priority hierarchy (from CLAUDE.md, updated 2026-04-21):** AI
+quality → build smoothness → **operational readiness by Day 4** →
+token cost explicitly not a priority.
+
+**Protected core (§F.5):** 17 items / 26-28h non-cuttable core, now
+framed as "minimum operational core" (demo-capable == operational-
+capable). Operational-first adds error handling, structured logging,
+graceful degradation, and X11-cron-actually-running as additional
+unwritten protected surface.
 
 **Scope posture:** 46.5h baseline, 43h with full ladder, 40h yellow
 threshold triggered, 50h red threshold not triggered. Ladder cuts
@@ -354,74 +376,112 @@ ideal for solo-builder context-switching reasons.
   is the slowest to compute from memory aggregation). Demo reads
   cleaner with three tiles.
 
-### F.2.5 Day 5 — Saturday 2026-04-25 — "Stabilization + rehearsal"
+### F.2.5 Day 5 — Saturday 2026-04-25 — "Operational shakedown day 1"
 
-Per ops protocol §Day-5-6 framing: explicitly for stabilization,
-bug-fixes, and demo rehearsal. **Day 5 absorbs all slippage from
-Days 1-4**, including any ladder-cut execution.
+*Updated 2026-04-21 per DECISIONS `[2026-04-21 18:00]`. Original
+framing was "stabilization + 5-consecutive-clean demo rehearsal";
+replaced with the first 24 hours of the operational-shakedown gate.
+Day 5 still absorbs Days 1-4 slippage, but via reactive bug-fixing
+during live use rather than scripted rehearsal.*
 
-**Morning — stabilization (~4h):**
+Day 5 is the **first 24 hours of the 48+ hour operational gate**.
+Concierge runs live on Lewie's real daily Claude Code sessions.
+The shakedown generates bugs naturally through use — Claude Code
+session → `concierge_recommend` meta-tool → N6 → memory/catalog/
+lifecycle → response. Bugs get fixed reactively as they surface;
+logs are the primary diagnostic surface.
 
-- Triage bugs surfaced on Day 4 — prioritize demo-path bugs over
-  polish
-- Any Phase E Risk 1 (prompt-fragment correctness) tuning — if N8
-  smoke assertion or rehearsal shows misranks, tune the
-  X6/X7 fragments and re-verify
+**Morning — launch + residual stabilization (~3h):**
+
 - Resolve any Day-3 overflow items that didn't make Day 4 morning
+- Fix any Day-4 UI bugs surfaced during first real-use session
+- Verify X11 cron is actually running against real input (not
+  just installed): check `housekeeping.log` for heartbeats since
+  Day-4 install; confirm pending→resolved moves happen on real
+  approve/deny actions from the UI
+- Capture baseline metrics: uptime start timestamp, initial memory
+  store state, request-lifecycle state at shakedown t=0
 
-**Midday — rehearsal (~3h):**
+**Midday-to-afternoon — live use (~6h, no scripted blocks):**
 
-- Run the full demo scenario **5 consecutive clean times** per ops
-  protocol checkpoint
-- Any misrank in rehearsal triggers prompt-fragment tuning or
-  temperature-lock verification (confirm N6 is actually calling with
-  `temperature: 0`)
-- Record the 5th clean run's output as the fallback if Day 6 live
-  recording fails
+- Lewie runs real Claude Code sessions against Concierge. Not
+  scripted; actual tasks from his daily workflow.
+- Fix bugs reactively as they surface. Prioritize bugs that break
+  operational use over bugs that only affect demo polish.
+- Any Phase E Risk 1 (prompt-fragment correctness) surfacing in
+  real recommendations → tune X6/X7-A fragments, re-run N8
+  fixture assertion, re-verify.
+- Any Risk 6 (operational regressions) surfacing → git-tag the
+  last-known-good commit before attempting fix; revert-path
+  available.
 
-**Afternoon — polish or overflow (~3h):**
+**Evening — checkpoint + start draft README (~2h):**
 
-- Any remaining escalation items from Level-3 chat decisions
-- README scaffold (draft; final on Day 6)
-- Submission checklist review
+- 24h operational-gate progress: tally uptime, recommendation
+  count, request count, cron heartbeat count, bugs caught and
+  fixed vs. still-open
+- Draft README.md from live usage learnings (not from a script —
+  "here's what Concierge actually does" based on what it actually
+  did today)
 
-**Day 5 checkpoint (Saturday night):**
+**Day 5 checkpoint (Saturday night, t=24h into shakedown):**
 
-- [ ] 5 consecutive clean demo runs achieved
-- [ ] Fallback recording banked (in case of Day 6 failure)
-- [ ] README scaffold exists
-- [ ] All known bugs triaged — either fixed or explicitly accepted
+- [ ] Concierge has been running continuously for 24+ hours
+- [ ] N recommendations served during live Claude Code sessions
+  (document N in snapshot)
+- [ ] X11 cron has executed at least 2-3 times with non-empty
+  output (heartbeat discipline)
+- [ ] All bugs surfaced during Day-5 live use are either fixed
+  or explicitly tagged as acceptable for the 48h gate
+- [ ] README draft exists
 
-### F.2.6 Day 6 — Sunday 2026-04-26 — "Recording + submission"
+### F.2.6 Day 6 — Sunday 2026-04-26 — "Operational gate close + submission posture"
 
-**Morning — demo video recording (~4h):**
+*Updated 2026-04-21 per DECISIONS `[2026-04-21 18:00]`. Original
+framing was "demo recording + submission by Sunday evening."
+Replaced with the 48h operational-gate close. Submission becomes
+conditional on the gate; demo recording becomes a byproduct of
+live usage, not a scripted take.*
 
-- Multiple takes (Risk 4 mitigation #4) — record 3-5 full takes;
-  pick the best
-- Voiceover overlay if any ladder cut executed ("in the real thing
-  the cron picks this up")
-- Export to MP4 or whatever the hackathon submission format requires
+**Morning — gate closure + assessment (~3h):**
 
-**Midday — README + submission docs (~3h):**
+- t=48h check: Concierge has been continuously operational for
+  48+ hours, serving real recommendations into real Claude Code
+  sessions, with cron running, logs present, no corruption of
+  Alfred's production memory (isolation default held)
+- Tally the shakedown: bugs found / fixed / open, uptime, memory
+  store growth, recommendations served, requests moved through
+  lifecycle
+- Decide submission posture based on gate outcome:
+  - **Gate met:** record demo as byproduct (live capture or
+    curated replay of a real session), submit with confidence
+  - **Gate mostly met (<48h or <N%):** submit with footnote
+    ("Concierge has been running live for X hours; here's what
+    we've learned")
+  - **Gate failed (obvious instability):** Level-3 chat call —
+    submit anyway with honest caveat, or slip submission and
+    keep fixing
 
-- README.md covering: what Concierge is, how to run it, architecture
-  overview (links to `docs/concierge-blueprint-v2.md`), demo video
-  embed
-- Submission form — hackathon-specific fields
+**Midday — submission prep (~3h):**
+
+- README.md finalized from draft + Day-6-morning metrics
+- Submission form — hackathon-specific fields; attach whatever
+  demo artifact matches the submission posture
 - Final repo cleanup (remove `planning/scratch/` experiments, trim
-  noise)
+  noise, tag the submission commit)
 
-**Afternoon — submission (~1h):**
+**Afternoon — submit + reflect (~1h):**
 
-- Submit entry
-- Final snapshot `planning/sessions/SESSION-2026-04-26-01.md` capturing
-  the submission outcome
+- Submit entry (if submission posture says go)
+- Write final snapshot `planning/sessions/SESSION-2026-04-26-01.md`
+  capturing the gate outcome, submission decision, and what the
+  shakedown taught about operational-fitness of Concierge
 
 **Day 6 checkpoint (Sunday evening):**
 
-- [ ] Demo video submitted
-- [ ] README complete with demo embed
-- [ ] Hackathon entry submitted
+- [ ] 48h operational gate met (or explicitly not-met with rationale)
+- [ ] Submission decision made and executed per chosen posture
+- [ ] README complete with whatever narrative matches the posture
 - [ ] Final snapshot written
 
 ---
@@ -485,10 +545,20 @@ compression. Ladder integrity holds. No other Cut needs re-timing.
 
 ---
 
-## F.5 Protected demo floor — non-deferrable
+## F.5 Protected core — non-deferrable
+
+*Renamed 2026-04-21 per DECISIONS `[2026-04-21 18:00]` from
+"Protected demo floor." Under operational-first, the same 17 items
+remain non-cuttable — but the framing is "minimum operational
+core" rather than "minimum demo-scenario core." Demo-capable ==
+operational-capable: anything that makes the demo work ALSO makes
+daily operation work, so the 17 items are shared between both.
+Operational-first additionally protects a superset of unwritten
+surface (see end of section).*
 
 Per dependency-graph.md §D.4.3, the 17 items totaling 26-28h that
-cannot be cut without breaking the demo scenario:
+cannot be cut without breaking the operational core (and therefore
+also the demo scenario):
 
 **Catalog surface (~7h):**
 - N1, N2, N3, N4 — FastAPI skeleton, schema, ingest, endpoints
@@ -520,13 +590,50 @@ The remaining 16-19.5h distributes across N8 (smoke), N9 (spike),
 N18 (tiles 2-4), N19 (token-win), N20 (polish), X8 (SOUL), X13
 (install), and various smaller items.
 
+**Operational-first additional protected surface (unnumbered, per
+DECISIONS `[2026-04-21 18:00]`):** these are not countable items in
+the 17-item demo floor because they do not appear as N-series or
+X-series components — but they are required for the 48h operational
+gate to be met:
+
+- **Error-handling paths on every endpoint.** 500 responses must be
+  logged with enough context that Lewie can diagnose from logs alone.
+  422 responses for invalid POST bodies are structured, not generic.
+- **Structured logging discipline.** N5/N6/N7 all log operations at
+  DEBUG with enough context to reconstruct a failed recommendation
+  from logs alone.
+- **Graceful degradation.** N6 serves recommendations with
+  `memory_available: false` annotation when N5 raises
+  `MemoryUnavailableError`. N7 tolerates file-parse failures and
+  continues through the directory.
+- **X11 cron actually running.** Installation was the Day-2 task
+  (0.5h); operational-first elevates to verification that cron
+  fires, produces heartbeats in `housekeeping.log`, and produces
+  weekly-review output reaching the operator within hour 24 of the
+  shakedown.
+- **Startup / restart discipline.** Ports released, DB handles
+  closed, ChromaDB client disposed on shutdown. Required for a
+  running instance to survive the multi-day gate across any
+  restart events.
+
+These cost maybe 1-2h of additional discipline across Days 2-3
+(spread thin through N5/N6/N7/N8) rather than a dedicated block.
+Elevated to the protected tier means they are not cuttable under
+any of Cuts 1-4; dropping them is Level-3 chat territory.
+
 ---
 
-## F.6 Risk register — Phase E top-5 with day-of mitigations
+## F.6 Risk register — Phase E top-5 + post-pivot additions
 
-Consolidated from gap-analysis.md §E.2. Each risk names: probability,
-impact, the day its first mitigation fires, and the specific day-plan
-line that implements the mitigation.
+*Updated 2026-04-21 per DECISIONS `[2026-04-21 18:00]`. Risk 6 added
+to cover the operational-shakedown window Days 5-6. Risks 3 and 4
+noted as marginally easier under operational-first framing (the
+long-form shakedown surfaces variance naturally, and demo-polish
+time-pressure relaxes).*
+
+Consolidated from gap-analysis.md §E.2 plus post-pivot additions.
+Each risk names: probability, impact, the day its first mitigation
+fires, and the specific day-plan line that implements the mitigation.
 
 ### F.6.1 Risk 1 — Prompt-fragment correctness on first integration (P:High / I:High)
 
@@ -556,10 +663,18 @@ time to debug before Day 3 time pressure).
 - Fallback: Approach 3 (X16 mcporter ephemeral spawn) noted in §F.2.3
   Day 3 trigger list item 3 — Level-3 chat before invoking
 
-### F.6.3 Risk 3 — Day 3 serial-tail cascade eating Day 4 budget (P:Medium-High / I:Medium)
+### F.6.3 Risk 3 — Day 3 serial-tail cascade eating Day 4 budget (P:Medium-High / I:Medium → **I: Low-Medium post-pivot**)
 
 **First mitigation day:** Day 3 morning (Cut 3 as first day-of
 trigger).
+
+**Post-pivot note (2026-04-21):** impact downgraded under
+operational-first. If Day 3 slippage eats into Day 4, it compresses
+the operational-readiness runway but does not cascade into demo-
+rehearsal time (which no longer exists). Cut 2 (X13 auto-install)
+becomes even more comfortable to drop since manual install in a
+voiceover is demo-first vocabulary; under operational-first, manual
+install is just a setup step Lewie does once per shakedown start.
 
 **Day-plan pointers:**
 
@@ -567,20 +682,32 @@ trigger).
   §F.2.3 trigger list item 1
 - N10 pull-forward to Day 2 evening absorbs the risk structurally —
   Day 3 opens with 4h of critical-path work already complete
-- Day 5 stabilization buffer explicitly reserves bug-fix time for
-  Day 3 slippage
+- Day 5 first-24h-shakedown absorbs any Day-4 overflow via reactive
+  fixing rather than dedicated stabilization slot
 
-### F.6.4 Risk 4 — Opus 4.7 recommendation quality variance (P:Medium / I:High)
+### F.6.4 Risk 4 — Opus 4.7 recommendation quality variance (P:Medium / I:High → **I: Medium post-pivot**)
 
 **First mitigation day:** Day 2 afternoon (temperature=0 locked on
 N6 from day of implementation).
 
+**Post-pivot note (2026-04-21):** impact downgraded under
+operational-first. A 48h live shakedown surfaces Opus variance
+naturally through ~dozens of real recommendations; "5 consecutive
+clean runs" was a synthetic and less rigorous test. Variance that
+shows up in live use is the signal that matters, and there is
+time in the shakedown window to tune fragments or adjust
+temperature in response. N6's graceful-degradation requirement
+(serve a recommendation even when memory is unavailable) also
+structurally limits variance-impact — a worst-case variant is
+still an answer, not a 500.
+
 **Day-plan pointers:**
 
-- N6 row in §F.2.2 afternoon — "temperature=0 locked for demo runs"
+- N6 row in §F.2.2 afternoon — "temperature=0 locked from
+  implementation"
 - N8 fixture-driven assertion catches variance on Day 2 evening
-- Day 5 rehearsal — 5 consecutive clean runs per §F.2.5 midday
-- Day 6 multiple takes per §F.2.6 morning
+- Day 5-6 live shakedown surfaces variance across real tasks;
+  reactive tuning in response rather than synthetic rehearsal
 
 ### F.6.5 Risk 5 — Markdown round-trip parser surfacing late (P:Medium / I:Medium-High)
 
@@ -593,6 +720,39 @@ N6 from day of implementation).
 - Fixture inventory per Phase E §E.5 item 8 — captures real-world
   format variants from actual `_legacy/tool-requests/` pending/ folder
   during Tuesday evening or Wednesday morning
+
+### F.6.6 Risk 6 — Operational regressions during 48h shakedown (P: Medium / I: Medium-High)
+
+*Added 2026-04-21 per DECISIONS `[2026-04-21 18:00]`. New risk
+introduced by the operational-first pivot — Concierge running live
+on Lewie's daily Claude Code sessions during Days 5-6 means
+Concierge can break mid-session.*
+
+**What this risk looks like in practice:**
+
+- A Day-5 session hits a bug that causes `concierge_recommend` to
+  return a 500, interrupting Lewie's real work
+- A bug corrupts the Concierge memory store mid-session (unlikely
+  given isolation default, but possible)
+- The ChromaDB backing store runs out of disk or hits a lock
+  contention during live use
+- A cron run produces a crash loop during the shakedown window
+
+**First mitigation day:** Day 5 opening (before live use begins).
+
+**Day-plan pointers:**
+
+- Git-tag the last-known-good commit at Day 5 open (and at any
+  stable point during Days 5-6) so revert-path is available
+- Logging discipline from Days 2-3 (Risk 6 depends on structured
+  logging being sufficient for diagnose-from-logs)
+- Graceful degradation paths (`MemoryUnavailableError` catchable at
+  endpoint boundaries) limit blast radius of subsystem failures
+- Memory-isolation default (`~/.concierge-memory/`, not shared with
+  moltbot) bounds the "corrupt production state" worst case
+- If shakedown surfaces a showstopper within the 48h window, the
+  revert-to-tag + continue-shakedown-with-less-ambitious-scope path
+  is preferred over pushing through — Level-3 chat if unclear
 
 ---
 

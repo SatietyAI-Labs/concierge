@@ -20,13 +20,24 @@ through a real UI for the human operator.
 
 ## Optimization priorities (this matters — read carefully)
 
+*Updated 2026-04-21 per DECISIONS `[2026-04-21 18:00]` — operational-first
+pivot. Priority 3 was "demo readiness by Day 4"; now reads "operational
+readiness by Day 4." The build target shifts from a recorded 3-minute
+demo video to Concierge running live on Lewie's daily Claude Code
+sessions for 48+ continuous hours. Demo is a subset of operational, not
+the primary goal.*
+
 The build operates under one explicit priority hierarchy:
 
 1. **AI quality** — every decision favors the option that produces better
    thinking and cleaner output, regardless of token/credit cost
 2. **Build smoothness** — handoffs, recovery, and continuity over speed
-3. **Demo readiness by Day 4** — substantive completion early so polish
-   and rehearsal have room
+3. **Operational readiness by Day 4** — the protected operational core
+   (catalog + recommendation + lifecycle + adapter + UI) runs on Lewie's
+   daily Claude Code sessions by Day 4 evening, leaving Days 5-6 for a
+   48+ hour live-shakedown gate. Substantive completion early so the
+   shakedown has room. Demo recording, if it happens, is a byproduct of
+   the shakedown — not a separately-rehearsed scripted take.
 4. **Token cost / credit conservation — explicitly NOT a priority**
 
 What this means in practice:
