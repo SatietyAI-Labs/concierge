@@ -2,10 +2,10 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 
-from core.api import packs, recommend, requests as requests_api, tools
-from core.config import Settings, get_settings
+from core.api import health, packs, recommend, requests as requests_api, tools
+from core.config import get_settings
 from core.db.session import get_session_factory, init_db
 from core.lifecycle_store.store import reconcile as reconcile_lifecycle
 from core.logging import configure_logging
@@ -62,10 +62,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    @app.get("/health")
-    def health(settings: Settings = Depends(get_settings)):
-        return {"status": "ok", "env": settings.env, "version": "0.1.0"}
-
+    app.include_router(health.router)
     app.include_router(tools.router)
     app.include_router(packs.router)
     app.include_router(recommend.router)

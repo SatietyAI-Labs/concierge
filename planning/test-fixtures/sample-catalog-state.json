@@ -1,0 +1,71 @@
+{
+  "_provenance": "Sample catalog state used by N8 smoke tests and the 48h soak baseline. Mirrors a realistic two-pack setup where Opus must choose between a lightweight CLI family (csvkit) and a heavyweight library (pandas) for the sample-task.md CSV analysis task. Drift here is a DECISIONS-worthy edit per planning/test-fixtures/README.md.",
+  "packs": [
+    {
+      "slug": "csvkit",
+      "name": "csvkit",
+      "description": "Lightweight Python-based CSV command-line utilities.",
+      "transport": "cli",
+      "status": "active"
+    },
+    {
+      "slug": "data-processing",
+      "name": "Data-processing libraries",
+      "description": "Heavyweight analysis libraries for Python.",
+      "transport": "library",
+      "status": "active"
+    }
+  ],
+  "tools": [
+    {
+      "slug": "csvstat",
+      "name": "csvstat",
+      "description": "Per-column statistics (min/max/mean/nulls) over a CSV file; handles quoted fields and UTF-8.",
+      "category": "data",
+      "install_method": "pip-user",
+      "pack_slug": "csvkit",
+      "is_in_manifest": true,
+      "is_active": true
+    },
+    {
+      "slug": "csvsort",
+      "name": "csvsort",
+      "description": "Sort a CSV by one or more columns; preserves quoting and Unicode.",
+      "category": "data",
+      "install_method": "pip-user",
+      "pack_slug": "csvkit",
+      "is_in_manifest": true,
+      "is_active": true
+    },
+    {
+      "slug": "csvgrep",
+      "name": "csvgrep",
+      "description": "Filter CSV rows by column-value match (regex or literal).",
+      "category": "data",
+      "install_method": "pip-user",
+      "pack_slug": "csvkit",
+      "is_in_manifest": true,
+      "is_active": true
+    },
+    {
+      "slug": "csvlook",
+      "name": "csvlook",
+      "description": "Pretty-print a CSV as an aligned table for terminal reading.",
+      "category": "data",
+      "install_method": "pip-user",
+      "pack_slug": "csvkit",
+      "is_in_manifest": true,
+      "is_active": false
+    },
+    {
+      "slug": "pandas",
+      "name": "pandas",
+      "description": "Python data-analysis library; DataFrame/Series primitives for in-process analysis.",
+      "category": "data",
+      "install_method": "pip-user",
+      "pack_slug": "data-processing",
+      "is_in_manifest": true,
+      "is_active": true
+    }
+  ]
+}

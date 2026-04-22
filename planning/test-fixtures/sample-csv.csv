@@ -1,0 +1,11 @@
+subscriber_id,display_name,email,signup_date,open_rate,click_rate,last_open_days,tier
+1001,"Ada Lovelace",ada@example.com,2025-11-04,0.87,0.31,2,pro
+1002,"Alan Turing",alan@example.com,2025-11-05,0.71,0.22,5,standard
+1003,"Grace Hopper 🚀",grace@example.com,2025-11-06,0.92,0.44,1,pro
+1004,"Edsger, W. Dijkstra",edsger@example.com,2025-11-07,0.58,0.18,12,standard
+1005,"Rear Adm. Hopper",rah@example.com,2025-11-08,0.83,0.29,4,pro
+1006,"Linus Torvalds 🐧",linus@example.com,2025-11-09,0.64,0.21,8,standard
+1007,"Margaret Hamilton",margaret@example.com,2025-11-10,0.95,0.47,1,pro
+1008,"Tim Berners-Lee",tim@example.com,2025-11-11,0.73,0.25,6,standard
+1009,"Barbara Liskov",barbara@example.com,2025-11-12,0.81,0.33,3,pro
+1010,"Donald E. Knuth",don@example.com,2025-11-13,0.68,0.23,7,standard

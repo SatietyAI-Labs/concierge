@@ -32,4 +32,5 @@ testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
     "integration: heavy tests that load sentence-transformers and touch ChromaDB (slow first run)",
+    "live_smoke: tests that call real external APIs (Anthropic); gated behind a valid API key. Never runs in CI.",
 ]
