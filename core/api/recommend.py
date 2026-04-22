@@ -78,8 +78,9 @@ def get_anthropic_recommender(
     """Per-request AnthropicRecommender. Construction is cheap (no
     SDK init) and the Messages client is lazy-initialized on first
     `.call(...)` per `client.py`; building a fresh wrapper each
-    request keeps settings overrides (especially the temperature
-    override) responsive without a process restart.
+    request keeps settings overrides (especially the effort
+    override via CONCIERGE_RECOMMEND_EFFORT) responsive without a
+    process restart.
     """
     api_key = (
         settings.anthropic_api_key.get_secret_value()
@@ -89,7 +90,7 @@ def get_anthropic_recommender(
     return AnthropicRecommender(
         api_key=api_key,
         model=settings.anthropic_model,
-        temperature=settings.recommend_temperature,
+        effort=settings.claude_code_recommend_effort,
         max_tokens=settings.recommend_max_tokens,
     )
 

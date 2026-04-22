@@ -63,7 +63,7 @@ class FakeAnthropic:
     tokens_in: int = 100
     tokens_out: int = 50
     model_echo: str = "claude-opus-4-7"
-    temperature: float = 0.0  # service reads this for response echo
+    effort: str = "xhigh"  # service reads this for response echo (replaced temperature on Opus 4.7)
     raise_exc: Optional[Exception] = None
     last_system: Optional[str] = None
     last_user: Optional[str] = None
@@ -163,7 +163,7 @@ class TestHappyPath:
         assert resp.memory_available is True
         assert resp.memory_hit_count == 1
         assert resp.model == "claude-opus-4-7"
-        assert resp.temperature == 0.0
+        assert resp.effort == "xhigh"
         assert resp.stop_reason == "end_turn"
         assert len(resp.recommendations) == 2
         assert resp.token_usage.input == 100
@@ -393,17 +393,20 @@ class TestAnthropicClientFailure:
 # ---- Temperature override surfaces in response --------------------------
 
 
-class TestTemperatureEcho:
-    def test_temperature_echo_from_anthropic_client(self):
-        """Response.temperature echoes what the client was configured
+class TestEffortEcho:
+    def test_effort_echo_from_anthropic_client(self):
+        """Response.effort echoes what the client was configured
         with — the operator sees exactly what was used, not what was
         requested in settings.
+
+        Replaced `test_temperature_echo_from_anthropic_client` after
+        Opus 4.7 deprecated temperature (DECISIONS [2026-04-22 15:45]).
         """
         memory = FakeMemory()
-        anthropic = FakeAnthropic(content=_good_response_json(), temperature=0.3)
+        anthropic = FakeAnthropic(content=_good_response_json(), effort="high")
         svc = _service(memory, anthropic)
         resp = svc.recommend(RecommendRequest(task="t"))
-        assert resp.temperature == 0.3
+        assert resp.effort == "high"
 
 
 # ---- Prompt context propagation -----------------------------------------

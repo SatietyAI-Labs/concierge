@@ -5,9 +5,11 @@ Operational-first per DECISIONS [2026-04-21 18:00]:
 - `memory_available` is a first-class response field so an operator
   reading the 48h shakedown log can distinguish a healthy call
   from a memory-outage call without re-running the request.
-- `model` and `temperature` are echoed back so the operator sees
+- `model` and `effort` are echoed back so the operator sees
   exactly what was used (guards against the "floating alias
-  quietly changed under us" failure mode).
+  quietly changed under us" failure mode). `effort` replaced
+  `temperature` after Opus 4.7 deprecated the latter — see
+  DECISIONS [2026-04-22 15:45].
 - `latency_ms` is a breakdown, not just total, so slow calls can
   be attributed to memory vs. model vs. parse without
   instrumenting the client.
@@ -122,8 +124,14 @@ class RecommendResponse(BaseModel):
     )
     memory_hit_count: int = Field(..., ge=0)
     model: str = Field(..., description="Anthropic model id that served this call.")
-    temperature: float = Field(
-        ..., description="Temperature used (0.0 unless override active)."
+    effort: str = Field(
+        ...,
+        description=(
+            "Opus 4.7 `output_config.effort` value used for this call — "
+            "one of 'low', 'medium', 'high', 'xhigh', 'max'. Replaced "
+            "`temperature` in the response shape after the Opus 4.7 "
+            "temperature deprecation (DECISIONS [2026-04-22 15:45])."
+        ),
     )
     latency_ms: LatencyBreakdown
     token_usage: TokenUsage

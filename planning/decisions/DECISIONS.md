@@ -850,6 +850,19 @@ record Cut 4 NOT FIRED as the Day 1 sprint outcome.
 
 ## [2026-04-21 18:00] — Strategic pivot: operational-first build, demo as subset
 
+*Correction note 2026-04-22 15:45 PDT: this entry's language about
+"variance during soak must come from real input differences, not
+model sampling" was load-bearing on `temperature=0.0` as a
+determinism knob. Anthropic's own Opus 4.7 migration guide says
+`temperature=0` never guaranteed identical outputs on prior models;
+Opus 4.7 removes the parameter entirely. The **intent** of the
+pivot language survives intact (recommendations should be
+diagnostically meaningful, not stochastic-noise-dominated); the
+**mechanism** shifts from temperature-pinning to effort-pinning
+(`output_config.effort="xhigh"`). Soak diagnostics still matter;
+per-call bit-identical determinism was always an approximation.
+See DECISIONS [2026-04-22 15:45] for the fix + re-framing.*
+
 **Context:** Mid-session announcement from Lewie. Two pieces of
 situational information combine to motivate the pivot:
 
@@ -1844,5 +1857,179 @@ decision") + Claude Code (this log entry + implementation).
 **Affects:** `core/config.py` (new field); `adapters/claude_code/dispatcher.py`
 (PROTOCOL_VERSION now derived); `tests/test_shim_e2e.py` (hardcoded
 strings replaced with constant import + new env-override test).
+
+---
+
+## [2026-04-22 15:45] — Opus 4.7 temperature deprecation: remove `temperature`, use `output_config.effort="xhigh"`
+
+**Context:** Manual verification of the concierge_recommend
+round-trip (Step 7 of the wire-in checklist) surfaced a 400 error
+from Anthropic's API:
+
+    HTTP/1.1 400 Bad Request
+    {'type': 'error', 'error': {'type': 'invalid_request_error',
+      'message': '`temperature` is deprecated for this model.'}}
+
+Our recommend client was sending `temperature=0.0` on every call
+per the original N6 build + the operational-first-pivot language
+about "variance from real input differences." Opus 4.7 has
+removed the `temperature` / `top_p` / `top_k` parameters entirely.
+
+**Research findings** (docs.anthropic.com via WebFetch-equipped
+research agent):
+
+- No direct replacement parameter. Omit `temperature` entirely.
+- **Opus 4.7 is stochastic-by-default.** Anthropic's own migration
+  guide explicitly notes: *"If you were using `temperature = 0`
+  for determinism, note that it never guaranteed identical outputs
+  on prior models."* The historic `temperature=0.0` was always a
+  best-effort variance-reducer, not true determinism.
+- **Replacement tuning knob:** `output_config.effort` — one of
+  `"low"`, `"medium"`, `"high"`, `"xhigh"`, `"max"`. Controls
+  reasoning depth, not sampling. Not a determinism knob, but the
+  canonical Opus 4.7 tuning surface.
+- **Other Opus 4.7 migration gotchas:** ~35% token-count inflation
+  from the new tokenizer; `thinking.display` default changed from
+  `"summarized"` to `"omitted"` (we don't use thinking, so no
+  change); prefill still returns 400 (we don't use prefill).
+- **Migration guide:** https://platform.claude.com/docs/en/about-claude/models/migration-guide
+
+**Sources:**
+- https://platform.claude.com/docs/en/about-claude/models/migration-guide
+- https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-7
+- https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking
+
+**Options considered:**
+
+- **(A) Remove temperature entirely. No effort parameter.** Accept
+  Opus 4.7's default sampling. Minimum change.
+- **(B) Remove temperature + `output_config.effort: "high"`.** Pins
+  reasoning depth; token cost up; determinism no better than (A).
+- **(C) Remove temperature + `output_config.effort: "xhigh"`
+  (CHOSEN).** Matches CLAUDE.md's project-wide effort principle
+  ("Effort stays at `xhigh` or `max` throughout") — about human-
+  operator effort but the principle transfers cleanly to the model
+  effort parameter. Token cost not a priority per the project's
+  optimization hierarchy. Highest reasoning quality per call. Soak-
+  phase recommendation quality better even without per-call
+  determinism.
+- **(D) Downgrade to an older model still accepting temperature.**
+  Rejected — contradicts DECISIONS `[2026-04-22 07:26]` which
+  explicitly pinned `claude-opus-4-7` as the recommendation engine.
+
+**Decision: (C).**
+
+**What landed:**
+
+- `core/config.py`:
+  - Removed `recommend_temperature: float = 0.0` field entirely
+    (schema break — operators with `CONCIERGE_RECOMMEND_TEMPERATURE`
+    set will see an unknown-setting error on service start; per
+    the in-chat confirmation, dead config fields that silently do
+    nothing are worse than removed).
+  - Bumped `recommend_max_tokens` from 2048 → 4096. Round number
+    matches the original N6 disposition ("raise to 4096 if soak
+    shows truncations") — pre-firing rather than inventing a new
+    budget. Cost difference at hackathon scale is negligible.
+  - Added `claude_code_recommend_effort: str = "xhigh"` field with
+    inline-commented valid values (`low`/`medium`/`high`/`xhigh`/
+    `max`). Pydantic-settings maps to
+    `CONCIERGE_RECOMMEND_EFFORT` per the existing CONCIERGE_
+    prefix convention.
+- `core/recommend/client.py`: `AnthropicRecommender.__init__` arg
+  renamed `temperature` → `effort`; removed temperature-override
+  DEBUG logs; `sdk.messages.create` now passes
+  `output_config={"effort": self.effort}` instead of
+  `temperature=self.temperature`.
+- `core/recommend/service.py`: per-request INFO log field renamed
+  `temperature=...` → `effort=...`; RecommendResponse construction
+  passes `effort=self.anthropic.effort`.
+- `core/recommend/schemas.py`: `RecommendResponse.temperature:
+  float` field replaced with `RecommendResponse.effort: str`.
+- `core/app.py`, `core/api/health.py`, `core/api/recommend.py`,
+  `scripts/recommend_live_smoke.py`: all references updated.
+- `tests/test_recommend_schemas.py`, `tests/test_recommend_api.py`,
+  `tests/test_recommend_service.py` (`TestTemperatureEcho` →
+  `TestEffortEcho`), `tests/test_smoke_endpoints.py`,
+  `tests/test_smoke_live_anthropic.py`,
+  `tests/test_meta_tools_recommend.py` (8 mock responses): all
+  `temperature` refs replaced with `effort`.
+
+**Regression tests (unit + live-smoke):**
+
+- **New unit test file `tests/test_recommend_client.py`** — mocks
+  the Anthropic SDK, asserts:
+  - `temperature` is NOT in the outgoing `messages.create` kwargs
+  - `output_config={"effort": "<configured>"}` IS in the kwargs
+  - Configurable effort flows end-to-end (parametrized test across
+    all 5 valid values)
+  - Core required fields (model, max_tokens, system, messages)
+    still sent correctly
+
+  Hardcoded-expectation pattern matching the protocolVersion
+  regression guard (`TestRealClaudeCodeProtocolVersion` in
+  `test_shim_e2e.py`). A future change that re-introduces
+  `temperature` or mis-shapes `output_config` fails here with a
+  specific diagnostic.
+
+- **Updated live-smoke test `test_smoke_live_anthropic.py`** —
+  exercises real Opus 4.7 API against the new request shape.
+  Gated behind `@pytest.mark.live_smoke` (doesn't run in CI; runs
+  on `pytest` invocation with an ANTHROPIC_API_KEY). If Anthropic
+  makes a future breaking change to `output_config.effort`, this
+  test catches it on the next manual live-smoke run.
+
+**Re-framing the operational-first pivot:**
+
+The pivot entry (`[2026-04-21 18:00]`) said "variance during soak
+must come from real input differences, not model sampling." That
+wording was **load-bearing on a premise that was never true** —
+Anthropic's own docs say `temperature=0` was never deterministic.
+The **intent** of the pivot (diagnostically-meaningful
+recommendations, not stochastic-noise-dominated output) is
+preserved. The **mechanism** shifts:
+
+- Old: `temperature=0.0` pins sampling noise to minimum.
+- New: `output_config.effort="xhigh"` pins reasoning depth at
+  maximum; sampling noise is accepted as a baseline.
+
+Soak diagnostics like the N8 `csvstat > pandas` smoke-fixture
+assertion were **already probabilistic** (classification.md
+§C.5.3 flagged them as soak-datum-not-regression-gate). The
+re-framing is honest, not a fundamental shift. A correction note
+on the pivot entry records the mechanism change without retracting
+the intent.
+
+**Reversibility:**
+
+- Partial reversion possible: if Anthropic re-introduces a
+  determinism knob on Opus 4.7 (or Opus 5 ships with one), we can
+  swap `effort` for the new knob in a single config-field edit +
+  two client-module line edits.
+- Full reversion (back to temperature) is NOT possible on Opus 4.7
+  — the API rejects the parameter.
+- Config surface (`CONCIERGE_RECOMMEND_EFFORT`) means operators
+  can re-tune without code change if a different effort value
+  turns out to suit a specific workload.
+
+**Operational check post-fix:**
+
+- Service restart required (uvicorn loaded the old config + request
+  shape; new default field `claude_code_recommend_effort` only
+  picked up on fresh start).
+- `curl http://127.0.0.1:8000/health` now echoes `effort: "xhigh"`
+  in the `config` block instead of `temperature: 0.0`.
+- `concierge_recommend` round-trip via Claude Code should succeed
+  where it previously 400'd.
+
+**Decided by:** Lewie (lean confirmation + max_tokens adjustment
+from 2750 → 4096 round-number) + Claude Code (research via
+claude-code-guide agent, implementation, this log entry).
+
+**Affects:** `core/config.py`, `core/recommend/` (all modules),
+`core/api/recommend.py`, `core/api/health.py`, `core/app.py`,
+`scripts/recommend_live_smoke.py`, and 7 test files. Correction
+note also appended to `[2026-04-21 18:00]` operational-first pivot
+entry (mechanism re-framing, intent preserved).
 
 ---

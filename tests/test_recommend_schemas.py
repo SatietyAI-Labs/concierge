@@ -111,7 +111,7 @@ class TestRecommendResponse:
             "memory_available": True,
             "memory_hit_count": 3,
             "model": "claude-opus-4-7",
-            "temperature": 0.0,
+            "effort": "xhigh",
             "latency_ms": {"total": 1500, "memory": 100, "model": 1300, "parse": 5},
             "token_usage": {"input": 2500, "output": 400, "total": 2900},
             "reasoning": "Prefer lightweight CLI tools.",
@@ -124,7 +124,7 @@ class TestRecommendResponse:
         assert resp.memory_available is True
         assert resp.memory_hit_count == 3
         assert resp.model == "claude-opus-4-7"
-        assert resp.temperature == 0.0
+        assert resp.effort == "xhigh"
         assert resp.stop_reason == "end_turn"
         assert len(resp.recommendations) == 1
 

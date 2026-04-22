@@ -20,13 +20,13 @@ async def lifespan(app: FastAPI):
     configure_logging(settings.log_level)
     init_db()
     logger.info(
-        "Concierge starting (env=%s debug=%s db=%s model=%s temperature=%s "
+        "Concierge starting (env=%s debug=%s db=%s model=%s effort=%s "
         "lifecycle_root=%s)",
         settings.env,
         settings.debug,
         settings.database_path,
         settings.anthropic_model,
-        settings.recommend_temperature,
+        settings.claude_code_recommend_effort,
         settings.lifecycle_root,
     )
     # N7 lifespan reconciliation — one DB/filesystem sync pass at

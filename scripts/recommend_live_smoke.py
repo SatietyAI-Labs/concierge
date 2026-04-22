@@ -67,7 +67,7 @@ def main() -> int:
     anthropic = AnthropicRecommender(
         api_key=api_key,
         model=settings.anthropic_model,
-        temperature=settings.recommend_temperature,
+        effort=settings.claude_code_recommend_effort,
         max_tokens=settings.recommend_max_tokens,
     )
 
@@ -143,7 +143,7 @@ def main() -> int:
     print("\n=== LIVE SMOKE RESULT ===")
     print(f"request_id: {resp.request_id}")
     print(f"model: {resp.model}")
-    print(f"temperature: {resp.temperature}")
+    print(f"effort: {resp.effort}")
     print(f"stop_reason: {resp.stop_reason}")
     print(f"memory_available: {resp.memory_available}")
     print(f"memory_hit_count: {resp.memory_hit_count}")

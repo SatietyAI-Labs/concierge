@@ -94,8 +94,8 @@ def test_live_anthropic_recommendation_prefers_csvkit_over_pandas():
     anthropic = AnthropicRecommender(
         api_key=api_key,
         model="claude-opus-4-7",
-        temperature=0.0,
-        max_tokens=2048,
+        effort="xhigh",
+        max_tokens=4096,
     )
     service = RecommendationService(
         memory=_StaticMemory(),  # type: ignore[arg-type]
@@ -118,7 +118,7 @@ def test_live_anthropic_recommendation_prefers_csvkit_over_pandas():
     )
 
     assert response.model == "claude-opus-4-7"
-    assert response.temperature == 0.0
+    assert response.effort == "xhigh"
     assert len(response.recommendations) >= 1, (
         "Opus returned zero recommendations for the canonical CSV task"
     )

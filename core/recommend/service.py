@@ -197,7 +197,7 @@ class RecommendationService:
 
         logger.info(
             'recommend.request request_id=%s task="%s" memory_available=%s '
-            "memory_hit_count=%d model=%s temperature=%s stop_reason=%s "
+            "memory_hit_count=%d model=%s effort=%s stop_reason=%s "
             "latency_ms_total=%d latency_ms_memory=%d latency_ms_model=%d "
             "latency_ms_parse=%d tokens_in=%d tokens_out=%d rec_count=%d",
             short,
@@ -205,7 +205,7 @@ class RecommendationService:
             memory_available,
             len(memory_hits) if memory_hits is not None else 0,
             call.model_echo,
-            self.anthropic.temperature,
+            self.anthropic.effort,
             call.stop_reason,
             total_ms,
             memory_ms,
@@ -223,7 +223,7 @@ class RecommendationService:
             memory_available=memory_available,
             memory_hit_count=len(memory_hits) if memory_hits is not None else 0,
             model=call.model_echo,
-            temperature=self.anthropic.temperature,
+            effort=self.anthropic.effort,
             latency_ms=LatencyBreakdown(
                 total=total_ms,
                 memory=memory_ms,

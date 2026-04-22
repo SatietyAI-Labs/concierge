@@ -47,12 +47,26 @@ class Settings(BaseSettings):
     # floating alias like "claude-opus-latest".
     anthropic_model: str = "claude-opus-4-7"
 
-    # Default 0.0 per Phase E Q2 + operational-first pivot. Override
-    # via CONCIERGE_RECOMMEND_TEMPERATURE=X produces a loud DEBUG log
-    # at service init and per-request while active; any non-zero
-    # value is development/fixture-tuning only.
-    recommend_temperature: float = 0.0
-    recommend_max_tokens: int = 2048
+    # Opus 4.7 deprecates the `temperature` parameter (manual
+    # verification 2026-04-22 surfaced the 400 error:
+    # "`temperature` is deprecated for this model"). The replacement
+    # tuning knob per Anthropic's migration guide is
+    # `output_config.effort`, which controls reasoning depth. Valid
+    # values: "low" / "medium" / "high" / "xhigh" / "max".
+    # Default "xhigh" matches the project's stated optimization
+    # priority ("quality > token cost; effort stays at xhigh or max"
+    # per CLAUDE.md). Override via CONCIERGE_RECOMMEND_EFFORT when
+    # an operator wants to trade reasoning depth for token cost in
+    # a specific deployment.
+    # See DECISIONS [2026-04-22 15:45] for the temperature
+    # deprecation fix rationale.
+    claude_code_recommend_effort: str = "xhigh"
+    # Bumped from 2048 → 4096 for the Opus 4.7 tokenizer's ~35%
+    # token-count inflation (per Anthropic's migration guide). Round
+    # number preserves the original N6 disposition ("raise to 4096
+    # if soak shows truncations") — pre-firing rather than inventing
+    # a new budget.
+    recommend_max_tokens: int = 4096
     recommend_memory_search_limit: int = 5
 
     # MCP protocolVersion advertised by the Claude Code adapter shim

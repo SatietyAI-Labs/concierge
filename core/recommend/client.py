@@ -4,9 +4,10 @@ Responsibilities:
 
 - Resolve the API key from `CONCIERGE_ANTHROPIC_API_KEY` first,
   then fall back to `ANTHROPIC_API_KEY` (Anthropic SDK default).
-- Pin the model + temperature + max_tokens from settings; log a
-  loud DEBUG line at construction AND per-request whenever a
-  non-zero temperature override is active.
+- Pin the model + effort + max_tokens from settings. Opus 4.7
+  deprecates the `temperature` parameter (manual verification
+  2026-04-22; see DECISIONS [2026-04-22 15:45]); we use
+  `output_config.effort` as the current reasoning-depth knob.
 - Call the Messages API with the composed (system, user) prompt.
 - Extract `{content, stop_reason, tokens_in, tokens_out}` into a
   plain dict so the service layer doesn't depend on the Anthropic
@@ -77,7 +78,7 @@ class AnthropicRecommender:
         *,
         api_key: Optional[str],
         model: str,
-        temperature: float,
+        effort: str,
         max_tokens: int,
     ) -> None:
         resolved = _resolve_api_key(api_key)
@@ -88,21 +89,14 @@ class AnthropicRecommender:
             )
         self._api_key = resolved
         self.model = model
-        self.temperature = temperature
+        self.effort = effort
         self.max_tokens = max_tokens
         self._sdk = None  # lazy
 
-        if temperature != 0.0:
-            logger.debug(
-                "recommend.temperature_override_active model=%s temperature=%s "
-                "(non-zero temperature is dev/tuning only; soak must run at 0.0)",
-                model,
-                temperature,
-            )
         logger.info(
-            "AnthropicRecommender configured: model=%s temperature=%s max_tokens=%d",
+            "AnthropicRecommender configured: model=%s effort=%s max_tokens=%d",
             model,
-            temperature,
+            effort,
             max_tokens,
         )
 
@@ -114,26 +108,14 @@ class AnthropicRecommender:
         return self._sdk
 
     def call(self, *, system: str, user: str) -> AnthropicCall:
-        """Issue one Messages API call with the composed prompts.
-
-        Per-call DEBUG logs the temperature-override state so a
-        soak log reader can spot any non-zero-temperature calls
-        immediately without reading service configuration.
-        """
-        if self.temperature != 0.0:
-            logger.debug(
-                "recommend.call temperature_override=%s model=%s",
-                self.temperature,
-                self.model,
-            )
-
+        """Issue one Messages API call with the composed prompts."""
         sdk = self._get_sdk()
         start = time.monotonic()
         try:
             response = sdk.messages.create(
                 model=self.model,
                 max_tokens=self.max_tokens,
-                temperature=self.temperature,
+                output_config={"effort": self.effort},
                 system=system,
                 messages=[{"role": "user", "content": user}],
             )

@@ -52,7 +52,7 @@ class _StubRecommendService:
             memory_available=True,
             memory_hit_count=0,
             model="claude-opus-4-7",
-            temperature=0.0,
+            effort="xhigh",
             latency_ms=LatencyBreakdown(total=100, memory=10, model=85, parse=2),
             token_usage=TokenUsage(input=500, output=100, total=600),
             reasoning="Stub.",
@@ -106,7 +106,7 @@ class TestHealthOperationalPulse:
     def test_health_config_echo_includes_model_and_roots(self, seeded_client):
         body = seeded_client.get("/health").json()
         assert body["config"]["model"] == "claude-opus-4-7"
-        assert body["config"]["temperature"] == 0.0
+        assert body["config"]["effort"] == "xhigh"
         assert "memory_dir" in body["config"]
         assert "lifecycle_root" in body["config"]
         assert "database_path" in body["config"]
@@ -195,5 +195,5 @@ class TestRecommendLiveness:
         assert resp.status_code == 200
         body = resp.json()
         assert body["model"] == "claude-opus-4-7"
-        assert body["temperature"] == 0.0
+        assert body["effort"] == "xhigh"
         assert len(body["recommendations"]) == 1

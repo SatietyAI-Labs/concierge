@@ -103,7 +103,7 @@ def health(
         "version": "0.1.0",
         "config": {
             "model": settings.anthropic_model,
-            "temperature": settings.recommend_temperature,
+            "effort": settings.claude_code_recommend_effort,
             "memory_dir": str(settings.memory_dir),
             "lifecycle_root": str(settings.lifecycle_root),
             "database_path": str(settings.database_path),

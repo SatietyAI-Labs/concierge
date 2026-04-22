@@ -69,7 +69,7 @@ def _happy_response(*, memory_available: bool = True) -> RecommendResponse:
         memory_available=memory_available,
         memory_hit_count=2 if memory_available else 0,
         model="claude-opus-4-7",
-        temperature=0.0,
+        effort="xhigh",
         latency_ms=LatencyBreakdown(total=1200, memory=50, model=1100, parse=5),
         token_usage=TokenUsage(input=1500, output=200, total=1700),
         reasoning="Prefer lightweight CLIs.",
@@ -96,7 +96,7 @@ class TestHappyPath:
         assert body["memory_available"] is True
         assert body["memory_hit_count"] == 2
         assert body["model"] == "claude-opus-4-7"
-        assert body["temperature"] == 0.0
+        assert body["effort"] == "xhigh"
         assert body["stop_reason"] == "end_turn"
         assert len(body["recommendations"]) == 1
 
