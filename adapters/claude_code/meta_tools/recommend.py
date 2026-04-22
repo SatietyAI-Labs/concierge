@@ -13,9 +13,15 @@ MCP's own schema validation provides.
 
 Error-class mapping (per `render.py` contract):
 
-- `httpx.ConnectError` / `httpx.NetworkError` / `httpx.TimeoutException`
-  → `render_service_unavailable(...)` with the base URL and exception
-  detail.
+- `httpx.TimeoutException` → `render_service_timeout(...)` — names
+  the cold-start tax explicitly (first-call latency for
+  sentence-transformers + ChromaDB warm-up + Anthropic call at
+  `effort=xhigh` regularly approaches the 90s default). Distinct
+  from connect-failure so operators don't chase a "service not
+  running" ghost when the service IS running and is warming up.
+- `httpx.ConnectError` / `httpx.NetworkError` (non-timeout)
+  → `render_service_unavailable(...)` with the base URL and
+  exception detail.
 - Non-2xx HTTP status → `render_service_error(status, body)`.
 - 2xx with malformed JSON or missing required fields →
   `render_malformed_response(detail)`.
@@ -99,7 +105,20 @@ async def handle_recommend(args: dict[str, Any]) -> dict[str, Any]:
     client = http_client.get_client()
     try:
         response = await client.post("/recommend", json=body)
-    except (httpx.ConnectError, httpx.NetworkError, httpx.TimeoutException) as exc:
+    except httpx.TimeoutException as exc:
+        logger.warning(
+            "concierge_recommend.timeout error=%s timeout_s=%s",
+            exc,
+            http_client.DEFAULT_TIMEOUT_SECONDS,
+        )
+        return render.error_result(
+            render.render_service_timeout(
+                http_client.get_concierge_url(),
+                f"{type(exc).__name__}: {exc}",
+                http_client.DEFAULT_TIMEOUT_SECONDS,
+            )
+        )
+    except (httpx.ConnectError, httpx.NetworkError) as exc:
         logger.warning("concierge_recommend.unavailable error=%s", exc)
         return render.error_result(
             render.render_service_unavailable(

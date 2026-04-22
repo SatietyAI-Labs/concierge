@@ -378,7 +378,14 @@ class TestRecommendHandlerFailures:
         assert "CONCIERGE_URL" in text
 
     @pytest.mark.asyncio
-    async def test_timeout_mapped_to_service_unavailable(self):
+    async def test_timeout_renders_cold_start_distinct_from_unavailable(self):
+        """Timeout is rendered as the cold-start-tax-naming variant,
+        NOT as the generic 'service unavailable' (which is reserved
+        for connect-failures where the service isn't reachable at
+        all). Operators chasing a "service not running" ghost when
+        the service IS running and warming up is the exact failure
+        this split addresses.
+        """
         def mock_handler(request: httpx.Request) -> httpx.Response:
             raise httpx.ReadTimeout("slow backing service", request=request)
 
@@ -386,8 +393,37 @@ class TestRecommendHandlerFailures:
         result = await handle_recommend({"task": "task"})
 
         assert result["isError"] is True
-        assert "Concierge service unavailable" in result["content"][0]["text"]
-        assert "ReadTimeout" in result["content"][0]["text"]
+        text = result["content"][0]["text"]
+        # New rendering: names the cold-start tax explicitly
+        assert "did not respond in time" in text
+        assert "cold-start" in text.lower()
+        # Retry guidance is load-bearing — the operator needs to
+        # know a second call usually succeeds
+        assert "retry" in text.lower()
+        # Must NOT misleadingly claim the service is "unavailable"
+        assert "Concierge service unavailable" not in text
+        # Exception class name is preserved for diagnostic cross-ref
+        assert "ReadTimeout" in text
+
+    @pytest.mark.asyncio
+    async def test_connect_error_still_maps_to_service_unavailable(self):
+        """Connect-failure retains the service-unavailable rendering
+        — this path is correctly distinct from timeout. The fix is
+        additive, not a replacement.
+        """
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("connection refused", request=request)
+
+        _install_mock_transport(mock_handler)
+        result = await handle_recommend({"task": "task"})
+
+        assert result["isError"] is True
+        text = result["content"][0]["text"]
+        assert "Concierge service unavailable" in text
+        assert "ConnectError" in text
+        # Must NOT render the cold-start language (this is a
+        # different failure class)
+        assert "did not respond in time" not in text
 
     @pytest.mark.asyncio
     async def test_5xx_renders_service_error(self):
@@ -441,3 +477,28 @@ class TestRecommendHandlerFailures:
         assert result["isError"] is True
         assert "unavailable" in result["content"][0]["text"].lower()
         assert "RuntimeError" in result["content"][0]["text"]
+
+
+class TestHttpClientColdStartTimeout:
+    """Regression guard on the shared httpx client's default timeout.
+    Manual verification on 2026-04-22 surfaced the 30s default was
+    insufficient for the Concierge service's first-call cold-start
+    (sentence-transformers + ChromaDB + Anthropic at effort=xhigh).
+    Bumped to 90s; this test catches a future revert.
+
+    Hardcoded value — not dynamic — per the regression-guard pattern
+    we've adopted for load-bearing constants (protocolVersion,
+    temperature-deprecation). If someone reduces the timeout
+    thinking they're optimizing, this test fails with a specific
+    diagnostic pointing at the cold-start tax.
+    """
+
+    def test_default_timeout_is_90_seconds(self):
+        assert http_client.DEFAULT_TIMEOUT_SECONDS == 90.0, (
+            f"DEFAULT_TIMEOUT_SECONDS is {http_client.DEFAULT_TIMEOUT_SECONDS}; "
+            f"must be 90.0 to accommodate the cold-start tax on the first "
+            f"/recommend call (sentence-transformers load + ChromaDB "
+            f"first-query + Anthropic effort=xhigh call). Reducing this "
+            f"causes the first user-visible call to surface as a timeout "
+            f"error even though the service is healthy."
+        )

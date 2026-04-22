@@ -261,6 +261,40 @@ def render_service_unavailable(url: str, detail: str) -> str:
     )
 
 
+def render_service_timeout(url: str, detail: str, timeout_s: float) -> str:
+    """Distinct from render_service_unavailable: service exists but
+    didn't respond in time. Common cause: cold-start tax on the
+    first /recommend call (sentence-transformers load +
+    ChromaDB first-query + Anthropic call). Rendering names the
+    likely cause so the operator doesn't chase a ghost "service
+    not running" diagnosis.
+    """
+    return (
+        "## Concierge service did not respond in time\n"
+        "\n"
+        f"The Concierge HTTP service at `{url}` is reachable but did "
+        f"not complete the request within {timeout_s:.0f}s.\n"
+        "\n"
+        f"**Detail:** {detail}\n"
+        "\n"
+        "**Most likely cause: cold-start tax on first `/recommend` "
+        "call.** The service lazy-loads sentence-transformers "
+        "(~2-5s), warms ChromaDB on first query (~1-3s), and the "
+        "subsequent Anthropic API call at `effort=xhigh` typically "
+        "runs 10-30s. First-call latency can exceed the timeout on "
+        "slow networks or hardware.\n"
+        "\n"
+        "**Retry.** Second and subsequent calls skip the warm-up and "
+        "usually complete in 5-15s. If the retry also times out, "
+        "check the service log for hung requests or API issues; the "
+        "service itself is known to be up if you are seeing this "
+        "message (not a connection failure).\n"
+        "\n"
+        "Continue your current task with existing tools while the "
+        "service warms up.\n"
+    )
+
+
 def render_service_error(status_code: int, body: str) -> str:
     return (
         "## Concierge service returned an error\n"

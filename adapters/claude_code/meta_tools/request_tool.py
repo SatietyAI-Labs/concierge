@@ -14,7 +14,8 @@ router's shape.
 
 Error-class mapping mirrors `concierge_recommend`:
 
-- httpx connect/network/timeout → render_service_unavailable
+- httpx.TimeoutException → render_service_timeout (names cold-start)
+- httpx.ConnectError / NetworkError → render_service_unavailable
 - Non-2xx (including 409 filename collision) → render_service_error
 - 2xx with malformed JSON or missing filename → render_malformed_response
 - Unexpected exception → render_service_unavailable (defensive)
@@ -125,7 +126,20 @@ async def handle_request_tool(args: dict[str, Any]) -> dict[str, Any]:
     client = http_client.get_client()
     try:
         response = await client.post("/requests", json=body)
-    except (httpx.ConnectError, httpx.NetworkError, httpx.TimeoutException) as exc:
+    except httpx.TimeoutException as exc:
+        logger.warning(
+            "concierge_request_tool.timeout error=%s timeout_s=%s",
+            exc,
+            http_client.DEFAULT_TIMEOUT_SECONDS,
+        )
+        return render.error_result(
+            render.render_service_timeout(
+                http_client.get_concierge_url(),
+                f"{type(exc).__name__}: {exc}",
+                http_client.DEFAULT_TIMEOUT_SECONDS,
+            )
+        )
+    except (httpx.ConnectError, httpx.NetworkError) as exc:
         logger.warning("concierge_request_tool.unavailable error=%s", exc)
         return render.error_result(
             render.render_service_unavailable(

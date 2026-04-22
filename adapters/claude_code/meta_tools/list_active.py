@@ -75,7 +75,20 @@ async def handle_list_active(args: dict[str, Any]) -> dict[str, Any]:
     client = http_client.get_client()
     try:
         response = await client.get("/tools", params=params)
-    except (httpx.ConnectError, httpx.NetworkError, httpx.TimeoutException) as exc:
+    except httpx.TimeoutException as exc:
+        logger.warning(
+            "concierge_list_active.timeout error=%s timeout_s=%s",
+            exc,
+            http_client.DEFAULT_TIMEOUT_SECONDS,
+        )
+        return render.error_result(
+            render.render_service_timeout(
+                http_client.get_concierge_url(),
+                f"{type(exc).__name__}: {exc}",
+                http_client.DEFAULT_TIMEOUT_SECONDS,
+            )
+        )
+    except (httpx.ConnectError, httpx.NetworkError) as exc:
         logger.warning("concierge_list_active.unavailable error=%s", exc)
         return render.error_result(
             render.render_service_unavailable(
