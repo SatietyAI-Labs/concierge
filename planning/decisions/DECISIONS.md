@@ -1104,3 +1104,248 @@ immediately including N5 (isolated memory default). Cascade to
 build-plan.md / executive-summary.md pending, not blocking.
 
 ---
+
+## [2026-04-22 07:26] — N6 OpenClaw-coupling strategy: adapter-context preamble
+
+**Context:** Phase C §C.2 EXTRACT classifications #3, #4, #6, #7
+(tool-awareness, tool-recommendation, tool-discovery, tool-lifecycle)
+preserve the source skills **verbatim** per DECISIONS
+`[2026-04-21 05:50]`. The source content carries substantial
+OpenClaw-specific material that was preserved intentionally:
+
+- Fleet naming: "5 agents (Alfred, Scout, Dispatch, Radar, Bridge)"
+- Pipeline paths: `~/.satiety-pipeline/`, `~/.agent-skills/shared/
+  TOOL-MANIFEST.md`, `~/.openclaw/logs/tool-wishlist.md`
+- Specific MCP tool IDs: MailerLite `ml_*`, ElevenLabs TTS
+- Transport specifics: port 18789
+- MCP-tool-call instructions (e.g. "call `memory__memory_search`")
+- Worked examples naming MailerLite / Scout / Alfred by role
+
+The X3 header (`core/prompts/tool_awareness.py` lines 40-66)
+explicitly deferred the handling of this coupling to the consumer
+at N6 compose time, enumerating three viable strategies without
+selecting one. Phase F §F.2.2 N6 row named the fragments' use in
+the system prompt but didn't pick a strategy. N6 is the first
+(and in hackathon scope, only) compose site — this entry selects
+the strategy so it becomes a stable architectural commitment
+rather than a per-call ad-hoc choice.
+
+Concierge's N6 call-shape differs from the OpenClaw skill-load
+context in three material ways:
+
+1. **No MCP tool surface at recommend time.** The caller is an HTTP
+   client (Claude Code adapter, UI, or cURL); there is no
+   `memory__memory_search` tool Opus can call mid-reasoning.
+   Memory is pre-fetched server-side by `core.recommend.service`
+   and rendered into the user message.
+2. **No agent identity.** N6 is platform-agnostic; it is not Alfred,
+   not Scout, not any named fleet member. References to specific
+   agents should be read as *examples of the pattern*, not
+   instructions about self-identity.
+3. **No OpenClaw infrastructure paths.** `~/.satiety-pipeline/`,
+   `~/.openclaw/logs/tool-wishlist.md`, port 18789, etc., are all
+   OpenClaw-runtime-specific. Concierge's lifecycle store is the
+   symlinked `_legacy/tool-requests/`; the wishlist is not yet
+   wired; fleet transports are adapter-specific.
+
+**Options considered (three strategies enumerated in X3 header
+lines 54-63):**
+
+- **(a) Trust Opus 4.7 to generalize** from the worked examples to
+  the calling adapter's fleet/paths/transports. Zero-work
+  consumer-side; relies on Opus's contextual inference.
+- **(b) Pre-process at compose time** — substitute or redact
+  adapter-specific strings in the fragment constants (e.g.,
+  template placeholders for `{{pipeline_root}}`,
+  `{{fleet_description}}`) before composition.
+- **(c) Adapter-context preamble** — prepend a short
+  Concierge-specific framing block that tells Opus how to
+  interpret what follows (ignore agent-name references, ignore
+  infrastructure paths, memory is pre-fetched, MCP tool-call
+  instructions do not apply at this call site). Preamble +
+  fragments + JSON-schema envelope as distinct concatenated
+  blocks with clear boundaries. Fragments remain byte-identical
+  to source; drift-checks unaffected.
+
+**Decision:** (c) — adapter-context preamble.
+
+System-prompt structure in `core.recommend.prompt.compose(...)`:
+
+```
+<Concierge adapter-context preamble>          ~5-10 lines
+---
+<X3 TOOL_AWARENESS_PROTOCOL__...>             verbatim
+---
+<X4 TOOL_RECOMMENDATION_PROTOCOL__...>        verbatim
+---
+<X6 TOOL_DISCOVERY_PROTOCOL__...>             verbatim
+---
+<X7-A TOOL_LIFECYCLE_WEEKLY_REVIEW_PROTOCOL__...>  verbatim
+---
+<JSON-schema envelope>                        Concierge-authored
+```
+
+Each block delimited by a clear `---` or `===` boundary so Opus
+parses them as distinct framings and the preamble's scope is
+unambiguous.
+
+**Reasoning (why (c) beat (a) and (b) under operational-first):**
+
+*Why not (a):*
+
+1. **The OpenClaw references are load-bearing, not decorative.**
+   The fragments include explicit instructions like "call
+   `memory__memory_search` as MCP tool" and "route through
+   `~/.satiety-pipeline/drafts/` to hand off to Alfred." If Opus
+   treats these as applicable to the current call site, it may
+   produce recommendations that reference a non-existent MCP tool
+   surface or a non-existent pipeline path in its rationale.
+   That's not "slightly off" — it's operationally wrong in a way
+   an operator reading the 48h shakedown log can't distinguish
+   from reasoning failure.
+2. **Operational-first raises the cost of graceful fuzziness.**
+   Demo-first tolerates "mostly correct recommendations with
+   occasional odd wording." Operational-first means the
+   recommendation shapes downstream actions (N7 pending-request
+   creation, N11 meta-tool-triggered Claude Code behavior).
+   Ambiguity at the prompt layer compounds into ambiguity at the
+   action layer.
+3. **Opus 4.7 generalizes well, but the test surface for (a) is
+   unobservable.** There's no "did Opus correctly ignore the
+   OpenClaw references" assertion we can write. (c) converts
+   this into an observable test (preamble-text-present assertion
+   in `test_recommend_prompt.py`).
+
+*Why not (b):*
+
+1. **Violates the EXTRACT classification structural mitigation.**
+   DECISIONS `[2026-04-21 05:50]` mitigation #1 requires the
+   fragment constants be byte-identical to the source skill
+   files so drift-checks (`test_prompts.py`) catch source-side
+   updates. Pre-processing introduces a mutated intermediate
+   that breaks the drift-check contract, or requires a parallel
+   "sanitized fragment" constant that doubles the maintenance
+   surface.
+2. **Template-placeholder scope creep.** Once `{{pipeline_root}}`
+   exists, the next maintainer is tempted to also templatize
+   `{{fleet_description}}`, `{{agent_name}}`, `{{default_mcp_tool_suite}}`
+   — each of which is reasonable in isolation and collectively
+   converts EXTRACT into a full ADAPT. Phase C rejected that
+   label migration explicitly; (b) smuggles it in through the
+   consumer-side door.
+3. **The substitution target is not 1:1 across adapters.** For
+   Concierge's Claude Code adapter, the "fleet" is a single
+   Claude Code session, not a 5-agent pipeline. For a future
+   OpenClaw adapter, the fleet is the OpenClaw fleet.
+   Pre-processed substitutions would need adapter-specific
+   templates; (c) handles this with a single preamble that says
+   "interpret the following in this adapter's context" and lets
+   the adapter-specific preamble vary without touching the
+   fragments.
+
+*Why (c):*
+
+1. **Preserves the EXTRACT invariant.** Fragment constants stay
+   byte-identical to source. Drift-checks in `test_prompts.py`
+   continue to fire on any source-side change. No parallel
+   mutated constant.
+2. **Observable test surface.** `test_recommend_prompt.py` can
+   assert the preamble text is present, the fragment constants
+   appear verbatim after it, and the JSON envelope appears last.
+   Failure modes (someone accidentally deletes the preamble,
+   someone reorders blocks, someone mutates a fragment constant)
+   all produce test failures rather than silent prompt drift.
+3. **Adapter-swap friendly.** A future Concierge OpenClaw adapter
+   can swap the preamble for an OpenClaw-runtime-appropriate one
+   (e.g., "you ARE Alfred, the fleet IS the 5-agent OpenClaw
+   fleet, MCP tool-call instructions apply via the bridge")
+   without touching the fragments. The adapter-specific framing
+   lives at the adapter boundary, which is the correct layer.
+4. **Debuggability.** If a 48h shakedown surfaces a recommendation
+   that cites Alfred or `~/.satiety-pipeline/` in its rationale,
+   the preamble's effectiveness is observable by inspection of
+   the DEBUG prompt log — we can tune the preamble without
+   touching the fragments or the service code.
+
+**Preamble content sketch (authoritative version in
+`core/recommend/prompt.py`):**
+
+```
+# Concierge adapter context
+
+You are the recommendation engine of Concierge, a platform-agnostic
+tool awareness layer. The following skill protocols were extracted
+verbatim from their source files. They were authored for a specific
+multi-agent OpenClaw deployment. When reading them, apply these
+adaptations:
+
+- Agent names (Alfred, Scout, Dispatch, Radar, Bridge) are worked
+  examples of agent roles, not instructions about your identity.
+  You are Concierge; the caller is platform-agnostic.
+- Infrastructure paths (`~/.satiety-pipeline/`, `~/.openclaw/logs/`,
+  port 18789, etc.) are examples of an adapter's runtime layout,
+  not paths you should write to or reference in your output.
+- Instructions to call tools like `memory__memory_search` as MCP
+  tools do not apply at this call site. Memory context, when
+  relevant, has been pre-fetched and rendered into the user
+  message below; treat the MCP-tool references as illustrative.
+- Your output target is the JSON schema defined in the envelope
+  below, not a free-form gap report or wishlist entry.
+
+Read the protocols for their reasoning patterns (task
+decomposition, signal-table discovery, lifecycle staging,
+lightweight-first preference) and apply those patterns to the
+task + catalog + memory in the user message.
+```
+
+(Exact wording may tune during implementation; the structural
+commitment is preamble-before-fragments-before-envelope with
+observable boundaries.)
+
+**Structural mitigations:**
+
+1. **Preamble lives in `core/recommend/prompt.py`** as a module-level
+   constant `CONCIERGE_ADAPTER_PREAMBLE`. Not in `core/prompts/`
+   (which is reserved for extracted fragments per DECISIONS
+   `[2026-04-21 05:50]`). The directory split encodes the
+   invariant: `core/prompts/` = verbatim source extracts,
+   `core/recommend/prompt.py` = Concierge-authored composition.
+2. **Block boundaries asserted in tests.** `test_recommend_prompt.py`
+   asserts the preamble substring, each fragment substring, and
+   the envelope substring all appear in the composed prompt in
+   the expected order. Changing the order is observable.
+3. **Drift-check integration.** `test_prompts.py`'s existing
+   signal-phrase assertions on the fragment constants continue
+   to fire; the preamble addition doesn't touch them.
+
+**Reversibility:** Easy. If 48h shakedown surfaces that preamble
+is insufficient (Opus still occasionally cites OpenClaw
+infrastructure in its rationale), remediation options in
+escalation order:
+
+1. Strengthen preamble wording (text-only change in
+   `prompt.py`, no fragment touch).
+2. Promote to strategy (b) for a specific problematic fragment
+   (targeted `/effort max` re-review; would be logged as its own
+   DECISIONS entry per the Phase C §C.5.3 remediation path).
+3. Re-classify a specific fragment as ADAPT if pre-processing
+   cannot adequately handle the coupling. Would require
+   DECISIONS entry and planning re-cascade.
+
+None of these touch the fragment modules; all are contained to
+the adapter layer.
+
+**Decided by:** Lewie (selected (c) in chat with explicit
+structural framing — preamble + fragments + envelope as distinct
+concatenated blocks) + Claude Code (enumerated trade-offs and
+proposed preamble content).
+
+**Affects:** `core/recommend/prompt.py` — new module authoritative
+for preamble and composition; `tests/test_recommend_prompt.py` —
+asserts preamble presence, block ordering, envelope presence;
+`core/prompts/` — unchanged (EXTRACT invariant preserved);
+`core/prompts/SKILL_FRAGMENT_SYNC_LOG.md` — unchanged; future
+OpenClaw adapter (Phase 2) — will define its own preamble without
+touching fragments.
+
+---

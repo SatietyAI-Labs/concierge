@@ -27,7 +27,20 @@ Thumbs.db
 
 # Env
 .env
-.env.local
+.env.*
+*.env
+.envrc
+
+# Secrets / keys (defense in depth; no such files should exist in repo)
+*.key
+*.pem
+*.p12
+*.pfx
+api_key*
+*_secret*
+secrets/
+.secrets/
+.anthropic/
 
 # Claude Code local-user permission cache (machine-specific allow-list)
 .claude/settings.local.json
@@ -37,3 +50,8 @@ Thumbs.db
 *.db-journal
 *.sqlite
 *.sqlite3
+
+# Runtime logs (48h operational-shakedown output may include task
+# text and prompt content; keep local, do not commit)
+*.log
+logs/

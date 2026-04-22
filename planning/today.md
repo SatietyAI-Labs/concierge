@@ -1,76 +1,109 @@
-# Today — 2026-04-21 (Tuesday, Hackathon Day 1) — CLOSED
+# Today — 2026-04-22 (Wednesday, Hackathon Day 2)
 
-## Final Day 1 state
+*Written at session open per handoff protocol. Reflects the
+operational-first pivot (DECISIONS `[2026-04-21 18:00]`) and the
+over-delivery from Day 1 + yesterday's afternoon session that
+collapsed Day 2 morning blocks 1 + 2 into last evening.*
 
-Day 1 delivered substantially beyond the required sprint. Full arc in
-one continuous session (04:30–10:57 PDT, ~6h30m sustained work):
+## Governing framing (carry-forward from pivot)
 
-| Phase / Item | Signed off / Committed | Deliverable |
+The end-state that matters this week is **Concierge running live on
+Lewie's real daily Claude Code sessions for 48+ continuous hours**
+before anything is declared "done." The demo recording, if it
+happens, is a byproduct of that — not a separately-rehearsed
+scripted take. Operational correctness > demo polish. This applies
+to every engineering decision touched today, including N6.
+
+## What's already done entering today
+
+From the two Day-1 sessions plus yesterday-afternoon's session:
+
+| ID | Item | Status |
 |---|---|---|
-| Phase C — Classify | `[2026-04-21 05:55]` | `planning/classification.md` (46.5h total; 4-cut ladder → 43h) |
-| Phase D — Dependency Graph | `[2026-04-21 06:10]` | `planning/dependency-graph.md` (27.5h critical path; ladder integrity verified) |
-| Phase E — Gap Analysis | `[2026-04-21 07:05]` bundled | `planning/gap-analysis.md` (7 FULL / 2 PARTIAL / 0 NEW; top-5 risks) |
-| Phase F — Build Plan | `[2026-04-21 07:05]` bundled | `planning/build-plan.md` + `planning/executive-summary.md` |
-| N1 — FastAPI skeleton | commit `df9c48f` | `core/` + `ui/` stub + `adapters/claude-code/` README + `tests/` + `pyproject.toml` |
-| Doc hygiene + operating-protocol refinements | commit `1c5104a` | Task 1 timestamp fix + Task 2 gap audit + 3 follow-ups + DECISIONS [08:28] |
-| N2 — SQLite schema + SQLAlchemy models | commit `a377c21` | `core/db/` with Pack/Tool/Request/MemoryEvent; 4 tables; 15 indexes |
-| Cut 4 evaluation | commit `b898a0f` | DECISIONS [10:01] — NOT FIRED |
-| N3 — markdown-to-SQLite ingest (stretch) | commit `321a3e6` | `core/ingest/`; real corpus ingests cleanly; idempotent |
-| N4 — catalog API + markdown export (Day 2 pull-forward) | commit `6b70d24` | `core/api/`; `GET /tools` + `/packs` live; Day 2 first-checkpoint criterion SATISFIED |
+| N1 | FastAPI skeleton | shipped (commit `df9c48f`) |
+| N2 | SQLite schema + SQLAlchemy models | shipped (commit `a377c21`) |
+| N3 | Markdown-to-SQLite ingest | shipped (commit `321a3e6`) |
+| N4 | Catalog API + markdown export | shipped (commit `6b70d24`) |
+| X3 | tool-awareness → prompt fragment | shipped (commit `b2d9feb`) |
+| X4 | tool-recommendation → prompt fragment | shipped (commit `b2d9feb`) |
+| X6 | tool-discovery → prompt fragment (demo-critical) | shipped (commit `270faa0`) |
+| X7-A | tool-lifecycle weekly-review → prompt fragment | shipped (commit `983de11`) |
+| X7-B | tool-lifecycle thresholds → python-constants | shipped (commit `983de11`) |
+| N5 | Memory service wrapper | shipped (commit `bd01728`) |
+| Cascade | operational-first pivot propagation | shipped (commit `ddd093e`) |
 
-**Tests:** 48/48 green in 10.48s.
+**Tests at session open:** 112/112 green. Working tree clean.
 
-**Cut 4:** NOT FIRED — N3 markdown-export scope stays intact.
+## Day 2 remaining load (per build-plan §F.2.2, adjusted)
 
-**Bugs caught and fixed:** 3 (autoflush race in session factory; regex
-newline-crossing in `_FIELD_RE`; StaticPool for TestClient in-memory DB
-divergence). All have regression tests.
+### Afternoon block — recommendation + lifecycle
 
-## Operating-protocol refinements logged mid-arc
+- **N6** — `POST /recommend` — Opus 4.7 call, system prompt from
+  X3+X4+X6+X7-A, task + catalog + memory context, ranked output.
+  Original estimate 3.0h; under operational-first pivot + the
+  memory-unavailable graceful-degradation requirement + structured
+  logging discipline, **revised to 3.5-4.0h**. On the critical
+  path. Risk 1 + Risk 4 + (new) memory-outage surface. `temperature=0`
+  locked; `claude-opus-4-7` pinned exactly.
+- **N7** — Lifecycle endpoints + markdown parser (`GET
+  /requests/pending`, `GET /requests/{id}`, `POST /requests`, `POST
+  /requests/{id}/status`). ~2.5h. Reuses N4's `export_to_markdown`
+  as a write primitive.
 
-DECISIONS `[2026-04-21 08:28]` codifies two hygiene updates that apply
-forward from Day 1 onward:
+### Evening block — smoke + N10 pull-forward
 
-- **Update 1 — Timestamp discipline.** Every timestamp written into any
-  project file uses `date` output at the moment of writing. No
-  extrapolation from plan-language.
-- **Update 2 — Pace-independent plan execution.** The day-by-day
-  build-plan structure describes goal sequencing, not clock-locked
-  milestones. Morning-pace Day 1 completion is on-plan, not
-  off-pattern.
+- **N8** — Expanded smoke tests (fixture recommendation assertion
+  + round-trip markdown parse). ~1.0-1.5h.
+- **N10** — stdio proxy shim pull-forward (per Phase D signoff).
+  ~4.0h. Pull-forward is a default-plan expectation from DECISIONS
+  `[2026-04-21 06:10]` Phase F carry-forward #1.
 
-## Day 2 opening state (for tomorrow's session)
+### Queued off-path
 
-Day 2 (Wednesday 2026-04-22) carries a reduced load because N3 and N4
-landed today. Remaining items per build-plan §F.2.2:
+- **X11** — outbox-housekeeping cron verify + heartbeat doc.
+  ~0.5h. Operational-first elevated from "install + doc" to
+  "verify cron actually produces heartbeats under real usage."
+  Fit into any gap.
 
-**Morning block 1 (~2h, reduced from ~4h):**
-- X3 — `tool-awareness.md` → prompt-fragment constant (0.5h)
-- X4 — `tool-recommendation.md` → prompt-fragment constant (0.5h)
-- X11 — outbox-housekeeping.sh cron verify + heartbeat doc (0.5h)
+## Opening sequence (this session)
 
-**Morning block 2 (~3h, unchanged):**
-- X6 — tool-discovery SKILL.md → prompt fragment (demo-critical)
-- X7 — tool-lifecycle SKILL.md → hybrid (Python constants + prompt)
-- N5 — memory service wrapper (in-process import of
-  `_legacy/moltbot-memory-mcp/server.py`)
+N6 opens first — biggest single piece on the critical path, the
+item the pivot made *larger* not smaller, and the item whose
+logging discipline shapes how the 48h shakedown will be
+debuggable.
 
-**Afternoon (~5.5h, unchanged):**
-- N6 — `POST /recommend` with `temperature=0` locked (Phase E #4)
-- N7 — lifecycle endpoints; markdown parser reuses N4's
-  `export_to_markdown`
+**Pace-independent** per DECISIONS `[2026-04-21 08:28]` Update 2:
+finishing N6+N7 before mid-afternoon is on-plan, not off-pattern.
+Evening block items can slide earlier if pace permits.
 
-**Evening (~5-5.5h, unchanged):**
-- N8 — expanded smoke tests (fixture rec assertion + round-trip
-  markdown parse)
-- N10 — stdio proxy shim pull-forward (default plan)
+## Session-open framing for N6 (per Lewie's directive)
 
-**Total Day 2 load:** ~12-14h actual (vs ~15-17h original Scenario A).
+Before touching code, three non-negotiables baked in up-front:
+
+1. **Tests cover plumbing, not semantic quality.** Schema, prompt
+   composition determinism, memory-unavailable adversarial path,
+   mocked-API call. NOT "csvstat ranks above pandas for CSV" — that
+   is N8's fixture assertion and the 48h soak's job, not a unit
+   test's.
+2. **Instrumentation is a first-class deliverable.** Per-request
+   structured logs for task, memory state, prompt hash+length,
+   response hash+length, parsed recs, latency breakdown, token
+   usage. Request-count + token-usage counters from the start
+   so cost-per-day is observable by Day 4 evening.
+3. **Model + temperature pinned in constants.** `claude-opus-4-7`
+   exact; `temperature=0.0` exact. Env-var override for
+   temperature is allowed for dev/tuning but loud-logs every time
+   it's active. Variance during soak must come from real input
+   differences, not sampling.
+
+The adversarial memory-unavailable test injects the failure inside
+the N6 flow (not in isolation), verifies the fallback response is
+meaningfully structured, and verifies a log reader can distinguish
+"memory outage" from "reasoning failure."
 
 ## Tomorrow's first action
 
-1. Read `planning/sessions/SESSION-2026-04-21-01.md` (the close-out
-   snapshot)
-2. Regenerate this file as `Today — 2026-04-22 (Wednesday, Day 2)`
-   with the remaining Day 2 items
-3. Start Day 2 build per build-plan.md §F.2.2
+Day 3 morning opens with whatever of N10/N8 slipped, then N9 spike
++ N11 meta-tools per build-plan §F.2.3. But only after N6/N7 are
+solid — operational-first means N6's logging is what the whole
+shakedown will depend on reading.
