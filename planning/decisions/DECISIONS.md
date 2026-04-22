@@ -847,3 +847,260 @@ Day 2 scope — N3 retains full markdown-export work per original
 record Cut 4 NOT FIRED as the Day 1 sprint outcome.
 
 ---
+
+## [2026-04-21 18:00] — Strategic pivot: operational-first build, demo as subset
+
+**Context:** Mid-session announcement from Lewie. Two pieces of
+situational information combine to motivate the pivot:
+
+1. **No hackathon acceptance email in hand.** The Built with Opus 4.7
+   event (April 21-26, 2026) is underway, but participation /
+   acceptance is not confirmed. The implicit assumption baked into
+   Phase F (§F.1 Mission framing) — that a recorded, polished
+   3-minute demo video submitted by Day 6 is the load-bearing
+   end-state — no longer holds with certainty.
+2. **Self-evaluation of the operator's actual need.** Concierge, if
+   it works, is useful to Lewie regardless of the hackathon's outcome.
+   Building for real daily-driver use is a goal with a certain
+   payoff; building for a demo video whose submission path is
+   uncertain is a goal with a contingent payoff.
+
+The natural response is to invert the hierarchy: treat operational
+use as primary, the demo as a byproduct. This entry codifies the
+inversion so every subsequent session reads the same priority
+structure.
+
+**Decision:** Shift the end-state gate.
+
+- **Old end-state (per build-plan §F.1):** "Demo video recorded,
+  README + submission docs complete, hackathon entry submitted"
+  by Day 6 evening.
+- **New end-state:** "Concierge running live on Lewie's daily Claude
+  Code sessions for **48+ continuous hours** before declaring the
+  build 'done'." The 48h operational-shakedown gate supersedes the
+  5-consecutive-clean rehearsal gate.
+- **Demo relationship:** the demo path is now a **subset** of the
+  operational path. If the operational gate passes, a demo
+  recording is trivially available as a byproduct (record live
+  usage, edit to a 3-minute narrative). If the operational gate
+  fails, the demo recording is a lie and shouldn't exist anyway.
+- **Hackathon submission posture:** still aim to submit by Sunday
+  2026-04-26 **if** the operational gate has been reached. If the
+  gate hasn't been reached, submission either (a) happens with a
+  "N hours of uptime, M recommendations served" footnote in place
+  of a polished narrative, or (b) slips in favor of operational
+  integrity. Judgment call at the time, not pre-committed here.
+
+**Reasoning:**
+
+1. **Certain vs. contingent payoff.** Operational use is a payoff
+   that materializes regardless of whether the hackathon accepts
+   the entry or awards a prize. Demo-first bets the entire week's
+   work on an uncertain submission outcome.
+
+2. **Operational is strictly harder than demo.** A demo that "works
+   in rehearsal" can hide substantial real-use fragility (flaky
+   memory writes, cron that never actually runs, error paths that
+   explode on first real failure). A demo built as a byproduct of
+   live operation has already survived the harder test. This
+   mitigates the "demo works in the recording, fails the first
+   time the founder tries it" failure mode that kills most
+   solo-builder demo projects.
+
+3. **Every engineering decision clarifies.** Under demo-first,
+   "good enough for a 3-minute recording" is the quality bar; under
+   operational-first, "doesn't corrupt the daily driver, logs enough
+   for debugging, degrades gracefully, restarts cleanly" is the bar.
+   The latter forces earlier and better architectural choices on
+   exactly the surfaces where solo-builder projects typically cut
+   corners.
+
+4. **Alignment with CLAUDE.md priority hierarchy.** CLAUDE.md
+   already names "AI quality → build smoothness → Day-4 substantive
+   completion → token cost explicitly not a priority." Operational-
+   first fits cleanly under "AI quality" at a system level: a
+   system that earns its keep in daily use is demonstrably
+   higher-quality than one that demos well.
+
+**Implications:**
+
+*Memory default — reversal of the lean proposed earlier this session:*
+
+- Earlier in this session (~16:30 PDT, during N5 open-questions
+  checkpoint), Claude Code leaned toward **shared** memory default
+  (`~/.moltbot-memory-v2/`) on the reasoning that sharing Alfred's
+  real tool-selection history would make the demo narrative more
+  compelling. Under operational-first, this lean flips: the memory
+  default must be **isolated** (`~/.concierge-memory/`).
+- Reasoning for the flip:
+  1. Concierge-under-development writing to Alfred's production
+     memory store risks contaminating the daily driver's state.
+     Alfred read-amplifies Concierge bugs into his own behavior.
+  2. Alfred's live memory state mutating during Concierge's
+     recommendation generation introduces non-determinism that
+     makes operational debugging harder.
+  3. The operational-first mandate is "Concierge runs on Lewie's
+     daily Claude Code sessions" — those sessions have their own
+     memory needs, separate from Alfred's fleet.
+  4. Sharing is still available by explicit env-var override
+     (`CONCIERGE_MEMORY_DIR=~/.moltbot-memory-v2`). Default safe,
+     opt-in to risk, not the other way around.
+- Net: N5 defaults to `~/.concierge-memory/`; env var
+  `CONCIERGE_MEMORY_DIR` overrides.
+
+*Priority shifts — DOWN:*
+
+- **N19 token-win instrumentation** (Day 4 PM, 1.0h). Was a
+  demo-beat; under operational-first it is a nice-to-have metric.
+  Still build it if time permits, but explicitly OK to cut. First
+  Level-3 escalation candidate.
+- **N20 UI polish** (Day 4 evening, 1.0h). Transitions, empty
+  states, labels — demo-optical concerns. Under operational-first
+  the UI needs to *work* (functional empty states, clear error
+  surfacing, no broken links), not to *sparkle*.
+- **5-consecutive-clean demo rehearsal** (Day 5 midday, ~3h). Was
+  the primary Day-5 deliverable. Replaced by "first 24h of
+  operational shakedown."
+- **Day 6 polished recording** (~4h). Becomes "record what's live
+  IF the operational gate has been reached," not "polish takes
+  until the narrative is clean."
+- **Scripted demo narrative.** The per-second storyboard work that
+  demo-first would require for Day 5-6 rehearsal becomes a
+  secondary deliverable produced from live usage logs, not a
+  pre-composed script.
+
+*Priority shifts — UP:*
+
+- **Error handling paths.** Every endpoint (N4, N6, N7) needs
+  clear error responses, not just happy-path correctness. 500s
+  must be logged with enough context that Lewie can diagnose
+  from the log alone. Validation errors on POST bodies return
+  structured 422 responses.
+- **Structured logging.** The existing `core/logging.py` baseline
+  (stream handler, level configurable) stays, but usage discipline
+  increases: N5 logs init + each operation at DEBUG, failures at
+  WARNING/ERROR; N6 logs each recommendation with task + candidates
+  + chosen-ranking; N7 logs status transitions. Logs are the
+  primary post-incident debugging surface during the 48h gate.
+- **Graceful degradation.** N6 must serve a recommendation even
+  when memory is unavailable (return without memory context,
+  annotate response with `memory_available: false`). N7 must
+  accept a request even if catalog lookup degrades. The cron
+  must survive individual file-parse failures and continue with
+  the rest of the directory. Explicit design choice to raise-and-
+  catch at endpoint boundaries, not try-to-fix-in-place.
+- **Cron lifecycle actually running on real usage.** X11 was
+  flagged as "verify crontab + doc" (0.5h). Under operational-
+  first, X11 is elevated — the cron must ACTUALLY run during the
+  48h gate, logs must show heartbeats, weekly-review output must
+  surface something useful by hour 24. Adds verification work not
+  just installation work.
+- **Stability under concurrent use.** The N2-era StaticPool + dep-
+  override pattern handles tests. Operational use needs real
+  concurrency handling — the same request file observed by cron
+  mid-housekeeping, the same memory store read by Concierge and
+  potentially Alfred (if sharing is enabled), the same SQLite
+  accessed by the UI and the API. Not all of this needs new
+  engineering; some needs explicit think-through.
+- **Startup / restart discipline.** Concierge must be launchable
+  and re-launchable cleanly. Ports released, DB handles closed,
+  ChromaDB client disposed. Add this to the `core.app.lifespan`
+  shutdown path.
+
+*Protected-floor reframing:*
+
+- The §F.5 "protected demo floor" (17 items / ~27h) was named as
+  the uncuttable core for a working demo. Under operational-first,
+  those 17 items remain protected — they *also* form the
+  "minimum operational core." But the operational core is a
+  **superset**: it additionally includes error-handling rigor,
+  logging discipline, and X11-actually-working that weren't in
+  the demo-floor definition. Rename conceptually to "Protected
+  core" (demo-capable == operational-capable).
+
+*Risk register reweighting:*
+
+- Risk 1 (prompt-fragment correctness): **unchanged** — still H/H;
+  operational use is a harder test than N8 fixture assertion.
+- Risk 2 (stdio shim debugging): **unchanged** — N10 still needs
+  to work; if anything, the 48h operational gate exposes more
+  debugging opportunities.
+- Risk 3 (Day 3 serial-tail cascade): **marginally easier** to
+  ladder-cut now — Cut 2 (X13 install automation) becomes "ship
+  without auto-install for shakedown period" with even less
+  friction.
+- Risk 4 (Opus variance): **easier** — 48h of live recommendations
+  surfaces variance naturally; less need for synthetic rehearsal.
+- Risk 5 (markdown parser drift): **unchanged.**
+- NEW Risk 6 (operational regressions during shakedown): Medium
+  probability, Medium-High impact. Concierge running live means
+  Concierge breaking mid-Lewie-session. Mitigation: rollback plan
+  (git tags at stable points; `systemd` / launch-script can pin
+  to last-known-good commit). Add to risk register on next
+  cascade.
+
+**What does NOT change:**
+
+- All Phase A-F planning artifacts (inventory, classification,
+  dependency graph, gap analysis, build plan) remain authoritative
+  for the foundation work. The pivot is a priority-weighting
+  change, not a scope or architecture change.
+- Extraction pattern — X3/X4/X6/X7-A/B already committed; X8 still
+  scheduled.
+- N1-N4 already committed; no rework.
+- N5 / N6 / N7 / N8 all still required (arguably **more** required
+  — they are the operational core).
+- Critical path structure through N6 → N10 → N11 → N14 unchanged.
+- Test discipline, commit discipline, session-snapshot discipline
+  all unchanged.
+- Ladder cuts (Cut 1-4) still structurally valid; trigger
+  conditions unchanged.
+- Effort estimates unchanged at the task level.
+
+**Cascade edits pending (NOT executed this turn per Lewie's
+instruction to log-and-proceed):**
+
+- `planning/build-plan.md` §F.1 Mission framing — add operational-
+  first framing as primary end-state; demo as byproduct.
+- `planning/build-plan.md` §F.2.5 Day 5 — reshape from "rehearsal"
+  to "first 24h of operational shakedown."
+- `planning/build-plan.md` §F.2.6 Day 6 — reshape from "recording +
+  submission" to "operational-gate check → record IF passed →
+  submission posture."
+- `planning/build-plan.md` §F.5 — rename "Protected demo floor" →
+  "Protected core" with operational-superset note.
+- `planning/build-plan.md` §F.6 — add Risk 6; reweight Risks 3/4.
+- `planning/executive-summary.md` — regenerate one-page overview.
+- `planning/today.md` — next daily regeneration picks up the new
+  framing.
+- `CLAUDE.md` §Priority hierarchy — may want an explicit addition:
+  "Operational correctness > Demo polish" as a clarifying note
+  under AI quality. Judgment call.
+
+Recommended to cascade at next session start (Day 2 morning after
+a sleep break) or at current session's close-out, whichever comes
+first. Not blocking N5 execution — the pivot is fully readable
+from this entry alone.
+
+**Reversibility:** Easy at the planning-doc level; no code changes
+reverse. If the pivot turns out wrong (e.g., real-use friction is
+worse than predicted and the 48h gate becomes unachievable within
+the hackathon window), revert by:
+
+1. Re-elevating demo-first in §F.1.
+2. Dropping the 48h gate in favor of 5-consecutive-clean rehearsal.
+3. Restoring N19 / N20 / demo-narrative priorities.
+4. No code touched — memory-default env var stays configurable.
+
+The reverse move itself gets a DECISIONS entry citing which signal
+triggered it.
+
+**Decided by:** Lewie (strategic call, announced in session;
+reasoning enumerated in his own message; no chat deliberation
+required — he owns the priority hierarchy).
+
+**Affects:** Every session from this point forward. Effective
+immediately including N5 (isolated memory default). Cascade to
+build-plan.md / executive-summary.md pending, not blocking.
+
+---

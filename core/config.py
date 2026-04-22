@@ -22,7 +22,9 @@ class Settings(BaseSettings):
     project_root: Path = PROJECT_ROOT
     database_path: Path = PROJECT_ROOT / "concierge.db"
     lifecycle_root: Path = PROJECT_ROOT / "_legacy" / "tool-requests"
-    memory_store_path: Path | None = None
+
+    memory_dir: Path = Path.home() / ".concierge-memory"
+    memory_embedding_model: str = "all-MiniLM-L6-v2"
 
 
 @lru_cache

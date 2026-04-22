@@ -13,6 +13,8 @@ dependencies = [
     "pydantic>=2.6",
     "pydantic-settings>=2.1",
     "sqlalchemy>=2.0",
+    "chromadb>=0.5.0",
+    "sentence-transformers>=3.0.0",
 ]
 
 [project.optional-dependencies]
@@ -27,3 +29,6 @@ include = ["core*", "ui*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "integration: heavy tests that load sentence-transformers and touch ChromaDB (slow first run)",
+]
