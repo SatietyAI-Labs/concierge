@@ -2033,3 +2033,283 @@ note also appended to `[2026-04-21 18:00]` operational-first pivot
 entry (mechanism re-framing, intent preserved).
 
 ---
+
+## [2026-04-22 16:27] — First successful end-to-end verification of concierge_recommend
+
+**Context:** First live end-to-end run of the full Concierge
+pipeline against real Claude Code 2.1.117 and real Anthropic Opus
+4.7 API. Four bugs surfaced sequentially via iterative manual
+verification and were fixed one-by-one before this call succeeded.
+**This entry is the known-good baseline** — if Concierge's behavior
+drifts during Day 5-6 soak, this is the comparison point for "what
+'healthy' looked like on first verification."
+
+### The verification arc (four bugs, in order of discovery)
+
+1. **Pydantic venv path** — `scripts/concierge-shim` had shebang
+   `#!/usr/bin/env python3`, which resolved to system Python (no
+   Concierge deps installed). Claude Code MCP spawn failed with
+   `ModuleNotFoundError: No module named 'pydantic'`. Fixed in
+   commit `e8a7e1b` with absolute-path shebang + regression test
+   `TestWrapperScriptInvocation::test_wrapper_spawns_without_venv_activation`.
+
+2. **protocolVersion mismatch** — Shim advertised `2025-11-05`,
+   real Claude Code 2.1.117 rejected it (`Server's protocol version
+   is not supported`). Root cause: transcription typo in the N9/R1
+   DECISIONS entries; real Claude Code sends `2025-11-25`. Fixed in
+   commit `bc88327` with hardcoded-expectation regression test
+   `TestRealClaudeCodeProtocolVersion::test_shim_advertises_version_that_real_claude_code_accepts`
+   + DECISIONS correction notes on the N9/R1 entries.
+
+3. **Opus 4.7 `temperature` deprecation** — Service 400'd with
+   `'temperature' is deprecated for this model` on first Anthropic
+   call. Fixed in commit `5d29e3f` by removing the `temperature`
+   parameter entirely and switching to
+   `output_config.effort="xhigh"` per Anthropic's migration guide.
+   Also bumped `recommend_max_tokens` 2048 → 4096 for the new
+   tokenizer's ~35% inflation. Full rationale in DECISIONS
+   `[2026-04-22 15:45]`.
+
+4. **Shim httpx cold-start timeout** — First post-fix call timed
+   out at 30s. Service was reachable and processing; just slow on
+   first-call memory lookup (sentence-transformers load + ChromaDB
+   warm-up). Shim rendered misleading "service unavailable" error
+   (confusing — service WAS up, just warming). Fixed in commit
+   `96d619e` with 30s → 90s bump + distinct `render_service_timeout`
+   helper that names the cold-start tax in the operator-facing
+   error message. Regression tests
+   `test_timeout_renders_cold_start_distinct_from_unavailable` +
+   `test_default_timeout_is_90_seconds`.
+
+### Cold-start empirical data (load-bearing for commit `96d619e`)
+
+The same user's same task exercised the cold-start path on its
+first call and the warm path on its second call. The memory-lookup
+latency delta is the headline:
+
+- **First (failed, cold-start) call:** `latency_ms_memory=34376`
+  (~34.4s). Sentence-transformers model was loading from disk,
+  ChromaDB was initializing its first collection query. Shim's 30s
+  timeout fired before the service's inner Anthropic call could
+  even start. This is the call that surfaced the cold-start bug.
+- **Second (successful, warm) call:** `latency_ms_memory=4` (~4ms).
+  Embedding model + DB pre-warmed in the service process; memory
+  lookup is now a fast vector search against the already-loaded
+  index.
+
+**~8,600× speedup between cold and warm memory lookup.** The
+30s→90s timeout bump is the reliability fix (accommodates the
+cold-start tax so the first user-visible call succeeds). The
+deferred uvicorn-startup pre-warm (noted in
+`adapters/claude_code/meta_tools/http_client.py` module docstring
+§"Deferred soak-phase optimization: pre-warm") would shift the
+cold-start tax off the first user-visible call and is a Day-5-
+or-later latency optimization, not a reliability fix.
+
+### Verbatim service log line for the successful call
+
+```
+2026-04-22 16:27:05 INFO core.recommend.service: recommend.request request_id=33b0ae69-e1a task="Analyze a CSV file with per-column statistics: mean, median, and distinct count " memory_available=True memory_hit_count=0 model=claude-opus-4-7 effort=xhigh stop_reason=end_turn latency_ms_total=9589 latency_ms_memory=4 latency_ms_model=9520 latency_ms_parse=0 tokens_in=10014 tokens_out=552 rec_count=2
+```
+
+**Baseline parse:**
+
+- `memory_available=True memory_hit_count=0` — memory subsystem
+  healthy; novel task (no prior hits expected on first manual
+  verification against a fresh memory store).
+- `model=claude-opus-4-7 effort=xhigh` — current config (post-fix).
+- `stop_reason=end_turn` — clean Anthropic completion, not
+  `max_tokens` truncation. If this drifts to `max_tokens` in soak,
+  the `recommend_max_tokens=4096` budget needs another bump.
+- `latency_ms_total=9589` — ~9.6s end-to-end on the warm call,
+  dominated by `latency_ms_model=9520` (Anthropic at effort=xhigh).
+  Parse + memory both sub-5ms. Healthy breakdown.
+- `tokens_in=10014 tokens_out=552` — fragment composition + catalog
+  + task = ~10K input tokens; ranked JSON response = ~550 output
+  tokens. Well within the `recommend_max_tokens=4096` output
+  budget.
+- `rec_count=2` — two recommendations ranked (csvkit + miller).
+
+### Verbatim rendered markdown response
+
+What Opus produced, what Claude Code displayed to the session:
+
+```
+## Recommendations
+
+**Context:** model=claude-opus-4-7, memory_available=True, memory_hits=0, request_id=33b0ae69-e1a
+
+### Top-ranked
+
+1. **csvkit** — csvstat from csvkit outputs per-column mean, median, and distinct/unique counts
+   natively in one command (csvstat file.csv), which maps exactly to the requested analysis
+   with no custom scripting. It's the canonical CSV swiss-army knife and already catalogued.
+   confidence: high · catalog: yes · slug: `csvkit`
+
+2. **miller (mlr)** — Miller's `mlr stats1 -a mean,median,distinct_count -f <cols>` produces
+   the same per-column summary and streams row-by-row, which scales to large CSVs better than
+   csvkit. Worth considering as a discovery if csvkit proves too slow or memory-heavy on real inputs.
+   confidence: medium · catalog: discovery
+
+### Gap report
+
+#### Not in catalog (1 tool)
+- **miller (mlr)** — discovery. To add to the Concierge catalog, call `concierge_request_tool`
+  with the evidence you gathered.
+
+#### Memory coverage
+Concierge has no prior tool-decision memory for this task pattern. This is a novel request;
+your choice here will shape future recommendations.
+
+#### Suggested next action
+File a `concierge_request_tool` call for miller (mlr) if you have validated the evidence.
+Do not block your current task — continue with existing tools while the request is reviewed.
+
+### Summary
+The task is classic per-column CSV statistics (mean, median, distinct count), which is exactly
+what csvkit's csvstat subcommand produces in a single command. It's already in the catalog
+(dormant but installable) and purpose-built for this pattern. ripgrep, firefox-click, and
+memory-store are irrelevant to structured tabular analysis. I'm including a secondary discovery
+suggestion (miller) as a lower-confidence alternative in case csvkit's performance is inadequate
+for very large files, since miller streams and handles larger-than-memory CSVs more gracefully.
+```
+
+### What this baseline validates end-to-end
+
+Each piece of the Concierge pipeline asserted healthy by this
+response:
+
+- **Shim handshake against real client:** real Claude Code accepted
+  the `2025-11-25` protocolVersion response (commit `bc88327`
+  regression guard holds).
+- **Meta-tool registration:** `concierge_recommend` surfaced to
+  Claude Code's `/mcp` view, was invoked by Opus-in-session,
+  produced the proxied HTTP call into the service (N11 commit
+  `26d9fc0` + shim wrapper fix `e8a7e1b`).
+- **Anthropic request body shape:** API accepted the payload with
+  `output_config.effort="xhigh"` and no `temperature` field
+  (commit `5d29e3f` regression guard holds).
+- **Cold-start handling:** the preceding failed call's
+  `latency_ms_memory=34376` would have timed out with the old 30s
+  default; 90s default accommodates it on retry (commit `96d619e`).
+- **Pinned markdown structure:** `## Recommendations → **Context** →
+  ### Top-ranked → ### Gap report → ### Summary` ordering honored.
+  All four N11/N12 structural contracts respected (N11 commit
+  `26d9fc0` + N12 commit `b31c32a`).
+- **Gap-report generator firing rules:**
+  - `#### Not in catalog` fired because `miller` has
+    `is_in_catalog=False` (discovery).
+  - `#### Memory coverage` fired with the novel-task variant
+    because `memory_hit_count=0` (no prior memory).
+  - `#### Suggested next action` fired with the discovery-route
+    variant: cites `concierge_request_tool` + do-not-block
+    guidance.
+  All three match the deterministic firing rules in
+  `adapters/claude_code/meta_tools/gap_report.py::build_gap_report`.
+- **Preamble voice baked into the action:** "Do not block your
+  current task — continue with existing tools while the request is
+  reviewed" is the `CLAUDE_CODE_GAP_PREAMBLE` distillation of X8's
+  `## Requesting Capabilities` rule, rendered through
+  `_choose_suggested_next_action_body` discovery-route variant.
+  Hidden-informant pattern (N12 Q2a) verified: X8 content NOT
+  rendered verbatim in the response, but its voice IS present.
+- **Opus reasoning quality (effort=xhigh paying off):** `### Summary`
+  names irrelevant catalog tools (`ripgrep`, `firefox-click`,
+  `memory-store`) by slug and explains why they don't apply.
+  Articulates the csvkit-vs-miller tradeoff (single-command vs
+  streaming / memory-heavy vs larger-than-RAM). This is the soak
+  signal the N8 smoke-fixture `csvstat > pandas` assertion was
+  trying to be a proxy for — a thoughtful, specific, gap-aware
+  recommendation.
+
+### Known-good signals to check during Day 5-6 soak
+
+A healthy `concierge_recommend` call should look like **this**
+response shape + log line shape:
+
+1. **Log shape invariants:**
+   - `memory_available=True` + `memory_hit_count >= 0`
+   - `stop_reason=end_turn` (not `max_tokens`)
+   - `latency_ms_total < 30000` on warm calls (first call is an
+     outlier)
+   - `rec_count >= 1`
+
+   Drift signals and what they mean:
+   - `stop_reason=max_tokens` → response truncated; consider
+     bumping `recommend_max_tokens` past 4096.
+   - `latency_ms_memory > 1000` on non-first calls → memory
+     subsystem degradation (ChromaDB re-init? embedding model
+     eviction from cache? disk pressure?).
+   - `latency_ms_total > 60000` repeatedly → Anthropic API slowdown
+     or network issue; uvicorn log should carry the breakdown.
+   - `memory_available=False` → memory subsystem outage; soak
+     dashboard should flag this immediately.
+
+2. **Response shape invariants** (enforced at unit-test level by
+   `test_gap_report_ordered_between_top_ranked_and_summary` +
+   pinned render contract in
+   `adapters/claude_code/meta_tools/render.py`):
+   - `## Recommendations`
+   - `**Context:**` line with model + memory + request_id
+   - `### Top-ranked` with ≥1 ranked rec
+   - `### Gap report` (always present per N12 Q1a)
+   - `### Summary`
+
+   Any deviation from this pinned order is a regression caught at
+   unit level before it reaches soak.
+
+3. **Gap-report firing invariants:** whenever the `### Gap report`
+   section is non-minimal, at least `#### Memory coverage` and
+   `#### Suggested next action` appear. Minimal-block "No gaps
+   detected" is acceptable; missing sub-sections mid-block is a
+   `build_gap_report` regression.
+
+4. **Catalog-vs-discovery labeling:** `catalog: yes` appears for
+   in-catalog recs with backtick-quoted `slug:` tag; `catalog:
+   discovery` appears for `is_in_catalog=False` recs with no slug
+   tag. Verified in this baseline via csvkit (in-catalog with
+   slug) and miller (discovery without slug).
+
+5. **Reasoning quality (qualitative, not test-enforced):** Opus's
+   `### Summary` should name specific tools by slug and explain
+   the choice. A summary that goes generic, hand-wavy, or silent
+   is a prompt-quality regression worth investigating (check the
+   system-prompt composition, fragment drift, or effort parameter
+   change).
+
+### Pre-warm as deferred soak optimization
+
+Not in scope for this entry's fix chain, but worth recording here
+since the cold-vs-warm data makes the case quantitative:
+
+- Cold-call `latency_ms_memory=34376` vs warm-call
+  `latency_ms_memory=4`.
+- First user-visible call therefore has a ~34s latency floor under
+  current defaults. 90s timeout accommodates it, but the UX is
+  suboptimal.
+- A uvicorn startup hook that eagerly constructs the sentence-
+  transformers model + runs a throwaway ChromaDB query would shift
+  the 34s into service-startup latency (not user-visible). First
+  user call would then complete in the normal 5-15s range.
+- Implementation cost: small (one startup function in
+  `core/app.py::lifespan`, one test asserting it ran); operational
+  benefit: every operator's first call gets a non-degraded
+  experience.
+- Candidate for Day-5-or-later soak phase. Noted in
+  `adapters/claude_code/meta_tools/http_client.py` module
+  docstring.
+
+**Decided by:** Lewie (manual verification across the afternoon,
+four fix-and-retry cycles, + the moneyshot confirmation) + Claude
+Code (implementation of each fix + regression guards + this
+baseline entry).
+
+**Affects:** No code changes in this entry — it is baseline
+documentation. References commits `e8a7e1b` (shim wrapper fix),
+`bc88327` (protocolVersion), `5d29e3f` (Opus 4.7 temperature
+deprecation), `96d619e` (cold-start timeout). Future soak-phase
+drift investigations should cite this entry by timestamp
+`[2026-04-22 16:27]` and compare against the verbatim log line +
+response shape recorded above.
+
+---
