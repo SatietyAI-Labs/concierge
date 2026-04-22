@@ -22,13 +22,22 @@ a known insertion point rather than having to parse variable output.
 
     2. **<tool_name>** — ...
 
+    ### Gap report
+
+    <deterministic post-processor output from gap_report.build_gap_report;
+    always present per N12 Q1 answer — minimal "No gaps detected" block
+    when no gap signals fire, otherwise conditional sub-sections
+    (#### Not in catalog / #### Low-confidence matches) plus always
+    the #### Memory coverage and #### Suggested next action sub-sections>
+
     ### Summary
 
     <reasoning or "(no summary provided)">
 
-**N12 contract:** insert a new `### Gap report` section between the
-`### Top-ranked` block and the `### Summary` block. Ordering is the
-grammar; heading text is the anchor.
+**Pinned grammar:** ordering is `## Recommendations → ### Top-ranked →
+### Gap report → ### Summary`. Heading text is the anchor; ordering is
+the grammar. Gap report is unconditionally present so future consumers
+(UI, soak-log parsers) can rely on a stable shape.
 
 ### concierge_request_tool
 
@@ -93,11 +102,22 @@ def _short_request_id(request_id: str) -> str:
     return request_id[:12] if len(request_id) >= 12 else request_id
 
 
-def render_recommend_result(response: dict[str, Any]) -> str:
+def render_recommend_result(
+    response: dict[str, Any],
+    *,
+    gap_report_markdown: str,
+) -> str:
     """Render `POST /recommend` JSON body as pinned markdown.
 
     Accepts the already-parsed response dict (not the raw httpx
     Response). Handlers are responsible for parsing before calling.
+
+    `gap_report_markdown` is the body of the `### Gap report` section
+    (without the heading line). The renderer prepends the heading and
+    slots the block between `### Top-ranked` and `### Summary` per
+    the pinned grammar above. Required keyword argument — callers
+    own gap-report generation via `gap_report.build_gap_report(...)`
+    so the renderer stays decoupled from response-shape analysis.
     """
     request_id = response.get("request_id", "")
     model = response.get("model", "")
@@ -134,6 +154,13 @@ def render_recommend_result(response: dict[str, Any]) -> str:
                 f"   *confidence: {confidence} · catalog: {catalog_tag}{slug_tag}*"
             )
             lines.append("")
+
+    lines.append("### Gap report")
+    lines.append("")
+    # gap_report_markdown may include a trailing newline from its
+    # generator; rstrip so we don't double-blank before Summary.
+    lines.append(gap_report_markdown.rstrip("\n"))
+    lines.append("")
 
     lines.append("### Summary")
     lines.append("")

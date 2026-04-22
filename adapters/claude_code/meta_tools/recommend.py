@@ -36,6 +36,7 @@ import httpx
 
 from adapters.claude_code.dispatcher import ToolSpec
 from adapters.claude_code.meta_tools import http_client, render
+from adapters.claude_code.meta_tools.gap_report import build_gap_report
 
 
 logger = logging.getLogger(__name__)
@@ -143,4 +144,9 @@ async def handle_recommend(args: dict[str, Any]) -> dict[str, Any]:
         len(payload.get("recommendations", []) or []),
         payload.get("model"),
     )
-    return render.ok_result(render.render_recommend_result(payload))
+    gap_report_markdown = build_gap_report(payload)
+    return render.ok_result(
+        render.render_recommend_result(
+            payload, gap_report_markdown=gap_report_markdown
+        )
+    )
