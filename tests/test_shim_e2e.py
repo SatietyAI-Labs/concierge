@@ -21,6 +21,8 @@ from typing import Optional
 
 import pytest
 
+from adapters.claude_code.dispatcher import PROTOCOL_VERSION
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -110,12 +112,12 @@ class TestInitialize:
                 "jsonrpc": "2.0",
                 "id": 1,
                 "method": "initialize",
-                "params": {"protocolVersion": "2024-11-05", "capabilities": {}},
+                "params": {"protocolVersion": PROTOCOL_VERSION, "capabilities": {}},
             }
         )
         resp = shim.recv_json()
         assert resp["id"] == 1
-        assert resp["result"]["protocolVersion"] == "2024-11-05"
+        assert resp["result"]["protocolVersion"] == PROTOCOL_VERSION
         assert resp["result"]["capabilities"] == {"tools": {}}
         assert resp["result"]["serverInfo"]["name"] == "concierge-shim"
 
@@ -133,7 +135,7 @@ class TestInitialize:
                 "jsonrpc": "2.0",
                 "id": 1,
                 "method": "initialize",
-                "params": {"protocolVersion": "2024-11-05"},
+                "params": {"protocolVersion": PROTOCOL_VERSION},
             }
         )
         shim.recv_json()
@@ -207,7 +209,7 @@ class TestCleanShutdown:
                 "jsonrpc": "2.0",
                 "id": 1,
                 "method": "initialize",
-                "params": {"protocolVersion": "2024-11-05"},
+                "params": {"protocolVersion": PROTOCOL_VERSION},
             }
         )
         shim.recv_json()  # drain initialize response
@@ -236,7 +238,7 @@ class TestStdoutPurity:
                 "jsonrpc": "2.0",
                 "id": 1,
                 "method": "initialize",
-                "params": {"protocolVersion": "2024-11-05"},
+                "params": {"protocolVersion": PROTOCOL_VERSION},
             }
         )
         shim.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
@@ -278,13 +280,62 @@ class TestProtocolVersionMismatch:
             }
         )
         resp = shim.recv_json()
-        assert resp["result"]["protocolVersion"] == "2024-11-05"
+        assert resp["result"]["protocolVersion"] == PROTOCOL_VERSION
         # Stderr should carry the mismatch log line.
         shim.close_stdin()
         shim.wait_exit()
         stderr_text = shim.drain_stderr()
         assert "protocol_mismatch" in stderr_text
         assert "2099-01-01" in stderr_text
+
+
+class TestProtocolVersionEnvOverride:
+    """R1 closure — DECISIONS `[2026-04-22 11:49]` option iii: the
+    protocol version advertised by the shim is config-driven via
+    `CONCIERGE_CLAUDE_CODE_PROTOCOL_VERSION`. Default tracks current
+    Claude Code 2.1.117 (`2025-11-05`); override required when a
+    future client sends a different value.
+    """
+
+    def test_env_override_changes_advertised_version(self):
+        """Spawn the shim with the override env var set, confirm the
+        initialize response advertises the overridden value. The
+        subprocess reads its settings at its own import time, so the
+        parent-process settings cache does not interfere.
+        """
+        override_version = "2026-06-15"  # future-dated; not a real MCP version
+        env = os.environ.copy()
+        env["CONCIERGE_CLAUDE_CODE_PROTOCOL_VERSION"] = override_version
+
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "adapters.claude_code.shim"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=str(REPO_ROOT),
+            env=env,
+            bufsize=0,
+        )
+        try:
+            harness = ShimHarness(proc=proc)
+            harness.send(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {"protocolVersion": override_version},
+                }
+            )
+            resp = harness.recv_json()
+            assert resp["result"]["protocolVersion"] == override_version
+        finally:
+            if proc.stdin is not None:
+                proc.stdin.close()
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
 
 
 class TestStderrLoggingActive:
@@ -297,7 +348,7 @@ class TestStderrLoggingActive:
                 "jsonrpc": "2.0",
                 "id": 1,
                 "method": "initialize",
-                "params": {"protocolVersion": "2024-11-05"},
+                "params": {"protocolVersion": PROTOCOL_VERSION},
             }
         )
         shim.recv_json()

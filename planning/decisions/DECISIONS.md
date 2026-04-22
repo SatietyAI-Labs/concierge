@@ -1731,3 +1731,76 @@ deferred to pre-N14).
 asserting the version-response shape if option iv is picked.
 
 ---
+
+## [2026-04-22 14:35] — R1 closure: option iii shipped (config-driven with `2025-11-05` default)
+
+Closing the deferred decision from the R1 side-finding entry above
+(`[2026-04-22 11:49]`). Option iii chosen and shipped before N14
+integration smoke so N14 runs against current Claude Code 2.1.117
+with zero protocol-mismatch log noise.
+
+**What landed:**
+
+- `core/config.py` — new `claude_code_protocol_version: str = "2025-11-05"`
+  field on the Settings class. Pydantic-settings maps this to env
+  var `CONCIERGE_CLAUDE_CODE_PROTOCOL_VERSION` via the existing
+  `CONCIERGE_` prefix, consistent with `CONCIERGE_MEMORY_DIR` /
+  `CONCIERGE_LIFECYCLE_ROOT` / `CONCIERGE_URL`.
+- `adapters/claude_code/dispatcher.py` — `PROTOCOL_VERSION` module
+  constant now derives from `get_settings().claude_code_protocol_version`
+  at module import time. Value is frozen for the life of the shim
+  process — mid-session env changes require shim restart (matches
+  the `CONCIERGE_URL` pattern at
+  `adapters/claude_code/meta_tools/http_client.py`, where base URL
+  is captured at first-call time).
+- `tests/test_shim_e2e.py` — hardcoded `"2024-11-05"` strings
+  updated to import `PROTOCOL_VERSION` from the dispatcher module
+  so tests track the current default without churn on future
+  re-pins. Exception: `TestProtocolVersionMismatch` still sends
+  the client-side value `"2099-01-01"` — that test's point is
+  mismatch behavior, not version matching.
+- `tests/test_shim_e2e.py::TestProtocolVersionEnvOverride` — new
+  subprocess test. Spawns the shim with `CONCIERGE_CLAUDE_CODE_PROTOCOL_VERSION=2026-06-15`
+  in the child env, sends initialize, asserts the response
+  `protocolVersion` matches the override. Covers the env-plumbing
+  path end-to-end (parent-process test settings cache is
+  irrelevant to the spawned subprocess).
+
+**Why option iii over option ii** (direct re-pin to `2025-11-05`
+without a config field): option ii kicks the same drift decision
+forward 6-12 months. Option iii adds one config field and makes
+the escape hatch explicit so future clients that send a different
+`protocolVersion` can be accommodated without editing dispatcher
+code. Marginal cost (~20 lines of code + one subprocess test);
+eliminates a recurring decision.
+
+**Why not option iv** (echo-client-version with compatibility
+set): the maintenance burden of an explicit compatibility set —
+adding each new MCP protocol version to it as the spec evolves —
+is higher than the value of silencing the non-hostile mismatch
+log. The current INFO-logged mismatch is loud-but-acceptable;
+silencing it fully is a Phase-2 concern, not a hackathon priority.
+Option iii gives operators the escape hatch without committing
+Concierge to tracking the MCP version ecosystem.
+
+**Operational check:** re-running the N9 spike setup against
+current Claude Code 2.1.117 after this change would now show a
+clean initialize handshake with ZERO `protocol_mismatch` log
+lines (the client's `2025-11-05` matches our new default). The
+spike's primary question (tools/list_changed re-fetch) is
+unaffected by this change — still outcome (b) silence, still
+Approach 2 committed.
+
+**Tests:** 445/445 CI-safe fast green (+1 env-override subprocess
+test). Zero regressions; the existing 25 shim tests all pass with
+the version update.
+
+**Decided by:** Lewie (lean confirmation during the X13 → R1
+transition, "lean was pre-named, closure is turning lean-into-
+decision") + Claude Code (this log entry + implementation).
+
+**Affects:** `core/config.py` (new field); `adapters/claude_code/dispatcher.py`
+(PROTOCOL_VERSION now derived); `tests/test_shim_e2e.py` (hardcoded
+strings replaced with constant import + new env-override test).
+
+---

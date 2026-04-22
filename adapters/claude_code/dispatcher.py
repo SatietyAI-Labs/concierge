@@ -12,10 +12,17 @@ registering a per-tool handler). Day 2 ships the framework with
 an **empty** tool list; N11 fills it.
 
 Protocol version:
-- We advertise `2024-11-05` in the initialize response.
-- If the client's requested version differs, we log an INFO
-  notice and still respond with our pinned version. Per MCP spec
-  this lets the client decide whether to proceed.
+- We advertise `get_settings().claude_code_protocol_version` in the
+  initialize response. Default `2025-11-05` (R1 closure — DECISIONS
+  [2026-04-22 11:49] option iii: config-driven with current-client-
+  tracking default). Override via `CONCIERGE_CLAUDE_CODE_PROTOCOL_VERSION`.
+- If the client's requested version differs, we log an INFO notice
+  and still respond with our advertised version. Per MCP spec this
+  lets the client decide whether to proceed — the non-hostile
+  mismatch policy was vindicated against real Claude Code in the
+  N9 spike.
+- The value is read once at module import (i.e. shim startup).
+  Mid-session env changes do not take effect until shim restart.
 """
 from __future__ import annotations
 
@@ -31,15 +38,16 @@ from adapters.claude_code.jsonrpc import (
     make_error_response,
     make_result_response,
 )
+from core.config import get_settings
 
 
 logger = logging.getLogger(__name__)
 
 
-# Pinned MCP protocol version for the initialize response. Per
-# DECISIONS directive during N10 build, mismatches log at INFO but
-# do not reject — the client decides whether to proceed.
-PROTOCOL_VERSION = "2024-11-05"
+# MCP protocol version for the initialize response. Read from
+# settings at module import time — see R1 closure comment in
+# core/config.py for the env-override path.
+PROTOCOL_VERSION = get_settings().claude_code_protocol_version
 SERVER_NAME = "concierge-shim"
 SERVER_VERSION = "0.1.0"
 

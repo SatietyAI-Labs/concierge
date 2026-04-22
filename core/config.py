@@ -55,6 +55,20 @@ class Settings(BaseSettings):
     recommend_max_tokens: int = 2048
     recommend_memory_search_limit: int = 5
 
+    # MCP protocolVersion advertised by the Claude Code adapter shim
+    # (R1 closure — DECISIONS [2026-04-22 11:49] option iii chosen).
+    # Default tracks current Claude Code 2.1.117, which sends
+    # `2025-11-05` in its initialize request. Override via
+    # CONCIERGE_CLAUDE_CODE_PROTOCOL_VERSION when a future client
+    # sends a different value and the non-hostile-mismatch log noise
+    # needs silencing without a code change.
+    #
+    # The value is read once at shim process startup; mid-session
+    # env changes do not take effect until the next shim restart
+    # (matches the CONCIERGE_URL pattern in
+    # adapters/claude_code/meta_tools/http_client.py).
+    claude_code_protocol_version: str = "2025-11-05"
+
 
 @lru_cache
 def get_settings() -> Settings:
