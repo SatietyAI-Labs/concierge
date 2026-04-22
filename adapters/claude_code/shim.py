@@ -34,6 +34,8 @@ from adapters.claude_code.jsonrpc import (
     serialize,
 )
 from adapters.claude_code.logging_setup import configure_stderr_logging
+from adapters.claude_code.meta_tools import register_meta_tools
+from adapters.claude_code.meta_tools.http_client import aclose as _aclose_meta_tools_client
 
 
 logger = logging.getLogger(__name__)
@@ -132,15 +134,35 @@ def _pid() -> int:
     return os.getpid()
 
 
+async def _run_with_cleanup() -> int:
+    """Compose the dispatcher + register N11 meta-tools, then run the
+    main loop. The `finally` block closes the shared meta-tools httpx
+    AsyncClient so shutdown under SIGTERM or abrupt exit does not
+    leak a "AsyncClient used without explicit close" warning into
+    the soak-phase log stream.
+    """
+    dispatcher = build_default_dispatcher()
+    register_meta_tools(dispatcher)
+    try:
+        return await run(dispatcher=dispatcher)
+    finally:
+        await _aclose_meta_tools_client()
+
+
 def main() -> int:
     """CLI entrypoint. `scripts/concierge-shim` calls this.
 
-    Configures logging first (stderr-only, never stdout), then hands
-    off to the async loop.
+    Configures logging first (stderr-only, never stdout), composes
+    the dispatcher with N11 meta-tools, then hands off to the async
+    loop. Meta-tools are registered BEFORE the stdin-read loop
+    starts — per the N9 DECISIONS entry `[2026-04-22 11:48]`, the
+    client's startup `tools/list` query arrives within milliseconds
+    of `notifications/initialized`, so meta-tools must be on the
+    dispatcher before that point.
     """
     configure_stderr_logging(level="DEBUG")
     try:
-        return asyncio.run(run())
+        return asyncio.run(_run_with_cleanup())
     except KeyboardInterrupt:
         logger.info("shim.shutdown reason=keyboard_interrupt")
         return 130

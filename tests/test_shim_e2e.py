@@ -119,7 +119,15 @@ class TestInitialize:
         assert resp["result"]["capabilities"] == {"tools": {}}
         assert resp["result"]["serverInfo"]["name"] == "concierge-shim"
 
-    def test_tools_list_returns_empty_on_day_2(self, shim):
+    def test_tools_list_advertises_n11_meta_tools(self, shim):
+        """Day 3 post-N11: `tools/list` surfaces the Concierge meta-tool
+        surface. Day 2's empty-list assertion is superseded here — the
+        framework still ships empty-by-default (validated in
+        `test_shim_dispatcher.py::test_tools_list_empty_on_day_2`), but
+        the shim's `main()` composes the framework + N11 registration
+        before accepting stdin per the N9 pre-stdin-readiness constraint
+        (DECISIONS `[2026-04-22 11:48]`).
+        """
         shim.send(
             {
                 "jsonrpc": "2.0",
@@ -131,7 +139,19 @@ class TestInitialize:
         shim.recv_json()
         shim.send({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
         resp = shim.recv_json()
-        assert resp["result"] == {"tools": []}
+        tools = resp["result"]["tools"]
+        tool_names = {t["name"] for t in tools}
+        # N11 meta-tools, registered in shim.main() before stdin read.
+        # `concierge_recommend` is the priority tool and always registers;
+        # Cut 3 may drop `concierge_list_active`, which is why the
+        # assertion is on presence of the priority tool, not exact-set.
+        assert "concierge_recommend" in tool_names
+        # ToolSpec shape invariants — one sample, not per-tool to avoid
+        # brittleness if Cut 3 or later adjustments re-shape the set.
+        recommend_spec = next(t for t in tools if t["name"] == "concierge_recommend")
+        assert "description" in recommend_spec
+        assert recommend_spec["inputSchema"]["type"] == "object"
+        assert "task" in recommend_spec["inputSchema"]["required"]
 
 
 # ---- Error surfaces ----------------------------------------------------
