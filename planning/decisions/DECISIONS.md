@@ -1444,3 +1444,290 @@ cross-ref updated); forthcoming `core/lifecycle_store/` package
 import ...`).
 
 ---
+
+## [2026-04-22 10:35] — Promotion: N7 scope boundary — lifecycle visibility ≠ lifecycle action
+
+**Context:** N7 (commit `7b8d790`, Day 2 afternoon) shipped `/requests`
+endpoints as **lifecycle visibility + state transitions**. A POST to
+`/requests/{filename}/status` with `status=approved` updates the file
+status line + DB row. It does NOT execute tool installation. The
+install-on-approve wiring belongs to X13 (Day 3 midday, Cut 2
+deferrable).
+
+This boundary was originally captured in the N7 commit message (first
+paragraph) and in `core/lifecycle_store/__init__.py` + `service.py`
+module docstrings. The Day-2 session close-out snapshot
+(`SESSION-2026-04-22-01.md`) flagged it as a DECISIONS-promotion
+candidate. Day-3 session open (this entry) confirms the promotion per
+Lewie's directive during the architectural-pause review.
+
+**Why promote rather than leave in commit message + docstrings:**
+
+1. **Governs imminent branches.** X13 lands today (Day 3 midday). Cut 2
+   may drop X13 entirely. UI approve-button wiring happens Day 4
+   (N17-N18). All three touch the same question — "what does Approve
+   actually do?" — and each needs a canonical pointer rather than
+   scattered commit-message + docstring references.
+2. **Cut 2 creates a naming-survival problem.** If Cut 2 fires and
+   X13 is dropped, the boundary "approve still doesn't auto-install"
+   must survive canonically. The N7 commit references X13 as
+   forthcoming-work; if X13 never ships, a DECISIONS entry outlives
+   the dropped-X13 thread in a way a commit-message reference cannot.
+3. **Docstring-drift risk.** `core/lifecycle_store/service.py` will
+   evolve; commit-message framing disappears from `git blame` once
+   the module changes. DECISIONS entries are append-only and
+   timestamped, so the pointer stays stable.
+4. **Cross-cuttability.** The boundary is referenced by lifecycle
+   (N7), adapter meta-tools (N11-N13), install module (X13), and UI
+   (N17-N18). No single module docstring naturally owns it.
+
+**What the boundary says:**
+
+- The `/requests` surface (GET/POST endpoints, status transitions)
+  provides lifecycle **visibility + state transitions**: read the
+  inbox, read/write status flags, observe folder membership, trigger
+  the atomic file write. It also provides parseability isolation
+  (one bad .md surfaces as `is_parseable=False` rather than 500).
+- The `/requests` surface does NOT provide lifecycle **action**: no
+  tool installation, no package-manager invocation, no subprocess
+  spawn on `status=approved`.
+- State-change side effects are in-band with the file/DB record only.
+  Out-of-band effects (install, remove, observe-usage, promote-active)
+  belong to separate modules with their own surfaces.
+
+**Scope of future work under this boundary:**
+
+- **X13 (install module, Day 3 midday)** — when it lands, X13 may be
+  invoked *by* the status transition handler (internal call inside
+  `core/lifecycle_store/service.py::update_status()` when the new
+  status is `approved`), but the N7 transition surface itself still
+  only performs the state transition. X13's install surface is
+  separate and independently testable.
+- **If Cut 2 fires and X13 drops** — status transition to `approved`
+  records the decision; the operator runs the install command
+  manually per ladder-cut documentation; soak diagnostics still
+  function. Boundary preserved: Approve remains a pure state
+  transition.
+- **UI approve-button (Day 4 N17-N18)** — wires to
+  `POST /requests/{filename}/status` with `status=approved`. UI may
+  conditionally display install-instructions-or-confirmation based
+  on X13 presence, but the API contract is unchanged.
+- **Adapter meta-tool `concierge_request_tool` (Day 3 N11)** — emits
+  a `pending/*.md` file on call. Approving the request is still a
+  separate human-operator action via UI or direct POST. No
+  auto-approve path from the adapter side.
+
+**Alternatives rejected:**
+
+- **(a) Leave in commit message + docstrings only.** Commit-message
+  framing lives where N7 readers arrive, but not where X13 / UI /
+  adapter readers arrive. Docstring drift is a real risk under Day
+  3-5 churn. No canonical cross-cut home.
+- **(b) Fold into a broader "lifecycle actions are out-of-band"
+  architectural entry later (Day 4-5).** Delays the canonical pointer
+  past X13's landing. Cut 2 firing before the entry exists would
+  leave the boundary homeless at the moment it is most likely to be
+  tested.
+
+**Reversibility:** The boundary is architectural but reversible. If
+future work consolidates approve-triggers-install into the status
+transition endpoint itself, a follow-up DECISIONS entry narrating
+the consolidation supersedes this one. This entry is a
+canonical-pointer, not a lock-in.
+
+**Decided by:** Lewie (promote directive during Day 3 session-open
+architectural pause) + Claude Code (this log entry).
+
+**Affects:** `core/lifecycle_store/service.py` (current boundary
+anchor — module docstring already captures the scope-boundary
+phrasing); `core/lifecycle_store/__init__.py` (package-level
+docstring); forthcoming install module (X13; its docstring should
+cite this entry); `adapters/claude_code/` meta-tool handlers (N11,
+specifically `concierge_request_tool` which writes pending/*.md
+without approving); `ui/` approve-button wiring (N17-N18; POST
+transition only, any install prompt is X13-presence-conditional).
+
+---
+
+## [2026-04-22 11:48] — N9 spike outcome: commit to Approach 2 (stdio proxy shim as primary)
+
+**Context:** Per build-plan §F.2.3 Day 3 morning block, a 0.5h
+hard-time-boxed spike opens Day 3 to answer a single protocol
+question: *when the Concierge shim emits `notifications/tools/list_changed`,
+does the real Claude Code MCP client respond by sending a fresh
+`tools/list` request?*
+
+If yes → Approach 1 (native MCP `tools/list_changed` as primary
+mechanism per classification.md §C.3.1) is viable and could simplify
+N10/N13 dynamic-tool-surface work.
+
+If no / ambiguous / unresolvable within the time-box → commit to
+Approach 2 (stdio proxy shim as primary, advertising a fixed tool
+surface per session) as originally planned.
+
+**Setup used (scratch-only, deletable post-entry):**
+
+- Scratch shim at `planning/scratch/n9_spike/spike_shim.py` — builds
+  the real Layer-2 dispatcher, registers ONE disposable tool
+  (`concierge_spike_probe`), wraps `notifications/initialized` so it
+  emits `notifications/tools/list_changed` immediately after the
+  built-in ack. Minimum-viable-spike shape per in-session refinement:
+  no async timer, no second tool, no dispatcher modification beyond
+  the method re-registration.
+- Launcher `run-spike-shim.sh` invoked via `claude mcp add-json
+  concierge-n9-spike '{"command":"<launcher>"}'` at local (project)
+  scope.
+- Log-file sink at `/tmp/n9_spike.stderr` for unambiguous observation
+  independent of where Claude Code routes MCP-server stderr.
+- Live test run against Claude Code 2.1.117 at 2026-04-22 11:31 PDT.
+
+**Observation:**
+
+- Handshake completed. Client sent `protocolVersion=2025-11-05`
+  vs. our pinned `2024-11-05`; non-hostile mismatch policy logged
+  the delta at INFO and responded with our version; client proceeded.
+  (Side-finding R1 — see separate entry below.)
+- A single `shim.recv method=tools/list` line appeared in the log
+  at **the same millisecond** as the `n9_spike emit
+  notifications/tools/list_changed` line (both timestamped
+  11:31:47,270). On timing alone this is overwhelmingly likely
+  Claude Code's own startup `tools/list` query racing with our
+  emit — not a client response to our notification.
+- **No second `tools/list` request appeared after that point**
+  during the remainder of the session's idle time.
+
+**Ruling on ambiguity:** The emit happens *too early* in the
+handshake flow to cleanly separate "notification triggered re-fetch"
+from "client would have fetched anyway." A cleaner re-run would
+delay the emit by ~2s after `notifications/initialized` to let the
+natural startup `tools/list` complete first, then observe whether a
+*second* one arrives. We did not execute that re-run — the original
+spike's time-box was expiring and the ambiguous-leaning-silence
+outcome still commits to the same Day-3 path.
+
+**Decision:** Treat observation as outcome (b) — silence. **Commit
+to Approach 2** per classification.md §C.3.1 and build-plan §F.2.3.
+N10 framework proceeds unchanged; N11/N13 retain their planned
+shape (fixed tool surface per session, advertised at `tools/list`
+time; backing-server spawn/teardown orchestrated server-side without
+relying on the client to re-poll).
+
+**Alternatives considered:**
+
+- **(a) Re-run with delayed emit inside the time-box.** Rejected:
+  expanding the spike mid-run invites further scope creep; the
+  ambiguous result still points at the same Day-3 path.
+- **(b) Call it re-fetch-observed on the strength of the single
+  line.** Rejected: the same-millisecond timing makes causation
+  unsupported; committing to Approach 1 primary on that evidence
+  risks 4+ hours of rework if a cleaner test later shows silence.
+- **(c) Extend the time-box.** Rejected: hard time-box is protocol,
+  and Approach 2 was the default anyway.
+
+**Implications:**
+
+- **None for Day 3 critical path.** N10 framework + N11 meta-tool
+  surface + N13 backing-server were all designed for Approach 2.
+  No rework triggered.
+- **A post-N14 soak-phase re-run** could cleanly answer the
+  underlying question with a delayed-emit variant — Day 5 or 6,
+  low priority, optional. If the re-run later shows re-fetch
+  observed, that becomes a future-simplification lever, not a
+  plan pivot.
+- **The one-tools/list-at-startup behavior is now a documented
+  datum** — the real client does query `tools/list` once shortly
+  after the `notifications/initialized` notification arrives. N11
+  must ensure meta-tools are registered BEFORE the dispatcher
+  starts accepting stdin (i.e. registration happens inside
+  `build_default_dispatcher()` or equivalent, not deferred to a
+  post-handshake lifecycle hook).
+
+**Reversibility:** Trivial. The decision is "stay with the default
+plan." If a future re-run overturns it, a follow-up DECISIONS entry
++ N10/N11/N13 rework (or simplification) plans accordingly.
+
+**Decided by:** Lewie (observation read + outcome call) + Claude
+Code (spike implementation + this log entry).
+
+**Affects:** No code changes triggered. Build-plan §F.2.3 and
+classification.md §C.3.1 Approach 2 commitment reaffirmed. Scratch
+dir `planning/scratch/n9_spike/` is deletable; its README captures
+the re-run recipe if Day 5-6 soak revisits the question.
+
+---
+
+## [2026-04-22 11:49] — R1 side-finding: real Claude Code `protocolVersion` is `2025-11-05`, not pinned `2024-11-05`
+
+**Context:** The N9 spike (entry above) required a real Claude Code
+MCP client to stimulate the shim. Running against Claude Code 2.1.117
+surfaced an observation orthogonal to the spike's main question:
+
+- Our shim at `adapters/claude_code/dispatcher.py:42` pins
+  `PROTOCOL_VERSION = "2024-11-05"` per the N10 Day-2-evening build
+  (commit `5ffe58c`).
+- Real Claude Code 2.1.117 sends `protocolVersion=2025-11-05` in its
+  `initialize` request — roughly 12 months newer than our pin.
+- The shim's non-hostile mismatch policy (per the N10 design note
+  "log at INFO and respond with our pinned version; let the client
+  decide whether to proceed") **worked as intended** — the client
+  proceeded through the handshake, `notifications/initialized`
+  arrived, the session operated normally.
+
+**What this means:**
+
+- The N10 non-hostile-mismatch design is vindicated as a
+  compatibility policy. A hard-reject approach would have broken
+  the handshake outright for every current-Claude-Code operator.
+- The pinned `2024-11-05` is functional but stale. Every shim
+  session against current Claude Code emits an INFO log line noting
+  the mismatch — minor but real visual noise for operators during
+  the Day 5-6 soak and beyond.
+- The staleness will recur: any single pin drifts over time unless
+  the pin policy explicitly accommodates that.
+
+**Options under consideration:**
+
+- **(i) Stay pinned at `2024-11-05`.** Zero-change. Mismatch log
+  continues indefinitely. Operators learn to ignore it. Simplest
+  but degrades log signal over time.
+- **(ii) Re-pin to `2025-11-05`.** One constant change. Mismatch
+  log silenced for current Claude Code. Drifts again in 6–12 months
+  — kicks the same decision forward. Cheapest short-term win; no
+  architectural improvement.
+- **(iii) Make pin configurable via `CONCIERGE_PROTOCOL_VERSION`
+  env var / `core/config.py` setting, default updated to
+  `2025-11-05`.** Adds one config field. Operators hitting a future
+  MCP-version issue can adjust without editing code. Default still
+  drifts, but adjustment path is instant.
+- **(iv) Echo-client-version policy: accept any version in a
+  compatibility set (e.g. `{2024-11-05, 2025-11-05}`) and respond
+  with the client's version.** Most adaptive — mismatch log
+  disappears entirely for known-compatible clients. Adds a small
+  version-set + conditional response logic. Highest implementation
+  cost; best long-term log cleanliness.
+
+**Tentative lean:** (iii) — config field with `2025-11-05` default.
+Keeps N14 smoke quiet for current Claude Code; operators have an
+escape hatch; future drift is a one-line default change, not a code
+path. (iv) is appealing but adds dispatcher complexity and a
+compatibility set we'd have to maintain as an ad-hoc registry.
+
+**Decision deferred** to the moment the re-pin is cheap to land —
+recommend bundling it into an X-slot on Day 3 afternoon before N14
+integration smoke so N14 runs against current Claude Code with
+minimal log noise. If Day 3 runs hot, defer to Day-4 morning before
+the manual-verification TODO completes.
+
+**Reversibility:** Trivial. The pin is a single constant. Any of
+(i)–(iv) is reversible in < 30 lines of code.
+
+**Decided by:** Lewie (finding flagged from live observation) +
+Claude Code (this log entry — implementation decision itself
+deferred to pre-N14).
+
+**Affects:** `adapters/claude_code/dispatcher.py` (the
+`PROTOCOL_VERSION` constant at line 42); potentially `core/config.py`
+(new field if option iii is picked); potentially a new unit test
+asserting the version-response shape if option iv is picked.
+
+---

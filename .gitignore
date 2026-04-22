@@ -55,3 +55,8 @@ secrets/
 # text and prompt content; keep local, do not commit)
 *.log
 logs/
+
+# Scratch / throwaway experiments (per CLAUDE.md convention:
+# temporary experiments and large reference material Lewie drops
+# in for in-session use; never intended as durable artifacts).
+planning/scratch/
