@@ -24,6 +24,7 @@ import pytest
 from core.prompts import (
     TOOL_AWARENESS_PROTOCOL__FROM_TOOL_AWARENESS_MD,
     TOOL_DISCOVERY_PROTOCOL__FROM_TOOL_DISCOVERY_SKILL,
+    TOOL_LIFECYCLE_WEEKLY_REVIEW_PROTOCOL__FROM_TOOL_LIFECYCLE_SKILL,
     TOOL_RECOMMENDATION_PROTOCOL__FROM_TOOL_RECOMMENDATION_MD,
 )
 
@@ -51,14 +52,39 @@ def _strip_yaml_frontmatter(text: str) -> str:
     return body
 
 
+def _slice_section_by_h2(text: str, heading: str) -> str:
+    """Return the markdown section starting at `## {heading}` (inclusive)
+    through end-of-file or the start of the next `## ` heading
+    (exclusive). Used for selective-extract drift checks where the
+    fragment covers only a named H2 section of the source body.
+    """
+    marker = f"## {heading}"
+    start = text.find(marker)
+    if start == -1:
+        raise ValueError(
+            f"_slice_section_by_h2: heading '## {heading}' not found in source"
+        )
+    search_from = start + len(marker)
+    next_idx = text.find("\n## ", search_from)
+    if next_idx == -1:
+        return text[start:]
+    return text[start : next_idx + 1]
+
+
 def _assert_fragment_matches_source(
     fragment: str,
     source_relpath: str,
     test_nodeid: str,
+    section_h2: str | None = None,
 ) -> None:
     """Shared drift-check. Skips if source isn't accessible; otherwise
     asserts byte-for-byte equality and on failure raises with a
     unified diff and re-sync pointer.
+
+    If `section_h2` is provided, the source is sliced to only that
+    `## {heading}` section before comparison (selective-extract mode).
+    Otherwise the whole frontmatter-stripped body is compared
+    (whole-body-extract mode, as used by X3/X4/X6).
     """
     source_path = REPO_ROOT / source_relpath
     if not source_path.exists():
@@ -67,14 +93,25 @@ def _assert_fragment_matches_source(
             f"_legacy/ symlink tree"
         )
     source_body = _strip_yaml_frontmatter(source_path.read_text(encoding="utf-8"))
-    if fragment == source_body:
+    expected = (
+        _slice_section_by_h2(source_body, section_h2)
+        if section_h2 is not None
+        else source_body
+    )
+    if fragment == expected:
         return
+
+    expected_label = (
+        f"source [section: ## {section_h2}]: {source_relpath}"
+        if section_h2 is not None
+        else f"source: {source_relpath}"
+    )
 
     diff = "".join(
         difflib.unified_diff(
-            source_body.splitlines(keepends=True),
+            expected.splitlines(keepends=True),
             fragment.splitlines(keepends=True),
-            fromfile=f"source: {source_relpath}",
+            fromfile=expected_label,
             tofile="fragment (constant value)",
             n=2,
         )
@@ -89,9 +126,9 @@ def _assert_fragment_matches_source(
     message = (
         "Fragment has drifted from source.\n"
         "\n"
-        f"Source body: {len(source_body)} chars, "
-        f"{source_body.count(chr(10)) + 1} lines\n"
-        f"Fragment:    {len(fragment)} chars, "
+        f"Expected: {len(expected)} chars, "
+        f"{expected.count(chr(10)) + 1} lines\n"
+        f"Fragment: {len(fragment)} chars, "
         f"{fragment.count(chr(10)) + 1} lines\n"
         "\n"
         f"{diff}"
@@ -212,4 +249,55 @@ class TestToolDiscoveryFragment:
                 "tests/test_prompts.py::TestToolDiscoveryFragment::"
                 "test_matches_source_body_verbatim"
             ),
+        )
+
+
+class TestToolLifecycleWeeklyReviewFragment:
+    """X7-A — tool-lifecycle/SKILL.md `## Weekly review` section →
+    TOOL_LIFECYCLE_WEEKLY_REVIEW_PROTOCOL__FROM_TOOL_LIFECYCLE_SKILL
+
+    First selective extract in the prompt-fragment class. Drift-check
+    compares against a sliced H2 section rather than the whole file
+    body. The companion python-constants extract (X7-B) lives at
+    `core/lifecycle.py`.
+    """
+
+    def test_constant_is_nonempty_string(self):
+        assert isinstance(
+            TOOL_LIFECYCLE_WEEKLY_REVIEW_PROTOCOL__FROM_TOOL_LIFECYCLE_SKILL, str
+        )
+        assert len(TOOL_LIFECYCLE_WEEKLY_REVIEW_PROTOCOL__FROM_TOOL_LIFECYCLE_SKILL) > 0
+
+    def test_signal_phrases_present(self):
+        """Distinctive substrings sampled from four regions of the
+        weekly-review section (top H2 / middle criteria / review
+        output / bottom operator ping).
+        """
+        fragment = TOOL_LIFECYCLE_WEEKLY_REVIEW_PROTOCOL__FROM_TOOL_LIFECYCLE_SKILL
+        assert fragment.startswith("## Weekly review")  # top (H2)
+        assert "entries with 5+ occurrences in 30 days" in fragment  # middle criteria
+        assert "Add a section to the housekeeping log" in fragment  # late-middle
+        assert "ping the operator on WhatsApp with a brief summary." in fragment  # bottom
+
+    def test_only_weekly_review_section(self):
+        """Selective extract — must not leak earlier skill-file sections."""
+        fragment = TOOL_LIFECYCLE_WEEKLY_REVIEW_PROTOCOL__FROM_TOOL_LIFECYCLE_SKILL
+        assert "## Memory tagging convention" not in fragment
+        assert "## Promotion logic" not in fragment
+        assert "## Demotion logic" not in fragment
+        assert not fragment.startswith("---")
+        assert "name: tool-lifecycle" not in fragment
+
+    def test_matches_source_section_verbatim(self):
+        """Drift check — constant must equal the `## Weekly review`
+        section of source byte-for-byte. Helper handles the H2 slice.
+        """
+        _assert_fragment_matches_source(
+            fragment=TOOL_LIFECYCLE_WEEKLY_REVIEW_PROTOCOL__FROM_TOOL_LIFECYCLE_SKILL,
+            source_relpath="_legacy/openclaw-workspace/skills/tool-lifecycle/SKILL.md",
+            test_nodeid=(
+                "tests/test_prompts.py::TestToolLifecycleWeeklyReviewFragment::"
+                "test_matches_source_section_verbatim"
+            ),
+            section_h2="Weekly review",
         )
