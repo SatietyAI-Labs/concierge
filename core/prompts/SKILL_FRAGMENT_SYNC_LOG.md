@@ -104,6 +104,9 @@ most of the drift risk. Named and deferred per DECISIONS
 | X4 | `TOOL_RECOMMENDATION_PROTOCOL__FROM_TOOL_RECOMMENDATION_MD` | `core/prompts/tool_recommendation.py` | `_legacy/agent-skills/shared/tool-recommendation.md` | `a014fe22` | 2026-04-13 18:03 PDT | 9571 | whole body | 2026-04-21 16:14 PDT (SESSION-2026-04-21-02) |
 | X6 | `TOOL_DISCOVERY_PROTOCOL__FROM_TOOL_DISCOVERY_SKILL` | `core/prompts/tool_discovery.py` | `_legacy/openclaw-workspace/skills/tool-discovery/SKILL.md` | `64b9b365` | 2026-04-13 20:46 PDT | 5223 | whole body | 2026-04-21 16:25 PDT (SESSION-2026-04-21-02) |
 | X7-A | `TOOL_LIFECYCLE_WEEKLY_REVIEW_PROTOCOL__FROM_TOOL_LIFECYCLE_SKILL` | `core/prompts/tool_lifecycle.py` | `_legacy/openclaw-workspace/skills/tool-lifecycle/SKILL.md` | `79128223` | 2026-04-13 21:09 PDT | 7158 | selective (`## Weekly review`, 862 bytes) | 2026-04-21 16:50 PDT (SESSION-2026-04-21-02) |
+| X8 | `TOOL_AWARENESS_BEHAVIORAL_RULES__FROM_SOUL_DELTA_MD` | `core/prompts/soul_delta.py` | `_legacy/openclaw-root/SOUL.md` | `331f56b9` | 2026-04-13 18:17 PDT | 3291 | whole body | 2026-04-22 12:02 PDT (SESSION-2026-04-23-01) |
+
+**Class-1 closure:** X8 is the final `prompt-fragment` extract. The prompt-fragment set (X3 + X4 + X6 + X7-A + X8) is complete; future skill-file work on the Concierge side is expected to be re-sync activity on these five fragments, not net-new Class-1 extractions.
 
 ---
 
@@ -331,3 +334,65 @@ command.
 - **Session:** `SESSION-2026-04-21-02`.
 - **Extractor:** Claude Code Opus 4.7 (`claude-opus-4-7[1m]`).
 - **Verify with:** `pytest tests/test_lifecycle.py`
+
+### `2026-04-22 12:02 PDT` — X8 initial extract *(class: prompt-fragment, CLOSES CLASS-1 SET)*
+
+- **Constant:** `TOOL_AWARENESS_BEHAVIORAL_RULES__FROM_SOUL_DELTA_MD`
+- **Module:** `core/prompts/soul_delta.py`
+- **Source:** `_legacy/openclaw-root/SOUL.md`
+- **Source SHA-256:**
+  `331f56b9c58f8bf3c269e99d59e171b550c6c3f24bd9701bdd840b484c72d1a2`
+- **Source mtime:** `2026-04-13 18:17:04 -0700`
+- **Source bytes:** `3291`
+- **Section extracted:** full document body. The source file has no
+  YAML frontmatter — it opens directly with `# Tool-Awareness
+  Behavioral Rules`. No section slicing, no frontmatter exclusion;
+  all 3291 bytes are extracted verbatim.
+- **Fidelity:** VERBATIM. No paraphrase, no reflow, no normalization.
+  No backslash or triple-quote hazards in source; no Python-layer
+  escaping applied. Drift-check compares byte-for-byte against the
+  full source body via `_assert_fragment_matches_source` in
+  whole-body mode (no `section_h2` argument).
+- **Closure-setting note:** this is the **final Class-1
+  `prompt-fragment` extract.** The five-member prompt-fragment set
+  (X3 tool-awareness, X4 tool-recommendation, X6 tool-discovery,
+  X7-A tool-lifecycle-weekly-review, X8 SOUL-delta-behavioral-rules)
+  is complete. Future skill-file work on the Concierge side under
+  Class-1 is expected to be re-sync activity on these five
+  fragments (per the `prompt-fragment re-sync` protocol above), not
+  net-new Class-1 extractions. Class-2 (`python-constants`) remains
+  open — X7-B is its single current member; additional python-
+  constants extracts may surface as the platform-agnostic service
+  grows.
+- **Consumer (forthcoming):** Claude Code adapter system-prompt
+  composer, built by N12 (Day 3 midday). Unlike X3/X4/X6/X7-A which
+  are composed into N6's `POST /recommend` Opus 4.7 system prompt
+  via `core/recommend/prompt.py::CONCIERGE_ADAPTER_PREAMBLE`
+  (DECISIONS `[2026-04-22 07:26]`), X8 feeds a separate call site —
+  the prompt Claude Code sessions see when they invoke
+  `concierge_recommend`. N12 builds that call site's analogous
+  adapter-preamble substitution layer around this verbatim
+  fragment; X8 ships only the ingredient.
+- **OpenClaw coupling preserved:** Tool Manifest path
+  (`~/.agent-skills/shared/TOOL-MANIFEST.md`), shared pipeline
+  (`~/.satiety-pipeline/`), wishlist log
+  (`~/.openclaw/logs/tool-wishlist.md`), "ClawHub" skill-
+  distribution surface, "bridge config" MCP-server-config naming,
+  agent-fleet framing ("another agent in the fleet", "handoff
+  points", "spans multiple agents"), worked-example proper names
+  (MailerLite, ElevenLabs, Firefox DevTools). Moderate coupling
+  footprint — heavier than X6 (generic `pandoc`), lighter than X3
+  (full Alfred/Scout/Dispatch/Radar/Bridge fleet enumeration).
+  Claude-Code-side substitution handled by N12's preamble: single-
+  agent framing, `concierge_request_tool` replaces "route through
+  the pipeline", Concierge request inbox replaces "ClawHub",
+  lifecycle store absorbs the wishlist log.
+- **Header style:** pointer-style (per X4/X6/X7-A precedent). Refers
+  to `core/prompts/tool_awareness.py` for shared conventions. Adds
+  an in-module Closure note referencing this sync-log entry's
+  Class-1-complete statement.
+- **Session:** `SESSION-2026-04-23-01` (Day 3 morning, architectural-
+  pause pattern per CLAUDE.md — spike outcome committed, then X8
+  extract).
+- **Extractor:** Claude Code Opus 4.7 (`claude-opus-4-7[1m]`).
+- **Verify with:** `pytest tests/test_prompts.py::TestSoulDeltaFragment`

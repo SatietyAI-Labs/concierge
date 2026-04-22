@@ -15,6 +15,9 @@ fragments with structural mitigations #1-4. Phase 2 deferred target:
 build-time regeneration via `make sync-prompts`.
 """
 
+from core.prompts.soul_delta import (
+    TOOL_AWARENESS_BEHAVIORAL_RULES__FROM_SOUL_DELTA_MD,
+)
 from core.prompts.tool_awareness import (
     TOOL_AWARENESS_PROTOCOL__FROM_TOOL_AWARENESS_MD,
 )
@@ -29,6 +32,7 @@ from core.prompts.tool_recommendation import (
 )
 
 __all__ = [
+    "TOOL_AWARENESS_BEHAVIORAL_RULES__FROM_SOUL_DELTA_MD",
     "TOOL_AWARENESS_PROTOCOL__FROM_TOOL_AWARENESS_MD",
     "TOOL_DISCOVERY_PROTOCOL__FROM_TOOL_DISCOVERY_SKILL",
     "TOOL_LIFECYCLE_WEEKLY_REVIEW_PROTOCOL__FROM_TOOL_LIFECYCLE_SKILL",

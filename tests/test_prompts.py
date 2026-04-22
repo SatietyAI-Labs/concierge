@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 
 from core.prompts import (
+    TOOL_AWARENESS_BEHAVIORAL_RULES__FROM_SOUL_DELTA_MD,
     TOOL_AWARENESS_PROTOCOL__FROM_TOOL_AWARENESS_MD,
     TOOL_DISCOVERY_PROTOCOL__FROM_TOOL_DISCOVERY_SKILL,
     TOOL_LIFECYCLE_WEEKLY_REVIEW_PROTOCOL__FROM_TOOL_LIFECYCLE_SKILL,
@@ -300,4 +301,53 @@ class TestToolLifecycleWeeklyReviewFragment:
                 "test_matches_source_section_verbatim"
             ),
             section_h2="Weekly review",
+        )
+
+
+class TestSoulDeltaFragment:
+    """X8 — openclaw-root/SOUL.md → TOOL_AWARENESS_BEHAVIORAL_RULES__FROM_SOUL_DELTA_MD
+
+    Final Class-1 prompt-fragment extract. Completes the prompt-fragment
+    set (X3 + X4 + X6 + X7-A + X8). Consumer is the Claude Code adapter
+    system-prompt composer (N12, Day 3 midday) — a separate call site
+    from N6's `POST /recommend` composer. X8 ships only the verbatim
+    fragment; N12 builds the adapter-preamble substitution layer around
+    it.
+    """
+
+    def test_constant_is_nonempty_string(self):
+        assert isinstance(TOOL_AWARENESS_BEHAVIORAL_RULES__FROM_SOUL_DELTA_MD, str)
+        assert len(TOOL_AWARENESS_BEHAVIORAL_RULES__FROM_SOUL_DELTA_MD) > 0
+
+    def test_signal_phrases_present(self):
+        """Distinctive substrings sampled from four regions of the body
+        (top H1 / early H2 / middle H2 / bottom H2).
+        """
+        fragment = TOOL_AWARENESS_BEHAVIORAL_RULES__FROM_SOUL_DELTA_MD
+        assert fragment.startswith("# Tool-Awareness Behavioral Rules")  # top H1
+        assert "## Capability Honesty" in fragment  # early H2
+        assert "## Requesting Capabilities" in fragment  # middle H2
+        assert "## Tool Concierge" in fragment  # bottom H2
+
+    def test_no_yaml_frontmatter_leaked_in(self):
+        """Source file has no YAML frontmatter — the body opens directly
+        with the H1. Guard against a future source edit that adds
+        frontmatter without a matching re-sync.
+        """
+        fragment = TOOL_AWARENESS_BEHAVIORAL_RULES__FROM_SOUL_DELTA_MD
+        assert not fragment.startswith("---")
+        assert "name: " not in fragment.split("\n", 1)[0]
+
+    def test_matches_source_body_verbatim(self):
+        """Drift check — constant must equal the full source body
+        byte-for-byte. Source has no frontmatter, so the helper's
+        frontmatter-strip is a no-op for this fragment.
+        """
+        _assert_fragment_matches_source(
+            fragment=TOOL_AWARENESS_BEHAVIORAL_RULES__FROM_SOUL_DELTA_MD,
+            source_relpath="_legacy/openclaw-root/SOUL.md",
+            test_nodeid=(
+                "tests/test_prompts.py::TestSoulDeltaFragment::"
+                "test_matches_source_body_verbatim"
+            ),
         )
