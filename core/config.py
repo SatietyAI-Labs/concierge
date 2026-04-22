@@ -58,16 +58,19 @@ class Settings(BaseSettings):
     # MCP protocolVersion advertised by the Claude Code adapter shim
     # (R1 closure — DECISIONS [2026-04-22 11:49] option iii chosen).
     # Default tracks current Claude Code 2.1.117, which sends
-    # `2025-11-05` in its initialize request. Override via
-    # CONCIERGE_CLAUDE_CODE_PROTOCOL_VERSION when a future client
-    # sends a different value and the non-hostile-mismatch log noise
-    # needs silencing without a code change.
+    # `2025-11-25` in its initialize request AND rejects server
+    # responses with earlier versions ("Server's protocol version is
+    # not supported"). Manual verification on 2026-04-22 surfaced
+    # the rejection; the initial R1 default had a transcription
+    # typo (`2025-11-05` — see DECISIONS correction note).
+    # Override via CONCIERGE_CLAUDE_CODE_PROTOCOL_VERSION when a
+    # future Claude Code version shifts the accepted-version set.
     #
     # The value is read once at shim process startup; mid-session
     # env changes do not take effect until the next shim restart
     # (matches the CONCIERGE_URL pattern in
     # adapters/claude_code/meta_tools/http_client.py).
-    claude_code_protocol_version: str = "2025-11-05"
+    claude_code_protocol_version: str = "2025-11-25"
 
 
 @lru_cache

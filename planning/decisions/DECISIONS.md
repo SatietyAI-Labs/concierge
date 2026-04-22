@@ -1583,10 +1583,22 @@ surface per session) as originally planned.
 
 **Observation:**
 
-- Handshake completed. Client sent `protocolVersion=2025-11-05`
+- Handshake completed. Client sent `protocolVersion=2025-11-25`
   vs. our pinned `2024-11-05`; non-hostile mismatch policy logged
   the delta at INFO and responded with our version; client proceeded.
   (Side-finding R1 — see separate entry below.)
+
+  **Correction note 2026-04-22 15:10 PDT:** the original entry read
+  `protocolVersion=2025-11-05` — that was a transcription typo from
+  Lewie's spike-report chat message (which correctly said `2025-11-25`).
+  The typo propagated into the R1 side-finding entry, the R1 closure
+  config default, and several docstrings before manual verification
+  at Step 5 of the wire-in checklist surfaced the real value.
+  Corrected in-place here because the typo mis-stated a factual
+  observation; the R1 closure commit that implemented the default
+  re-pin to the typo value is corrected in a follow-up commit
+  ("fix: pin protocolVersion to 2025-11-25"). Later DECISIONS
+  entries incorporate the corrected value directly.
 - A single `shim.recv method=tools/list` line appeared in the log
   at **the same millisecond** as the `n9_spike emit
   notifications/tools/list_changed` line (both timestamped
@@ -1656,7 +1668,12 @@ the re-run recipe if Day 5-6 soak revisits the question.
 
 ---
 
-## [2026-04-22 11:49] — R1 side-finding: real Claude Code `protocolVersion` is `2025-11-05`, not pinned `2024-11-05`
+## [2026-04-22 11:49] — R1 side-finding: real Claude Code `protocolVersion` is `2025-11-25`, not pinned `2024-11-05`
+
+*Correction note 2026-04-22 15:10 PDT: heading originally read
+`2025-11-05` due to transcription typo from the N9 spike report.
+Corrected in-place per the 2026-04-22 manual-verification finding.*
+
 
 **Context:** The N9 spike (entry above) required a real Claude Code
 MCP client to stimulate the shim. Running against Claude Code 2.1.117
@@ -1665,13 +1682,17 @@ surfaced an observation orthogonal to the spike's main question:
 - Our shim at `adapters/claude_code/dispatcher.py:42` pins
   `PROTOCOL_VERSION = "2024-11-05"` per the N10 Day-2-evening build
   (commit `5ffe58c`).
-- Real Claude Code 2.1.117 sends `protocolVersion=2025-11-05` in its
+- Real Claude Code 2.1.117 sends `protocolVersion=2025-11-25` in its
   `initialize` request — roughly 12 months newer than our pin.
 - The shim's non-hostile mismatch policy (per the N10 design note
   "log at INFO and respond with our pinned version; let the client
-  decide whether to proceed") **worked as intended** — the client
-  proceeded through the handshake, `notifications/initialized`
-  arrived, the session operated normally.
+  decide whether to proceed") **worked for the N9 spike scenario**
+  — the spike's mock-subprocess harness accepted the mismatch. But
+  **manual verification on 2026-04-22 showed real Claude Code's
+  client REJECTS server responses with older versions** ("Server's
+  protocol version is not supported"). The shim-side non-hostile
+  policy is necessary but not sufficient; the default must match
+  what the client sends.
 
 **What this means:**
 
@@ -1690,23 +1711,23 @@ surfaced an observation orthogonal to the spike's main question:
 - **(i) Stay pinned at `2024-11-05`.** Zero-change. Mismatch log
   continues indefinitely. Operators learn to ignore it. Simplest
   but degrades log signal over time.
-- **(ii) Re-pin to `2025-11-05`.** One constant change. Mismatch
+- **(ii) Re-pin to `2025-11-25`.** One constant change. Mismatch
   log silenced for current Claude Code. Drifts again in 6–12 months
   — kicks the same decision forward. Cheapest short-term win; no
   architectural improvement.
 - **(iii) Make pin configurable via `CONCIERGE_PROTOCOL_VERSION`
   env var / `core/config.py` setting, default updated to
-  `2025-11-05`.** Adds one config field. Operators hitting a future
+  `2025-11-25`.** Adds one config field. Operators hitting a future
   MCP-version issue can adjust without editing code. Default still
   drifts, but adjustment path is instant.
 - **(iv) Echo-client-version policy: accept any version in a
-  compatibility set (e.g. `{2024-11-05, 2025-11-05}`) and respond
+  compatibility set (e.g. `{2024-11-05, 2025-11-25}`) and respond
   with the client's version.** Most adaptive — mismatch log
   disappears entirely for known-compatible clients. Adds a small
   version-set + conditional response logic. Highest implementation
   cost; best long-term log cleanliness.
 
-**Tentative lean:** (iii) — config field with `2025-11-05` default.
+**Tentative lean:** (iii) — config field with `2025-11-25` default.
 Keeps N14 smoke quiet for current Claude Code; operators have an
 escape hatch; future drift is a one-line default change, not a code
 path. (iv) is appealing but adds dispatcher complexity and a
@@ -1732,7 +1753,15 @@ asserting the version-response shape if option iv is picked.
 
 ---
 
-## [2026-04-22 14:35] — R1 closure: option iii shipped (config-driven with `2025-11-05` default)
+## [2026-04-22 14:35] — R1 closure: option iii shipped (config-driven with `2025-11-25` default)
+
+*Correction note 2026-04-22 15:10 PDT: heading originally read
+`2025-11-05` default due to transcription typo propagated from the
+N9 outcome entry. Corrected in-place on the same day manual
+verification surfaced the rejection. The "what landed" details
+below have been updated to reflect the corrected value. A follow-up
+commit ("fix: pin protocolVersion to 2025-11-25") updates the
+actual config default to match this corrected narrative.*
 
 Closing the deferred decision from the R1 side-finding entry above
 (`[2026-04-22 11:49]`). Option iii chosen and shipped before N14
@@ -1741,7 +1770,7 @@ with zero protocol-mismatch log noise.
 
 **What landed:**
 
-- `core/config.py` — new `claude_code_protocol_version: str = "2025-11-05"`
+- `core/config.py` — new `claude_code_protocol_version: str = "2025-11-25"`
   field on the Settings class. Pydantic-settings maps this to env
   var `CONCIERGE_CLAUDE_CODE_PROTOCOL_VERSION` via the existing
   `CONCIERGE_` prefix, consistent with `CONCIERGE_MEMORY_DIR` /
@@ -1766,7 +1795,7 @@ with zero protocol-mismatch log noise.
   path end-to-end (parent-process test settings cache is
   irrelevant to the spawned subprocess).
 
-**Why option iii over option ii** (direct re-pin to `2025-11-05`
+**Why option iii over option ii** (direct re-pin to `2025-11-25`
 without a config field): option ii kicks the same drift decision
 forward 6-12 months. Option iii adds one config field and makes
 the escape hatch explicit so future clients that send a different
@@ -1783,13 +1812,26 @@ silencing it fully is a Phase-2 concern, not a hackathon priority.
 Option iii gives operators the escape hatch without committing
 Concierge to tracking the MCP version ecosystem.
 
-**Operational check:** re-running the N9 spike setup against
-current Claude Code 2.1.117 after this change would now show a
+**Operational check (post-correction):** re-running the N9 spike
+setup against current Claude Code 2.1.117 with the CORRECTED
+default (`2025-11-25`, after today's fix commit) should show a
 clean initialize handshake with ZERO `protocol_mismatch` log
-lines (the client's `2025-11-05` matches our new default). The
-spike's primary question (tools/list_changed re-fetch) is
+lines (the client's `2025-11-25` matches our corrected default).
+The spike's primary question (tools/list_changed re-fetch) is
 unaffected by this change — still outcome (b) silence, still
 Approach 2 committed.
+
+**What the manual verification caught that the N9 spike did not:**
+the N9 spike was a mock-subprocess test of the shim's stdio
+handshake in isolation — it verified "our shim emits a
+well-formed initialize response even with a version mismatch"
+but NOT "real Claude Code's MCP client accepts that response."
+The client's rejection path is asymmetric: our shim's non-hostile
+mismatch log accepts clients sending any version, but real Claude
+Code rejects servers sending older versions. The full-chain
+assertion required real Claude Code, which is what the
+manual-verification step finally exercised. Adding a test that
+encodes this asymmetry is part of today's fix commit.
 
 **Tests:** 445/445 CI-safe fast green (+1 env-override subprocess
 test). Zero regressions; the existing 25 shim tests all pass with

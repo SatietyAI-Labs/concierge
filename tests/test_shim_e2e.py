@@ -293,8 +293,8 @@ class TestProtocolVersionEnvOverride:
     """R1 closure — DECISIONS `[2026-04-22 11:49]` option iii: the
     protocol version advertised by the shim is config-driven via
     `CONCIERGE_CLAUDE_CODE_PROTOCOL_VERSION`. Default tracks current
-    Claude Code 2.1.117 (`2025-11-05`); override required when a
-    future client sends a different value.
+    Claude Code 2.1.117 (`2025-11-25` as corrected on 2026-04-22
+    — see N9/R1 correction notes in DECISIONS.md).
     """
 
     def test_env_override_changes_advertised_version(self):
@@ -426,6 +426,76 @@ class TestWrapperScriptInvocation:
         # startup log confirms main() ran past all imports.
         assert "shim.startup" in stderr_text, (
             f"expected shim.startup log line; full stderr:\n{stderr_text}"
+        )
+
+
+class TestRealClaudeCodeProtocolVersion:
+    """Regression guard — the shim must respond with a protocolVersion
+    that real Claude Code 2.1.117's MCP client accepts.
+
+    Manual verification on 2026-04-22 discovered two facts about
+    real Claude Code's client:
+
+    1. It sends `protocolVersion=2025-11-25` in its initialize
+       request.
+    2. It REJECTS server responses with older versions —
+       `Server's protocol version is not supported`. The shim's
+       own non-hostile mismatch policy keeps the shim alive when
+       it receives a version mismatch, but it doesn't help if the
+       CLIENT rejects the shim's response.
+
+    So the default must be kept in sync with what current Claude
+    Code accepts. If this test fails after a Claude Code upgrade,
+    check the real client's initialize request (`~/.claude/debug/
+    *.txt` has MCP stderr when debug logging is on) and update
+    `core.config.Settings.claude_code_protocol_version` default
+    accordingly. The CONCIERGE_CLAUDE_CODE_PROTOCOL_VERSION env
+    override remains available for per-deployment escape hatch.
+
+    Why this test isn't just a constant assertion on the config
+    default: the full chain from Settings → dispatcher import →
+    subprocess handshake has layered behavior (module-import-time
+    capture, asyncio event loop, JSON-RPC framing). The subprocess
+    test catches a class of bugs a constant-assertion misses — e.g.
+    a dispatcher refactor that stops reading the config field.
+    """
+
+    def test_shim_advertises_version_that_real_claude_code_accepts(self, shim):
+        """Send initialize with `protocolVersion=2025-11-25` (what
+        real Claude Code 2.1.117 sends), assert the shim responds
+        with the same version. Hardcoded expectation — not
+        `PROTOCOL_VERSION` import — so a default-value regression
+        is caught with a specific diagnostic.
+        """
+        CURRENT_CLAUDE_CODE_VERSION = "2025-11-25"
+
+        shim.send(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": CURRENT_CLAUDE_CODE_VERSION,
+                    "capabilities": {},
+                    "clientInfo": {
+                        "name": "mock-real-claude-code-regression",
+                        "version": "2.1.117",
+                    },
+                },
+            }
+        )
+        resp = shim.recv_json()
+        advertised = resp["result"]["protocolVersion"]
+        assert advertised == CURRENT_CLAUDE_CODE_VERSION, (
+            f"shim advertised protocolVersion={advertised!r} in response "
+            f"to a client sending {CURRENT_CLAUDE_CODE_VERSION!r}. Real "
+            f"Claude Code 2.1.117 REJECTS server responses with "
+            f"different versions ('Server's protocol version is not "
+            f"supported'). The CONCIERGE_CLAUDE_CODE_PROTOCOL_VERSION "
+            f"default (core/config.py) must match what current Claude "
+            f"Code sends. If Claude Code upgraded and now sends a "
+            f"different version, re-run manual verification to confirm "
+            f"the new value and update the default."
         )
 
 

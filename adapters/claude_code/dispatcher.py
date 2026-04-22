@@ -13,14 +13,16 @@ an **empty** tool list; N11 fills it.
 
 Protocol version:
 - We advertise `get_settings().claude_code_protocol_version` in the
-  initialize response. Default `2025-11-05` (R1 closure — DECISIONS
+  initialize response. Default `2025-11-25` (R1 closure — DECISIONS
   [2026-04-22 11:49] option iii: config-driven with current-client-
   tracking default). Override via `CONCIERGE_CLAUDE_CODE_PROTOCOL_VERSION`.
 - If the client's requested version differs, we log an INFO notice
-  and still respond with our advertised version. Per MCP spec this
-  lets the client decide whether to proceed — the non-hostile
-  mismatch policy was vindicated against real Claude Code in the
-  N9 spike.
+  and still respond with our advertised version. For clients that
+  ACCEPT a version mismatch (non-hostile-handled), this works. For
+  clients that REJECT older server versions (as real Claude Code
+  2.1.117 does per the 2026-04-22 manual-verification finding), the
+  default must match what the client sends — hence the config-driven
+  surface.
 - The value is read once at module import (i.e. shim startup).
   Mid-session env changes do not take effect until shim restart.
 """
