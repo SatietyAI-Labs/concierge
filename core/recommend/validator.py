@@ -124,6 +124,13 @@ def validate_response_shape(
     # config doesn't know about).
     drift.extend(_check_effort(response))
 
+    # 6. Rich in-chat content fields. Opus is instructed to emit
+    # category / install_method / risk_cost on every recommendation
+    # (explicit null is fine; key missing is drift). Surfaces Fix
+    # Day 1 Q2 structural gap as a drift signal so we notice when
+    # Opus starts silently dropping a field.
+    drift.extend(_check_rich_content_fields(recommendations))
+
     return drift
 
 
@@ -228,3 +235,21 @@ def _check_effort(response: dict[str, Any]) -> list[str]:
         f"effort_outside_known_set:got={effort!r} "
         f"known={sorted(_KNOWN_EFFORTS)}"
     ]
+
+
+_RICH_CONTENT_FIELDS = ("category", "install_method", "risk_cost")
+
+
+def _check_rich_content_fields(recommendations: list[Any]) -> list[str]:
+    """Each recommendation should have category / install_method /
+    risk_cost keys present — explicit null acceptable, key absence
+    is drift. See the JSON_OUTPUT_ENVELOPE rules in prompt.py.
+    """
+    drift: list[str] = []
+    for idx, rec in enumerate(recommendations):
+        if not isinstance(rec, dict):
+            continue  # rank check already reported
+        for field in _RICH_CONTENT_FIELDS:
+            if field not in rec:
+                drift.append(f"rich_content_missing:{field}:index={idx}")
+    return drift

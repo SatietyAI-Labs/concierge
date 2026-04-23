@@ -38,6 +38,7 @@ Operator handles those manually per the behavioral rules.
 """
 from core.install.methods import (
     install_npm_global,
+    install_npx_mcp,
     install_pip_user,
     install_single_binary,
 )
@@ -49,6 +50,7 @@ __all__ = [
     "InstallResult",
     "install_by_method",
     "install_npm_global",
+    "install_npx_mcp",
     "install_pip_user",
     "install_single_binary",
     "normalize_install_method",

@@ -37,7 +37,7 @@ import threading
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from sqlalchemy.orm import Session
 
@@ -68,9 +68,18 @@ from core.lifecycle_store.transitions import (
 )
 from core.lifecycle_store.writer import (
     generate_filename,
+    update_install_section,
     update_status_line,
     write_new_request,
 )
+from core.install.schemas import InstallResult
+from core.install.service import install_by_method, normalize_install_method
+
+
+# Signature for the install dispatcher so tests can inject a stub
+# without triggering real pip/npm subprocess calls. Matches the
+# `install_by_method` positional + keyword contract.
+InstallDispatcher = Callable[..., Optional[InstallResult]]
 
 
 logger = logging.getLogger(__name__)
@@ -156,6 +165,7 @@ class LifecycleService:
     session: Session
     lifecycle_root: Path
     counters: LifecycleCounters = None  # type: ignore[assignment]
+    install_dispatcher: InstallDispatcher = field(default=install_by_method)
 
     def __post_init__(self) -> None:
         if self.counters is None:
@@ -365,7 +375,7 @@ class LifecycleService:
             folder,
         )
 
-        return RequestDetail(
+        detail = RequestDetail(
             id=row.id,
             filename=row.filename,
             folder=folder,
@@ -380,6 +390,100 @@ class LifecycleService:
             created_at=row.created_at,
             updated_at=row.updated_at,
             raw_markdown=row.raw_markdown,
+        )
+
+        # X13 wire-in: approving a request with a canonical install
+        # method auto-installs and transitions to installed/failed.
+        # Non-canonical methods (mcp-server pre-T5, unknown, empty)
+        # leave status=approved for operator handling.
+        if change.status == "approved":
+            follow_up = self._maybe_install_on_approve(
+                filename=filename, path=path, parsed=parsed
+            )
+            if follow_up is not None:
+                detail = follow_up
+
+        return detail
+
+    # ---- X13 wire-in ----------------------------------------------------
+
+    def _maybe_install_on_approve(
+        self, *, filename: str, path: Path, parsed
+    ) -> Optional[RequestDetail]:
+        """Post-approval install dispatch. Returns the RequestDetail
+        from the follow-up installed/failed transition, or None when
+        no install was attempted (manual-handling path).
+        """
+        request_section = parsed.sections.get("request", {})
+        install_method_raw = (request_section.get("install_method") or "").strip()
+        tool_name = (
+            request_section.get("tool_suggested") or parsed.tool_name
+        ).strip()
+
+        canonical = normalize_install_method(install_method_raw)
+        if canonical is None:
+            logger.info(
+                "lifecycle.install_manual filename=%s install_method=%r "
+                "— leaving status=approved for operator",
+                filename,
+                install_method_raw,
+            )
+            return None
+
+        try:
+            result = self.install_dispatcher(
+                install_method_raw, tool_name=tool_name
+            )
+        except Exception as exc:
+            logger.error(
+                "lifecycle.install_dispatch_failed filename=%s error=%s: %s",
+                filename,
+                type(exc).__name__,
+                exc,
+            )
+            return None
+
+        if result is None:
+            logger.info(
+                "lifecycle.install_skipped filename=%s "
+                "— dispatcher returned None (missing params, operator handles)",
+                filename,
+            )
+            return None
+
+        verification = (
+            f"exit={result.returncode} ok"
+            if result.success
+            else f"exit={result.returncode} stderr_head={(result.stderr or '')[:120]!r}"
+        )
+        try:
+            update_install_section(
+                path=path,
+                command_run=result.command,
+                verification=verification,
+            )
+        except Exception as exc:
+            logger.error(
+                "lifecycle.install_section_write_failed filename=%s error=%s: %s",
+                filename,
+                type(exc).__name__,
+                exc,
+            )
+            return None
+
+        follow_up_status = "installed" if result.success else "failed"
+        logger.info(
+            "lifecycle.install_done filename=%s method=%s success=%s "
+            "returncode=%d elapsed_ms=%d",
+            filename,
+            result.method,
+            result.success,
+            result.returncode,
+            result.elapsed_ms,
+        )
+        return self.update_status(
+            filename=filename,
+            change=StatusChange(status=follow_up_status),
         )
 
     # ---- Read -----------------------------------------------------------

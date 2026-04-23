@@ -39,8 +39,15 @@ def lifecycle_root(tmp_path) -> Path:
 @pytest.fixture
 def service(db_session: Session, lifecycle_root: Path) -> LifecycleService:
     reset_counters_for_tests()
+    # Disable real subprocess dispatch — tests of the generic
+    # update_status flow don't want to hit pip/npm. Tests that
+    # specifically exercise the X13 wire-in construct their own
+    # LifecycleService with a purpose-built mock dispatcher.
     return LifecycleService(
-        session=db_session, lifecycle_root=lifecycle_root, counters=LifecycleCounters()
+        session=db_session,
+        lifecycle_root=lifecycle_root,
+        counters=LifecycleCounters(),
+        install_dispatcher=lambda *args, **kwargs: None,
     )
 
 
@@ -206,3 +213,132 @@ class TestListPending:
         assert "malformed.md" in by_name
         assert by_name["malformed.md"].is_parseable is False
         assert by_name["malformed.md"].parse_error is not None
+
+
+# ---- X13 wire-in: approve triggers install --------------------------------
+
+
+def _make_service_with_dispatcher(
+    db_session: Session, lifecycle_root: Path, dispatcher
+) -> LifecycleService:
+    reset_counters_for_tests()
+    return LifecycleService(
+        session=db_session,
+        lifecycle_root=lifecycle_root,
+        counters=LifecycleCounters(),
+        install_dispatcher=dispatcher,
+    )
+
+
+def _make_install_result(
+    *, method: str = "pip_user", success: bool = True, returncode: int = 0
+):
+    from core.install.schemas import InstallResult
+
+    return InstallResult(
+        method=method,
+        command="pip install --user csvkit",
+        success=success,
+        returncode=returncode,
+        stdout="",
+        stderr="" if success else "ERROR: could not find csvkit",
+        elapsed_ms=321,
+    )
+
+
+class TestApproveTriggersInstall:
+    """X13 wire-in: `update_status(..., 'approved')` with a canonical
+    install_method dispatches install and auto-transitions to
+    installed (success) or failed (failure).
+    """
+
+    def test_canonical_method_installs_and_transitions_to_installed(
+        self, db_session, lifecycle_root
+    ):
+        calls = []
+
+        def dispatcher(method, *, tool_name, **kw):
+            calls.append((method, tool_name))
+            return _make_install_result(success=True)
+
+        svc = _make_service_with_dispatcher(db_session, lifecycle_root, dispatcher)
+        filename = svc.create_request(
+            NewRequestDraft(tool_name="csvkit", install_method="pip-user")
+        ).filename
+
+        detail = svc.update_status(
+            filename=filename, change=StatusChange(status="approved")
+        )
+
+        assert len(calls) == 1
+        assert calls[0][1] == "csvkit"
+        assert detail.status == "installed"
+        # Install section now present in the file's raw_markdown
+        assert "## Install" in detail.raw_markdown
+        assert "pip install --user csvkit" in detail.raw_markdown
+        assert "exit=0" in detail.raw_markdown
+
+    def test_install_failure_transitions_to_failed(
+        self, db_session, lifecycle_root
+    ):
+        def dispatcher(method, *, tool_name, **kw):
+            return _make_install_result(success=False, returncode=1)
+
+        svc = _make_service_with_dispatcher(db_session, lifecycle_root, dispatcher)
+        filename = svc.create_request(
+            NewRequestDraft(tool_name="csvkit", install_method="pip-user")
+        ).filename
+
+        detail = svc.update_status(
+            filename=filename, change=StatusChange(status="approved")
+        )
+
+        assert detail.status == "failed"
+        assert "## Install" in detail.raw_markdown
+        assert "exit=1" in detail.raw_markdown
+
+    def test_non_canonical_method_leaves_status_approved(
+        self, db_session, lifecycle_root
+    ):
+        calls = []
+
+        def dispatcher(*args, **kwargs):
+            calls.append(args)
+            return _make_install_result(success=True)
+
+        svc = _make_service_with_dispatcher(db_session, lifecycle_root, dispatcher)
+        filename = svc.create_request(
+            NewRequestDraft(tool_name="some-service", install_method="api-key")
+        ).filename
+
+        detail = svc.update_status(
+            filename=filename, change=StatusChange(status="approved")
+        )
+
+        assert detail.status == "approved"
+        # Dispatcher was never called — non-canonical method skips X13
+        assert calls == []
+        # No Install section written
+        assert "## Install" not in detail.raw_markdown
+
+    def test_dispatcher_exception_leaves_status_approved(
+        self, db_session, lifecycle_root, caplog
+    ):
+        def boom(*args, **kwargs):
+            raise RuntimeError("subprocess exploded")
+
+        svc = _make_service_with_dispatcher(db_session, lifecycle_root, boom)
+        filename = svc.create_request(
+            NewRequestDraft(tool_name="csvkit", install_method="pip-user")
+        ).filename
+
+        with caplog.at_level(logging.ERROR, logger="core.lifecycle_store.service"):
+            detail = svc.update_status(
+                filename=filename, change=StatusChange(status="approved")
+            )
+
+        assert detail.status == "approved"
+        assert any(
+            "install_dispatch_failed" in r.getMessage() for r in caplog.records
+        )
+        assert "## Install" not in detail.raw_markdown

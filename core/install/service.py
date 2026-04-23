@@ -20,9 +20,11 @@ from typing import Optional
 
 from core.install.methods import (
     METHOD_NPM_GLOBAL,
+    METHOD_NPX_MCP,
     METHOD_PIP_USER,
     METHOD_SINGLE_BINARY,
     install_npm_global,
+    install_npx_mcp,
     install_pip_user,
     install_single_binary,
 )
@@ -46,6 +48,14 @@ def normalize_install_method(install_method: Optional[str]) -> Optional[str]:
     s = install_method.strip().lower()
     if not s:
         return None
+
+    # npx_mcp signals — check BEFORE npm_global so "npx ..." strings
+    # (which contain "npm" as a substring via "npx") route to the
+    # MCP handler instead of the global-install one.
+    if "npx" in s:
+        return METHOD_NPX_MCP
+    if s in {"npx-mcp", "npx_mcp"}:
+        return METHOD_NPX_MCP
 
     # npm_global signals
     if "npm" in s and ("global" in s or "-g " in s or s.endswith("-g") or " -g" in s):
@@ -108,6 +118,10 @@ def install_by_method(
     if method_key == METHOD_NPM_GLOBAL:
         kwargs = {"timeout_seconds": timeout_seconds} if timeout_seconds is not None else {}
         return install_npm_global(tool_name, **kwargs)
+
+    if method_key == METHOD_NPX_MCP:
+        kwargs = {"timeout_seconds": timeout_seconds} if timeout_seconds is not None else {}
+        return install_npx_mcp(tool_name, **kwargs)
 
     if method_key == METHOD_PIP_USER:
         kwargs = {"timeout_seconds": timeout_seconds} if timeout_seconds is not None else {}

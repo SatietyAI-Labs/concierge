@@ -6,7 +6,7 @@ from fastapi import FastAPI
 
 from core.api import health, packs, recommend, requests as requests_api, tools
 from core.config import get_settings
-from core.db.session import get_session_factory, init_db
+from core.db.session import ensure_schema_current, get_session_factory
 from core.lifecycle_store.store import reconcile as reconcile_lifecycle
 from core.logging import configure_logging
 from core.recommend.counters import log_shutdown_summary
@@ -18,7 +18,7 @@ logger = logging.getLogger("concierge")
 async def lifespan(app: FastAPI):
     settings = get_settings()
     configure_logging(settings.log_level)
-    init_db()
+    ensure_schema_current()
     logger.info(
         "Concierge starting (env=%s debug=%s db=%s model=%s effort=%s "
         "lifecycle_root=%s)",

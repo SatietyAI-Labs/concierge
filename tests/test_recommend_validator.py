@@ -47,6 +47,9 @@ def _valid_response_dict() -> dict:
                 "rationale": "Lightweight CSV stats CLI.",
                 "confidence": "high",
                 "is_in_catalog": True,
+                "category": "data-processing",
+                "install_method": "pip-user",
+                "risk_cost": "~5MB wheel; MIT",
             },
             {
                 "rank": 2,
@@ -55,6 +58,9 @@ def _valid_response_dict() -> dict:
                 "rationale": "Streaming CSV processor; discovery.",
                 "confidence": "medium",
                 "is_in_catalog": False,
+                "category": "data-processing",
+                "install_method": "apt",
+                "risk_cost": None,
             },
         ],
         "memory_available": True,
@@ -200,6 +206,48 @@ class TestValidatorEffortDrift:
         assert any(
             "effort_outside_known_set" in m and "extreme" in m for m in drift
         )
+
+
+class TestValidatorRichContentDrift:
+    """Rich in-chat content fields (category / install_method /
+    risk_cost) must be present on every recommendation. Explicit
+    null is acceptable — key absence is drift.
+    """
+
+    def test_missing_category_flagged(self):
+        d = _valid_response_dict()
+        del d["recommendations"][0]["category"]
+        drift = validate_response_shape(d, request_id="r1")
+        assert any(
+            "rich_content_missing:category:index=0" in m for m in drift
+        )
+
+    def test_missing_install_method_flagged(self):
+        d = _valid_response_dict()
+        del d["recommendations"][1]["install_method"]
+        drift = validate_response_shape(d, request_id="r1")
+        assert any(
+            "rich_content_missing:install_method:index=1" in m for m in drift
+        )
+
+    def test_missing_risk_cost_flagged(self):
+        d = _valid_response_dict()
+        del d["recommendations"][0]["risk_cost"]
+        drift = validate_response_shape(d, request_id="r1")
+        assert any(
+            "rich_content_missing:risk_cost:index=0" in m for m in drift
+        )
+
+    def test_explicit_null_values_not_flagged(self):
+        """Opus saying 'I have no confident value' (null) is fine;
+        only missing key is drift.
+        """
+        d = _valid_response_dict()
+        d["recommendations"][0]["category"] = None
+        d["recommendations"][0]["install_method"] = None
+        d["recommendations"][0]["risk_cost"] = None
+        drift = validate_response_shape(d, request_id="r1")
+        assert not any("rich_content_missing" in m for m in drift)
 
 
 # ---- Service-wiring integration tests --------------------------------------

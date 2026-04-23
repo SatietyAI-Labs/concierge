@@ -32,10 +32,12 @@ def api_harness(tmp_path, db_session):
     """
     for folder in ("pending", "resolved", "archived"):
         (tmp_path / folder).mkdir()
+    # Disable real subprocess dispatch for approve-path tests.
     service = LifecycleService(
         session=db_session,
         lifecycle_root=tmp_path,
         counters=LifecycleCounters(),
+        install_dispatcher=lambda *args, **kwargs: None,
     )
     app = create_app()
     app.dependency_overrides[get_lifecycle_service] = lambda: service

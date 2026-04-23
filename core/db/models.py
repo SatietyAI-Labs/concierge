@@ -4,11 +4,20 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
 
 from core.db.base import Base
+
+
+TOOL_TYPE_VALUES = ("mcp", "cli", "http", "skill")
+"""Peer categories per blueprint-v2 §Five Core Capabilities item #1.
+
+Shared by Tool.tool_type and by ingest parsers so the constrained set
+is declared once. Adding a new category requires a schema migration
+that updates the Enum's CHECK constraint.
+"""
 
 
 class Pack(Base):
@@ -40,6 +49,11 @@ class Tool(Base):
     slug: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(256))
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    tool_type: Mapped[Optional[str]] = mapped_column(
+        Enum(*TOOL_TYPE_VALUES, name="tool_type"),
+        nullable=True,
+        index=True,
+    )
     category: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     install_method: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     is_in_manifest: Mapped[bool] = mapped_column(Boolean, default=True, index=True)

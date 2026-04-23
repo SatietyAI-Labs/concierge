@@ -77,6 +77,35 @@ class ToolRecommendation(BaseModel):
             "should be created. N6 itself does not route."
         ),
     )
+    category: Optional[str] = Field(
+        None,
+        description=(
+            "Free-text semantic domain for the tool "
+            "(e.g. 'search', 'data-processing', 'web'). Copied from "
+            "the catalog entry when is_in_catalog=True; inferred by "
+            "Opus when False. Null signals Opus had no confident "
+            "category — distinct from the key being absent, which is "
+            "Tier 1 drift."
+        ),
+    )
+    install_method: Optional[str] = Field(
+        None,
+        description=(
+            "Normalized install method (e.g. 'apt', 'pip-user', "
+            "'npx-mcp', 'npm-global', 'binary'). Enables the in-chat "
+            "surface to render 'how Concierge would install this' "
+            "without the caller re-deriving it. Null when unknown."
+        ),
+    )
+    risk_cost: Optional[str] = Field(
+        None,
+        description=(
+            "One-phrase summary of install weight, runtime cost, "
+            "license concerns, or credential requirements "
+            "(e.g. '~5MB, no deps', '$0.03/call via Anthropic'). "
+            "Null when Opus has no material risk/cost signal."
+        ),
+    )
 
 
 class LatencyBreakdown(BaseModel):

@@ -93,7 +93,10 @@ tolerated but not expected). Keys must appear in the order shown.
       "tool_name": "<display name>",
       "rationale": "<why this tool, in one or two sentences>",
       "confidence": "<one of: high, medium, low>",
-      "is_in_catalog": <true | false>
+      "is_in_catalog": <true | false>,
+      "category": "<semantic domain, e.g. 'search', 'data-processing'; null if no confident category>",
+      "install_method": "<normalized method, e.g. 'apt', 'pip-user', 'npx-mcp', 'npm-global', 'binary'; null if unknown>",
+      "risk_cost": "<one phrase: install weight / runtime cost / license; null if nothing material>"
     }
   ]
 }
@@ -113,6 +116,12 @@ Rules:
 - `confidence` is your subjective confidence in the recommendation,
   not the tool's popularity. Use `low` when uncertain rather than
   omitting a recommendation.
+- `category`, `install_method`, and `risk_cost` MUST be present on
+  every recommendation. Copy them from the catalog entry when
+  `is_in_catalog: true` (catalog rows render `<tool_type>` and
+  `install=<method>` annotations you can re-use). For discovery,
+  infer them. Use `null` explicitly when you have no confident
+  value — omitting the key is drift and surfaces as a warning.
 - Prefer lightweight tools over heavyweight ones when both would
   serve the task (per the tool-awareness and tool-recommendation
   protocols). Factor `active_tools` (already loaded) into your
@@ -146,6 +155,11 @@ class CatalogToolView:
     Service-layer translates `core.db.models.Tool` rows into this
     shape; `prompt.py` stays free of SQLAlchemy for testability
     and determinism.
+
+    `tool_type` and `install_method` are surfaced to Opus so the
+    rich in-chat content fields (category / install_method /
+    risk_cost on each recommendation) can be copied from the
+    catalog entry rather than re-derived by Opus.
     """
 
     slug: str
@@ -155,6 +169,8 @@ class CatalogToolView:
     pack_slug: Optional[str]
     is_in_manifest: bool
     is_active: bool
+    tool_type: Optional[str] = None
+    install_method: Optional[str] = None
 
 
 def _render_catalog(tools: Iterable[CatalogToolView]) -> str:
@@ -169,9 +185,12 @@ def _render_catalog(tools: Iterable[CatalogToolView]) -> str:
         state = _tool_state(t.is_in_manifest, t.is_active)
         pack = f" (pack: {t.pack_slug})" if t.pack_slug else ""
         category = f" [{t.category}]" if t.category else ""
+        tool_type = f" <{t.tool_type}>" if t.tool_type else ""
+        install = f" install={t.install_method}" if t.install_method else ""
         description = f" — {t.description}" if t.description else ""
         lines.append(
-            f"- **{t.slug}**{pack}{category} [{state}]: {t.name}{description}"
+            f"- **{t.slug}**{pack}{tool_type}{category} [{state}]{install}: "
+            f"{t.name}{description}"
         )
     return "\n".join(lines)
 

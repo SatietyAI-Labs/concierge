@@ -18,12 +18,14 @@ from core.install import (
     InstallResult,
     install_by_method,
     install_npm_global,
+    install_npx_mcp,
     install_pip_user,
     install_single_binary,
     normalize_install_method,
 )
 from core.install.methods import (
     METHOD_NPM_GLOBAL,
+    METHOD_NPX_MCP,
     METHOD_PIP_USER,
     METHOD_SINGLE_BINARY,
 )
@@ -77,6 +79,37 @@ class TestInstallNpmGlobal:
         assert result.success is False
         assert result.returncode == 1
         assert "npm ERR" in result.stderr
+
+
+class TestInstallNpxMcp:
+    def test_success_returns_install_result_with_method_key(self):
+        with patch("core.install.methods.subprocess.run") as mock_run:
+            mock_run.return_value = _mock_completed(0, "@modelcontextprotocol/server-filesystem\n", "")
+            result = install_npx_mcp("@modelcontextprotocol/server-filesystem")
+
+        assert isinstance(result, InstallResult)
+        assert result.method == METHOD_NPX_MCP
+        assert result.success is True
+        assert result.returncode == 0
+
+    def test_command_uses_npm_view_not_sudo(self):
+        with patch("core.install.methods.subprocess.run") as mock_run:
+            mock_run.return_value = _mock_completed(0)
+            result = install_npx_mcp("@scope/pkg")
+
+        assert "sudo" not in result.command
+        assert "npm" in result.command
+        assert "view" in result.command
+        called_args = mock_run.call_args[0][0]
+        assert called_args == ["npm", "view", "@scope/pkg", "name"]
+
+    def test_unknown_package_is_failure(self):
+        with patch("core.install.methods.subprocess.run") as mock_run:
+            mock_run.return_value = _mock_completed(1, "", "npm ERR! 404")
+            result = install_npx_mcp("@scope/does-not-exist-xyz")
+
+        assert result.success is False
+        assert result.returncode == 1
 
 
 class TestInstallPipUser:
@@ -220,6 +253,11 @@ class TestNormalizeInstallMethod:
             ("npm global", METHOD_NPM_GLOBAL),
             ("NPM -G", METHOD_NPM_GLOBAL),
             ("npm_global", METHOD_NPM_GLOBAL),
+            ("npx", METHOD_NPX_MCP),
+            ("npx -y @scope/pkg", METHOD_NPX_MCP),
+            ("npx-mcp", METHOD_NPX_MCP),
+            ("npx_mcp", METHOD_NPX_MCP),
+            ("NPX -Y @scope/pkg", METHOD_NPX_MCP),
             ("pip --user", METHOD_PIP_USER),
             ("pip install --user", METHOD_PIP_USER),
             ("pip user", METHOD_PIP_USER),
@@ -272,6 +310,23 @@ class TestInstallByMethod:
 
         mock_npm.assert_called_once_with("ripgrep")
         assert result.method == METHOD_NPM_GLOBAL
+        assert result.success is True
+
+    def test_routes_npx_to_install_npx_mcp(self):
+        with patch("core.install.service.install_npx_mcp") as mock_npx:
+            mock_npx.return_value = InstallResult(
+                method=METHOD_NPX_MCP,
+                command="npm view @scope/pkg name",
+                success=True,
+                returncode=0,
+                stdout="@scope/pkg",
+                stderr="",
+                elapsed_ms=100,
+            )
+            result = install_by_method("npx -y @scope/pkg", tool_name="@scope/pkg")
+
+        mock_npx.assert_called_once_with("@scope/pkg")
+        assert result.method == METHOD_NPX_MCP
         assert result.success is True
 
     def test_routes_pip_to_install_pip_user(self):

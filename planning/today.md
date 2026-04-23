@@ -1,111 +1,125 @@
-# Today — 2026-04-22 (Wednesday, Hackathon Day 2) — CLOSED
+# Today — 2026-04-25 (Saturday, Fix Day 2)
 
-## Final Day 2 state
+*Opens on: `SESSION-2026-04-24-01.md` (Fix Day 1 — all six tasks green, Alembic
+bootstrapped, denial-recall PASS, live install verification surfaced PEP-668
+open question). Authoritative plan remains `docs/close-the-gap-plan-2026-04-23.md`.*
 
-Day 2 delivered substantially through build-plan §F.2.2 Scenario A in
-one continuous session (07:10–10:12 PDT, ~3h sustained work after
-handoff-protocol read-in).
+## Governing framing
 
-| Item | Signed off / Committed | Deliverable |
+Ship-it-whole per Lewie's 2026-04-23 mid-Day-4 commitment. Operational-first
+discipline holds. Fix Day 1 cleared the foundation block (catalog peer
+categories, rich in-chat content, approve-triggers-install, denial-recall).
+Fix Day 2 closes the scope-expansion items the plan calls the biggest
+scope-expansion of the fix block: skills as the fourth peer catalog citizen,
+and the tool-level lifecycle state machine (the third state machine per audit
+§D — absent prior to this day).
+
+## Fix Day 2 — Skills ingest + tool-lifecycle schema
+
+**Primary goal:** Catalog ingests skills as fourth peer category. Tool-lifecycle
+state machine schema in place. Usage-log table accepting writes so §C7 Fix Day 4
+scanner has data to aggregate.
+
+## Tasks
+
+| # | Task | Estimate |
 |---|---|---|
-| DECISIONS — N6 preamble strategy | `[2026-04-22 07:26]` | Adapter-context preamble (c); three-strategy shortlist; preserves EXTRACT invariant |
-| N6 — `POST /recommend` | commit `2b2c175` | `core/recommend/` package; adapter-context preamble; graceful degradation (memory tri-state sentinels); pinned `claude-opus-4-7` + `temperature=0.0`; per-request INFO log with `stop_reason`; 84 tests |
-| Rename: `lifecycle` → `lifecycle_policy` | commit `39afef3` + DECISIONS `[08:34]` | `git mv` preserves history; 4 docstring cross-refs updated |
-| N7 — `/requests` endpoints | commit `7b8d790` | `core/lifecycle_store/`; isolated `lifecycle_root` default; startup reconcile via lifespan; file-side transition table distinct from memory-side; parseability isolation; scope boundary named in module docstring; 58 tests |
-| N8 — soak-baseline fixtures + smoke + `/health` pulse | commit `a36df05` | `planning/test-fixtures/` with soak-diagnostic README; `/health` upgraded to operational pulse (counters + model echo + row counts + config paths); CI-safe smoke + live_smoke-marker `csvstat > pandas` assertion; 23 tests |
-| N10 framework — stdio proxy shim | commit `5ffe58c` | `adapters/claude_code/` 4-layer split; `git mv` from hyphenated path; pinned `protocolVersion=2024-11-05` with non-hostile mismatch logging; stdout-purity enforced by static AST lint + dynamic e2e; `scripts/concierge-shim` wrapper verified via real shell invocation; 53 tests |
+| 0 | **Alembic migration-drift integration test:** new `tests/test_alembic_drift.py`; spins up a fresh empty SQLite, runs `alembic upgrade head` from baseline, verifies the resulting schema is identical to `Base.metadata.create_all()` output. Catches "column added to models.py without a migration" before it lands in production. Cheap insurance per the Fix Day 1 `init_db()` test-only docstring note. | ~30-45min |
+| 1 | **A1 skills ingest path:** new `core/ingest/skills.py`; walks `/mnt/skills/public`, `/mnt/skills/user`, `/mnt/skills/examples`; parses SKILL.md frontmatter (name, description, location); registers each as catalog entry with `tool_type=skill`. Idempotent upsert-by-slug, same pattern as `core/ingest/catalog.py`. | ~2-3h |
+| 2 | **A1 skills-specific schema fields:** add `path` (nullable for non-skill tools) and `ambient_loading` (bool, defaults true for skills) to Tool model; migration. Pack surface unchanged (skills are pack-less). | ~0.5h |
+| 3 | **§D schema change:** add `lifecycle_state` column to Tool model with the blueprint's five values (`discovered` / `pending` / `used` / `loaded-on-boot` / `retired`); migration; backfill based on current `is_in_manifest` + `is_active` mapping (active+in-manifest → `loaded-on-boot`; dormant → `discovered`; etc.). | ~1.5h |
+| 4 | **§D usage-log table:** new `ToolUsageEvent` SQLAlchemy model with columns `tool_id` (FK), `event_type` (recommended / installed / loaded / used / removed), `timestamp`, `session_id` (nullable), `context` (JSON, nullable); migration; no consumer yet (emit hooks land Fix Day 3). | ~1h |
+| 5 | **Catalog ingest enrichment for skills metadata:** `_render_catalog` surfaces `ambient_loading` flag + `path` for skills so Opus can reason about ambient-loaded skills without trying to "install" them; skills-as-tool_type=skill gets an explicit rendering branch. | ~0.5-1h |
 
-**Tests at session close:** 323/323 CI-safe fast green; 329/329 with
-integration; 1 live_smoke deselects correctly.
+**Total sized load:** ~5.5-7.5h (Task 0 is separate budget as a pre-flight).
 
-**Day 2 build-plan §F.2.2 Scenario A:** all checkpoint boxes ticked.
+## End-of-day deliverable
 
-## Queued off-path (for any Day 3 gap)
+`GET /tools?tool_type=skill` returns non-empty with `path` and `ambient_loading`
+populated. `Tool.lifecycle_state` column populated on all existing + newly-
+ingested rows. `ToolUsageEvent` table migrates cleanly and accepts a test write
+via direct SQLAlchemy session. Migration-drift integration test green. Day 2
+SESSION snapshot written.
 
-- **X11** — outbox-housekeeping cron verify + heartbeat doc (~0.5h).
-  Operational-first elevated from "install + doc" to "verify cron
-  ACTUALLY fires and produces heartbeats under real usage."
+## Checkpoint criteria
 
-## Governing framing for Day 3
+- [ ] Task 0 migration-drift test: passes against current HEAD schema; would fail
+      if a models.py column were added without a corresponding migration
+- [ ] Running the skills ingest populates ≥5 skill rows from `/mnt/skills/public`
+- [ ] `GET /tools?tool_type=skill` returns skill rows with non-null `path` and
+      `ambient_loading=true`
+- [ ] `Tool.lifecycle_state` column backfilled for all existing rows (the Fix
+      Day 1 four seeded + 44 ingested rows + new skill rows)
+- [ ] `ToolUsageEvent` table migrates cleanly and accepts a test write
+- [ ] Day 2 SESSION snapshot written
 
-Operational-first per DECISIONS `[2026-04-21 18:00]` remains active.
-Day 3 is the critical-path high-pressure day per Phase E Risk #3;
-three named day-of triggers per build-plan §F.2.3:
+## Cut-if-behind ladder
 
-1. **Cut 3** — defer `concierge_list_active` meta-tool (saves 1.0h)
-   if N11 slips past midday
-2. **Cut 2** — drop X13 tool-install Python module (saves 1.0h) if
-   midday block overruns
-3. **Approach 3 fallback** (mcporter ephemeral spawn) if N10 shim
-   catastrophically breaks — Level-3 chat BEFORE invoking; not a
-   ladder cut
+**If behind schedule, cut:**
+1. First cut: usage-log table (Task 4) slides to Fix Day 3 morning. Skills
+   ingest is the priority deliverable because it's the biggest
+   scope-expansion item and the blueprint commitment.
+2. Second cut: catalog ingest enrichment (Task 5) slides to Fix Day 3. The
+   rendering change is minor; the schema + data-layer work is foundational.
+3. Third cut (only if foundational blockers surface): `lifecycle_state`
+   backfill becomes a forward-only migration — new rows get the column
+   populated at insert time; existing rows stay NULL until a one-time
+   reconciliation pass in soak. Still honors the schema commitment.
 
-## Day 3 opening state (for tomorrow's session)
+Task 0 does NOT slide — it is cheap insurance that pays forward for every
+migration on Days 2-3-4.
 
-**Day 3 primary goal** per build-plan §F.2.3: **Claude Code adapter
-integration** — spike → meta-tools → gap-report → backing-server
-lifecycle → end-to-end smoke. The N10 framework shipped tonight is
-ready to receive N11's `dispatcher.register_tool(ToolSpec(...),
-handler)` calls without framework changes.
+## What Fix Day 2 is NOT
 
-### Morning block (~4h)
+- Not tool-lifecycle transition validation (that's Fix Day 3 per close-the-gap plan)
+- Not usage-telemetry emit hooks (Fix Day 3 — schema lands today, emit code follows)
+- Not loader `unload` / rich `list_active` (Fix Day 3)
+- Not identity notes (Fix Day 3)
+- Not narration-as-push / SSE / scanner (Fix Day 4)
+- Not UI tiles (UI Day after Fix Day 4)
+- Not PEP-668 install-strategy fix (open question from Fix Day 1; defer until
+  Lewie weighs in on pipx vs system-pip3 vs escalation)
 
-| ID | Item | Effort | Notes |
-|---|---|---|---|
-| N9 | `tools/list_changed` verification spike | 0.5h (HARD time-box) | First 30 min of Day 3; send a `notifications/tools/list_changed` during a live Claude Code session. If client re-fetches `tools/list`: Approach 1 viable, N10 simplifies. Otherwise commit to Approach 2. |
-| X8 | SOUL.md root delta → Claude-Code prompt fragment | 0.5h | Off-path; can parallel with N11. Feeds N12 gap-report injection. |
-| N11 | Meta-tool surface — `concierge_recommend`, `concierge_request_tool`, `concierge_list_active` | 3.0h | **Day-of trigger: Cut 3 defers `concierge_list_active`, trims N11 to 2.0h.** Meta-tools register via `dispatcher.register_tool(...)` on the N10 framework; httpx `AsyncClient` constructed lazy-on-first-handler-call; `CONCIERGE_URL` default `http://127.0.0.1:8000`. |
+## Session opener
 
-### Midday block (~3h)
+Paste this verbatim into a fresh Claude Code session to kick off Fix Day 2:
 
-| ID | Item | Effort | Notes |
-|---|---|---|---|
-| N12 | Gap-report injection via `concierge_recommend` result payload | 2.0h | Requires X8. Augments the `concierge_recommend` response with gap structure Opus can act on. |
-| X13 | Python install module (`install_npm_global`, `install_pip_user`, `install_single_binary`) | 1.0h | **Day-of trigger: Cut 2 drops X13 entirely** if midday runs late. Manual install command + voiceover replaces autonomous install. |
+---
 
-### Afternoon block (~4h)
+> Read in order, then confirm understanding before acting:
+>
+> 1. `CLAUDE.md` (project root — v3 content superseding prior versions)
+> 2. `docs/concierge-operations-protocol.md`
+> 3. `docs/concierge-blueprint-v2.md` (especially §Five Core Capabilities item #1 on skills as fourth peer, and §Architecture on tool-level lifecycle)
+> 4. `docs/close-the-gap-plan-2026-04-23.md` §Fix Day 2 section
+> 5. `planning/sessions/SESSION-2026-04-24-01.md` ← Fix Day 1 close-out; includes denial-recall PASS transcript, live-install verification, three new DECISIONS
+> 6. `planning/today.md` ← this file
+> 7. `planning/decisions/DECISIONS.md` tail — three new `[2026-04-24 Fix Day 1]` entries (Alembic-owns-schema, rich-content-validator-WARN, install_dispatcher-DI)
+>
+> Today is Fix Day 2 — Skills ingest + tool-lifecycle schema. Primary goal: catalog ingests skills as fourth peer category, tool-lifecycle state machine schema in place, usage-log table accepting writes.
+>
+> Before Task 1, run Task 0: write `tests/test_alembic_drift.py` — spin up a fresh empty SQLite, run `alembic upgrade head` from the baseline, verify the resulting schema matches `Base.metadata.create_all()` output. Cheap insurance that catches "column added without migration" drift. Under 30-45 minutes.
+>
+> Before starting code, report: your reading of the Fix Day 1 three decisions, any concerns about Task 0 or the Fix Day 2 tasks or checkpoint criteria, and your proposed session structure.
+>
+> Effort: xhigh throughout. Bump to max for the tool-lifecycle schema backfill design (mapping `is_in_manifest` + `is_active` + `is_discovered` onto the five-state enum is non-trivial — audit §D flagged it as design-level, not patch-level) and for the migration-drift integration test design in Task 0.
+>
+> Do not begin code until I confirm your reading and session plan.
 
-| ID | Item | Effort | Notes |
-|---|---|---|---|
-| N13 | Backing-server spawn/teardown lifecycle | 2.0h | Adds `adapters/claude_code/backing_server.py` + prefix-based routing to the dispatcher. Layer 1-3 untouched. |
-| N14 | End-to-end integration smoke | 2.0h | Claude Code session → shim → N11 meta-tool → N6 recommend → ranked output. Uses the `planning/test-fixtures/` corpus. |
+---
 
-### Evening — Manual MCP-client verification (~0.5-1h)
+*Note for the fresh session: The Fix Day 1 three DECISIONS entries at the tail
+of `DECISIONS.md` cover the mid-session architectural calls (Alembic owning
+schema, rich-content-validator as Tier 1 WARN, install_dispatcher DI). Read
+them for context on why the Alembic path looks the way it does — especially
+relevant when Task 2 and Task 3 generate migrations via `alembic revision
+--autogenerate`. Task 0's migration-drift test guards against drift between
+the Alembic path (production) and the `Base.metadata.create_all()` path (test
+fixtures) diverging — which is exactly the failure mode the Fix Day 1
+DECISIONS `create_all` section explicitly deferred to Fix Day 2.*
 
-- Wire shim into a local `.mcp.json` referencing
-  `scripts/concierge-shim`
-- Launch a real Claude Code session; confirm `initialize` handshake
-  completes (no stderr gibberish, no hang)
-- Confirm `tools/list` surfaces N11 meta-tools
-- Invoke `concierge_recommend` from within the Claude Code session
-  with `planning/test-fixtures/sample-task.md`; confirm ranked
-  response makes it back through the JSON-RPC round-trip
-- Log any protocol-version-mismatch observed (we pin `2024-11-05`)
-- Per `adapters/claude_code/README.md`: until this manual pass
-  happens, "shim works" = "subprocess harness says it works" — don't
-  conflate
-
-### Day 3 checkpoint (Thursday night per build-plan §F.2.3)
-
-- [ ] Claude Code session loads Concierge shim, sees
-      `concierge_recommend` meta-tool
-- [ ] `concierge_recommend` returns ranked recommendations with
-      gap-report structure
-- [ ] Backing-server spawn/teardown works without session restart
-- [ ] N14 integration smoke runs the fixture scenario cleanly at
-      least once
-
-**Expected wall-clock:** ~11.5h even with Cuts 2+3 executed. Over-
-shoot by ≤1h acceptable, absorbed by Day 5 buffer; over-shoot by
-≥2h escalates to Level-3 chat per Phase E Risk #3 mitigation.
-
-## Tomorrow's first action
-
-1. Read `planning/sessions/SESSION-2026-04-22-01.md` (this Day 2
-   close-out snapshot) + the four recent DECISIONS entries
-   (`[2026-04-21 05:50]`, `[2026-04-21 18:00]`, `[2026-04-22 07:26]`,
-   `[2026-04-22 08:34]`)
-2. Regenerate this file as `Today — 2026-04-23 (Thursday, Day 3)`
-3. Open the session with **N9 `tools/list_changed` spike — 0.5h hard
-   time-box.** Result determines N10 extension shape (Approach 1
-   simplification vs committing to Approach 2 as planned)
+*Open question still outstanding from Fix Day 1 (not blocking Fix Day 2):
+PEP-668 install-strategy design (pipx vs system-pip3 vs escalation). Do not
+touch the install methods today unless Lewie has weighed in; the current
+behavior (honest failure surfacing) is operational-first-correct until the
+strategy is chosen.*

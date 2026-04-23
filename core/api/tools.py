@@ -19,6 +19,7 @@ def _to_out(tool: Tool) -> ToolOut:
         slug=tool.slug,
         name=tool.name,
         description=tool.description,
+        tool_type=tool.tool_type,
         category=tool.category,
         install_method=tool.install_method,
         is_in_manifest=tool.is_in_manifest,
@@ -42,6 +43,7 @@ def list_tools(
         description="Convenience filter: is_in_manifest=True AND is_active=False",
     ),
     category: Optional[str] = Query(None),
+    tool_type: Optional[str] = Query(None),
     slug: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
@@ -69,6 +71,8 @@ def list_tools(
         )
     if category is not None:
         query = query.filter(Tool.category == category)
+    if tool_type is not None:
+        query = query.filter(Tool.tool_type == tool_type)
     if slug is not None:
         query = query.filter(Tool.slug == slug)
 

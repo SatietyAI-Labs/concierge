@@ -2313,3 +2313,195 @@ drift investigations should cite this entry by timestamp
 response shape recorded above.
 
 ---
+
+## [2026-04-23] — Skills as fourth catalog category with full peer status
+
+**Context:** Blueprint-v2 §Five Core Capabilities item #1 names four categories as peers: MCP servers, CLI commands, lightweight HTTP APIs, and skills. Current catalog schema has no `tool_type` enum. Skills are not currently expressed as catalog entries — they exist in `/mnt/skills/` directories and are loaded on-demand by Claude when it judges them relevant, but have no systemic memory, lifecycle, or recommendation-engine awareness.
+
+**Options considered:**
+- Three categories only (MCP / CLI / HTTP), skills remain outside catalog — 0h but misses blueprint commitment
+- Four categories with schema-ready / data-model-deferred — ~0.5h enum work, skills ingest Phase 2
+- Four categories with full peer status including ingest and lifecycle — ~5-7h on top of three-category baseline
+
+**Decision:** Four categories with full peer status. Catalog ingest walks `/mnt/skills/public`, `/mnt/skills/user`, `/mnt/skills/examples`. Each SKILL.md is parsed for its frontmatter (name, description, location), registered as a catalog entry with `tool_type=skill`. Skills participate in recommendation, lifecycle, and usage telemetry.
+
+**Reasoning:** Blueprint is authoritative. Skills solve exactly the same myopia problem as tools — they sit in the context window unmanaged by any lifecycle, with no promotion/demotion based on real usage. Treating them as catalog peers extends Concierge's value proposition from MCP-tool-awareness to all-agent-capability-awareness. The extra 5-7h is justified under ship-it-whole scope.
+
+**Reversibility:** Easy. Schema supports all four values from v1; populating skills can be turned off by disabling the skills-ingest path.
+
+**Decided by:** Lewie (strategic chat, 2026-04-23).
+
+**Affects:** `core/db/models.py` Tool schema; new `core/ingest/skills.py` module; `core/recommend/prompt.py` catalog-rendering; B1 UI Registry tile.
+
+---
+
+## [2026-04-23] — Wishlist collapse into requests
+
+**Context:** Blueprint-v2 §Post-hackathon UI sections references a "Wishlist Patterns" tile, implying a surface distinct from formal tool-requests. TOOL-CONCIERGE-OVERVIEW does not name a standalone wishlist section. `core/prompts/SKILL_FRAGMENT_SYNC_LOG.md:388-389` notes "lifecycle store absorbs the wishlist log" as an architectural decision, but the collapse was not reflected in code or blueprint.
+
+**Options considered:**
+- Keep wishlist as separate less-structured gap-log surface alongside formal requests (~2-3h to build)
+- Collapse: formal requests are the only gap-capture surface; Phase-2 "patterns" UI derives from requests table
+
+**Decision:** Collapse. Wishlog is deprecated as a distinct surface. `concierge_request_tool` is the gap-capture surface. Agents who can't fully evaluate alternatives file thin requests (tool_name only) and Concierge-the-reasoner fills context during the recommendation that prompted the request. Phase-2 "Wishlist Patterns" UI view becomes "request patterns" derivable from the existing requests table.
+
+**Reasoning:** The wishlog's reason-for-existing in OpenClaw was letting low-capability agents casually note gaps without doing full evaluation. Concierge's `concierge_request_tool` with its rich schema handles the same function without needing a separate lighter-weight surface. Three-part fidelity Q3 confirmed agents can populate requests richly when prompted. One storage model, one UI surface, one mental model.
+
+**Reversibility:** Medium. Reversing requires building the separate wishlist table and ingest path that doesn't currently exist.
+
+**Decided by:** Lewie (strategic chat, 2026-04-23).
+
+**Affects:** Blueprint-v2 §Post-hackathon UI sections to be updated. A8 in audit marked as Phase-2-derivable rather than separate-surface.
+
+---
+
+## [2026-04-23] — A2 recommendation five-check loop collapsed into Opus reasoning
+
+**Context:** Blueprint-v2 §Recommendation Engine describes a five-step protocol (memory → resolved requests → catalog → manifest → discovery). TOOL-CONCIERGE-OVERVIEW names the same loop. Current implementation at `core/recommend/service.py:101-122` pre-loads memory + catalog and lets Opus reason about the rest in a single call. Audit flagged this as "defensible collapse" but noted possible loss of the "previously denied → still denied" guardrail.
+
+**Options considered:**
+- Accept current collapse as v1 architecture (~0h)
+- Add explicit resolved-requests query between memory and catalog (~1h)
+- Fully branch into five explicit Python steps (~1-2h)
+
+**Decision:** Accept the collapse as intentional architecture. Denial-recall is handled via memory retrieval — a prior-denied tool shows up in memory hits and Opus is instructed via X3/X4 prompt fragments to honor prior decisions. The collapse is the more-Concierge-native pattern (reasoning over branching for soft decisions).
+
+**Verification requirement:** Empirically verify denial-recall works — pick a previously-denied tool from memory, send a task that would have triggered it, confirm Opus honors the prior denial in its recommendation. This is a ~1h test, not a fix, and is included in Fix Day 1. If verification fails, add the ~1h resolved-requests query between memory and catalog.
+
+**Reasoning:** Branching if/else logic over soft decisions replicates what Opus does natively. The structural guardrail the overview implies can be preserved via prompt instruction without explicit branching, provided the verification confirms it.
+
+**Reversibility:** Easy. Adding the explicit query is a localized change if verification exposes a gap.
+
+**Decided by:** Lewie (strategic chat, 2026-04-23).
+
+**Affects:** A2 in audit closes under this decision. Verification task added to Fix Day 1 checkpoint criteria.
+
+---
+
+## [2026-04-23] — Push channel reframed as narration-as-push
+
+**Context:** Blueprint-v2 and TOOL-CONCIERGE-OVERVIEW reference a push channel where Concierge proactively injects messages into the agent's context. Claude Code is a conversational agent without an external interrupt surface — true async push would require sidecar infrastructure that doesn't exist. The underlying user need is collaborative visibility: agents acknowledging their own tool limits, surfacing Concierge's work visibly, making the user feel the partnership rather than having to dig for it.
+
+**Options considered:**
+- True async push via sidecar process (infrastructure that doesn't exist; Phase-3)
+- Minimum-viable narration-as-push via prompt surface (achievable in current harness)
+
+**Decision:** Narration-as-push. Every Concierge interaction leaves a visible trail in the agent's conversation via three combined patterns:
+
+1. **Enriched MCP tool descriptions** for `concierge_recommend` and `concierge_request_tool` include explicit narration requirements: "After invoking this tool, your next user-visible message must briefly narrate the consultation — what you asked Concierge about, what it recommended, what you're doing with that recommendation."
+2. **MCP resources protocol** exposes X3/X4/X6/X7/X8 preambles + gap-preamble as readable resources at session start. Turns narration from a per-tool instruction into a session-long posture.
+3. **Piggyback observations in recommend responses** — when Concierge answers, it can optionally include "by the way, I noticed this other thing" observations. Agent surfaces these in its narration.
+
+**Reasoning:** The user-facing goal — feeling the collaborative partnership — is achieved by making every Concierge interaction produce a visible "I just consulted Concierge, here's what it said" moment in the conversation. True async push would add infrastructure complexity that doesn't meaningfully improve the user experience because Claude Code doesn't have an interrupt surface to compare against.
+
+**Reversibility:** Easy. Prompt-surface change, no infrastructure commitments.
+
+**Decided by:** Lewie (strategic chat, 2026-04-23).
+
+**Affects:** Fix Day 4 narration-as-push tasks. Async sidecar push marked as Phase-3, out of scope for ship-it-whole v1.
+
+---
+
+## [2026-04-23] — Identity Notes included in v1
+
+**Context:** TOOL-CONCIERGE-OVERVIEW §Memory and Learning describes identity notes as a compact running summary of tool preferences in persistent memory. Stubs exist at `core/memory.py:40-45` marked "not implemented (scope trim)" and `core/memory.py:74-77` defining the identity collection name with no consumer. Blueprint-v2 does not name identity notes explicitly but its memory service §71-81 references similar persistent-preference patterns.
+
+**Options considered:**
+- Defer to Phase 2 (originally cut in earlier sizing)
+- Include in v1
+
+**Decision:** Include in v1. Implement `identity_get` / `identity_set` on `MemoryClient`. Recommendation engine reads current identity summary at recommend time and injects into Opus system prompt context. Identity gets updated after each install/remove via lifecycle-store post-transition hook.
+
+**Reasoning:** Identity notes solve the "fresh session forgets my preferences" problem that otherwise requires Opus to re-derive preferences from memory search every time. One persistent summary is cheaper to read than N tool-selection memory entries. The architecture was designed with room for it; finishing the implementation is closing a known gap rather than adding scope.
+
+**Reversibility:** Easy. Disabling the identity read in recommendation engine is localized.
+
+**Decided by:** Lewie (strategic chat, 2026-04-23).
+
+**Affects:** `core/memory.py` identity methods; `core/recommend/service.py` prompt composition; `core/lifecycle_store/service.py` post-transition hook.
+
+---
+
+## [2026-04-23] — C7 promotion/demotion scanner included in v1
+
+**Context:** Blueprint-v2 §Post-hackathon UI sections marks promotion/demotion threshold adjustment as Phase-2 ("Settings — adjust thresholds"). But TOOL-CONCIERGE-OVERVIEW §Tool Lifecycle Management describes an active scanner with weekly-review semantics. Promotion/demotion constants already exist at `core/lifecycle_policy.py:139-160` with thresholds matching overview. Usage telemetry is a §D dependency for the audit's B1 "last used / success rate" column and B3 "top 3 tools" tile, so the underlying data infrastructure is being built anyway.
+
+**Options considered:**
+- Constants-only for v1; scanner deferred to Phase 2 (saves ~2-3h, UI tiles show blanks)
+- Full scanner in v1 (auto-acts on clear signal, flags ambiguous cases for review)
+
+**Decision:** Full scanner in v1. Weekly job implemented via APScheduler in the FastAPI lifespan (no cron). Reads usage-log from §D, emits promotion candidates (5+ uses in 30d) and demotion candidates (90+ days unused), writes summary to `/health`, surfaces in UI's Health tile. Auto-promotes on unambiguous signal, flags ambiguous cases (tools just crossing thresholds, tools with recent install date) for operator review rather than auto-acting.
+
+**Reasoning:** Since §D work creates the usage-log table and tool-lifecycle machine regardless, the scanner is a small addition on top. Demo-worthy and operator-useful. Blueprint's Phase-2 framing was written before the scope pivot to ship-it-whole.
+
+**Reversibility:** Easy. Scheduled job can be disabled via config flag.
+
+**Decided by:** Lewie (strategic chat, 2026-04-23).
+
+**Affects:** New `core/lifecycle_scanner.py` module; APScheduler addition to FastAPI lifespan in `core/app.py`; `/health` payload gets scanner fields; Fix Day 4 tasks.
+
+---
+
+## [2026-04-24 Fix Day 1] — Alembic owns schema; `create_all()` removed from startup
+
+**Context:** Fix Day 1 Task 1 required an Alembic migration to add the `tool_type` enum column. Inspection found Alembic was not set up in the repo — schema was created via `Base.metadata.create_all()` called from the FastAPI lifespan. Bootstrapping Alembic introduced a fork: keep `create_all()` as a first-install convenience, guard it against the `alembic_version` table's presence, or remove it outright in favor of `alembic upgrade head` at startup.
+
+**Options considered:**
+- Remove `create_all()` and require `alembic upgrade head` as a manual install step — cleanest but adds friction for new users
+- Guard `create_all()` — run only when `alembic_version` table is absent; risks the "model added without migration" drift Alembic exists to prevent
+- Accept redundancy — two schema sources of truth; drift risk is worst
+- Replace the lifespan call with programmatic `alembic.command.upgrade(cfg, "head")` so fresh `uvicorn core.app:app` self-heals
+
+**Decision:** Programmatic upgrade at startup via new `ensure_schema_current()` in `core/db/session.py`. Alembic owns production schema. The legacy `init_db()` remains as a test-only fast path (per-test `Base.metadata.create_all()` on in-memory SQLite), documented as such in its docstring.
+
+**Reasoning:** Operational-first: zero-config first-install (`uvicorn core.app:app` Just Works on a fresh clone). Eliminates the "column added to models.py without migration" drift mode. Tests keep their speed advantage. The one coherent open TODO is a migration-drift integration test exercising Alembic empty → head to guarantee tests and production don't diverge — queued as Task 0 on Fix Day 2.
+
+**Reversibility:** Easy. Reverting to `create_all()` is a ~5-line edit to `core/db/session.py` + `core/app.py`; the Alembic infrastructure can stay in place even if unused.
+
+**Decided by:** Claude Code (Fix Day 1 session, surfaced to Lewie before commit).
+
+**Affects:** `core/db/session.py` (new `ensure_schema_current` function, `init_db` docstring rewritten test-only); `core/app.py` lifespan (swapped call site); `pyproject.toml` (added `alembic>=1.13` dep); `alembic/env.py` (pulls DB URL from settings, `render_as_batch=True` for SQLite, `compare_type=True` for autogen); `alembic.ini` (URL fallback); new `alembic/versions/` baseline + tool_type migration. Fix Day 2 Task 0 adds the drift-catching integration test.
+
+---
+
+## [2026-04-24 Fix Day 1] — Rich in-chat content validator is Tier 1 WARN, not Tier 0 hard-assert
+
+**Context:** Fix Day 1 Task 3 added `category` / `install_method` / `risk_cost` to `ToolRecommendation` and instructed Opus to emit them on every recommendation. The close-the-gap plan's task text reads "validator asserts presence." The current Day 3 N14 validator philosophy is "Tier 1 WARN on shape drift, never raise" — emitting a `recommend.fixture_drift_detected` WARNING + bumping `fixture_drift_count`. Hard-asserting presence would contradict that discipline and make stochastic Opus omissions break the pipeline.
+
+**Options considered:**
+- Tier 0 hard-assert: raise `RecommendationParseError` on any missing field; strict but pipeline-breaking under normal stochastic output
+- Tier 1 WARN: emit drift signal, increment counter, never raise; operator sees via log + `/health`; pipeline continues serving
+- Hybrid: WARN for a rollover period (e.g., 50 clean responses in soak), then promote to hard-assert — adds complexity
+
+**Decision:** Tier 1 WARN. `_check_rich_content_fields` in `core/recommend/validator.py` treats missing key as drift (`rich_content_missing:<field>:index=<idx>`); explicit null is valid ("Opus has no confident value"). Matches the Day 3 N14 philosophy and the prompt instruction to Opus ("use null explicitly when you have no confident value — omitting the key is drift").
+
+**Reasoning:** Three-part fidelity Q2 established these as load-bearing schema gaps, not load-bearing runtime gates. The fix is making the fields *emittable* and *observable*, not making their absence a 502. Tier 1 gives the operator a self-detecting signal without the brittleness of hard assertions over stochastic output. If 50+ clean responses accrue in soak, a future decision can promote to hard-assert.
+
+**Reversibility:** Easy. Swap `drift.append(...)` for `raise` in `_check_rich_content_fields` (or have the service layer raise when any drift message starts with `rich_content_missing:`) if soak data ever justifies it.
+
+**Decided by:** Claude Code (Fix Day 1 session, surfaced to Lewie before code written).
+
+**Affects:** `core/recommend/validator.py` (new `_check_rich_content_fields`); `core/recommend/prompt.py` (JSON_OUTPUT_ENVELOPE instructs explicit-null semantics); `tests/test_recommend_validator.py` (new `TestValidatorRichContentDrift` class). Future soak-data-driven promotion to hard-assert lives as a deferred note.
+
+---
+
+## [2026-04-24 Fix Day 1] — `install_dispatcher` is dependency-injected on `LifecycleService`
+
+**Context:** Fix Day 1 Task 4 wired approve-triggers-install: `LifecycleService.update_status('approved')` dispatches `install_by_method`. First-pass implementation called the module-level `install_by_method` directly. Running the test suite under that shape would have triggered real `pip install --user <tool>` and `npm install -g <tool>` subprocess calls for every test that approves a fixture request with a canonical install_method.
+
+**Options considered:**
+- Direct module call, patch in tests via `unittest.mock.patch("core.install.service.install_by_method")` — works but scatters patch statements across every test that approves
+- Environment-variable gate (e.g., `CONCIERGE_DISABLE_INSTALL=1`) — brittle, leaks test concerns into production code
+- Dependency-inject on `LifecycleService` — constructor field defaulting to the real dispatcher; tests override via fixture
+
+**Decision:** DI. Added `install_dispatcher: InstallDispatcher = field(default=install_by_method)` to `LifecycleService`. Production callers (the `get_lifecycle_service` FastAPI dependency in `core/api/requests.py`) get the real dispatcher by default. Three test fixtures (`test_lifecycle_service.py::service`, `test_smoke_roundtrip.py::roundtrip_client`, `test_requests_api.py::api_harness`) inject a noop dispatcher (`lambda *a, **kw: None`) so the approve-path doesn't hit subprocesses. Dedicated X13 wire-in tests in `TestApproveTriggersInstall` inject purpose-built mock dispatchers returning controlled `InstallResult` values.
+
+**Reasoning:** DI is the test-isolation pattern used elsewhere in the codebase (`CatalogFetcher` in `core/recommend/service.py`, `AnthropicRecommender` similarly). Keeps production code clean of test-only toggles. Makes wire-in contract explicit (the dispatcher is a first-class collaborator, not a global side effect). The noop default for shared fixtures lets most tests ignore X13 entirely while the wire-in tests can assert dispatcher-call contracts precisely.
+
+**Reversibility:** Easy. Swapping back to the module-level call is a one-line revert on `_maybe_install_on_approve`. Test fixtures can be un-mocked incrementally if real-install smoke tests are desired per fixture.
+
+**Decided by:** Claude Code (Fix Day 1 session, surfaced to Lewie in the closeout summary).
+
+**Affects:** `core/lifecycle_store/service.py` (dataclass field + new `InstallDispatcher` alias); three test fixture files (noop dispatcher injection); new `TestApproveTriggersInstall` test class in `test_lifecycle_service.py` (four tests exercising success / failure / non-canonical / exception paths).
+
+---

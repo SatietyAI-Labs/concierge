@@ -32,10 +32,12 @@ logger = logging.getLogger(__name__)
 DEFAULT_NPM_TIMEOUT = 60.0
 DEFAULT_PIP_TIMEOUT = 60.0
 DEFAULT_BINARY_TIMEOUT = 120.0
+DEFAULT_NPX_MCP_TIMEOUT = 45.0
 
 METHOD_NPM_GLOBAL = "npm_global"
 METHOD_PIP_USER = "pip_user"
 METHOD_SINGLE_BINARY = "single_binary"
+METHOD_NPX_MCP = "npx_mcp"
 
 
 def install_npm_global(package: str, *, timeout_seconds: float = DEFAULT_NPM_TIMEOUT) -> InstallResult:
@@ -57,6 +59,30 @@ def install_pip_user(package: str, *, timeout_seconds: float = DEFAULT_PIP_TIMEO
     """
     cmd = ["pip", "install", "--user", package]
     return _run(METHOD_PIP_USER, cmd, timeout_seconds)
+
+
+def install_npx_mcp(
+    package: str, *, timeout_seconds: float = DEFAULT_NPX_MCP_TIMEOUT
+) -> InstallResult:
+    """Verify an npx-launched MCP package is resolvable on the npm
+    registry. Uses `npm view <package> name` — a read-only query
+    that confirms the package exists without actually prefetching
+    or executing anything.
+
+    The full "install" story for npx-MCP tools is that the package
+    runs on-demand via `npx -y <package>` when an MCP client
+    connects — there is no permanent global install. Registering
+    the MCP server with Claude Code's runtime config is the
+    adapter's concern (backing_server_registry), not X13's. X13's
+    contract here is: confirm the package is reachable so first-
+    load won't fail on a typo'd or nonexistent package.
+
+    Live `npx` prefetch is explicitly deferred — the soak phase may
+    promote this to a warmer command if registry-check proves
+    insufficient.
+    """
+    cmd = ["npm", "view", package, "name"]
+    return _run(METHOD_NPX_MCP, cmd, timeout_seconds)
 
 
 def install_single_binary(

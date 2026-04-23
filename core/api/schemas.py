@@ -14,6 +14,7 @@ class ToolOut(BaseModel):
     slug: str
     name: str
     description: Optional[str] = None
+    tool_type: Optional[str] = None
     category: Optional[str] = None
     install_method: Optional[str] = None
     is_in_manifest: bool

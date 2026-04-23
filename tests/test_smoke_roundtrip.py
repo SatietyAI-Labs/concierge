@@ -42,7 +42,14 @@ def roundtrip_client(tmp_path, db_session):
     # to this same singleton via __post_init__.
     reset_counters_for_tests()
 
-    service = LifecycleService(session=db_session, lifecycle_root=tmp_path)
+    # Disable real subprocess dispatch for the approve path — smoke
+    # tests shouldn't run pip/npm. Dedicated X13 wire-in tests in
+    # test_lifecycle_service.py cover the dispatch contract.
+    service = LifecycleService(
+        session=db_session,
+        lifecycle_root=tmp_path,
+        install_dispatcher=lambda *args, **kwargs: None,
+    )
     app = create_app()
     app.dependency_overrides[get_lifecycle_service] = lambda: service
     app.dependency_overrides[get_db] = lambda: (yield db_session)

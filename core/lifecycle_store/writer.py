@@ -24,7 +24,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from core.ingest.tool_requests import export_to_markdown, slugify
+from core.ingest.tool_requests import (
+    export_to_markdown,
+    parse_request_file,
+    slugify,
+)
 from core.lifecycle_store.schema import NewRequestDraft
 
 
@@ -174,5 +178,50 @@ def update_status_line(*, path: Path, new_status: str) -> None:
         "lifecycle.update_status filename=%s new_status=%s folder=%s",
         path.name,
         new_status,
+        path.parent.name,
+    )
+
+
+def update_install_section(
+    *,
+    path: Path,
+    command_run: str,
+    verification: str,
+    date: Optional[str] = None,
+) -> None:
+    """Add or replace the Install section in a request file, atomically.
+
+    Parse-modify-re-render path: reads the file, parses it, swaps the
+    install section's three canonical fields, and re-emits via
+    `export_to_markdown`. The file must be parseable before this is
+    called; service-layer callers parse first to validate the
+    transition, so the invariant holds by construction.
+
+    Non-canonical prose in the file (comments, ad-hoc sections
+    outside the canonical six) is NOT preserved — the canonical form
+    is the spec. Operators who want to add ad-hoc notes should do so
+    in the Approval section's 'Conditions' field, which round-trips.
+    """
+    if date is None:
+        date = datetime.now().strftime("%Y-%m-%d")
+    parsed = parse_request_file(path, folder=path.parent.name)
+    sections = dict(parsed.sections)
+    sections["install"] = {
+        "command_run": command_run,
+        "verification": verification,
+        "date": date,
+    }
+
+    class _Stand:
+        pass
+
+    stand = _Stand()
+    stand.status = parsed.status
+    stand.tool_name = parsed.tool_name
+    stand.parsed_data = sections
+    _atomic_write(path, export_to_markdown(stand))
+    logger.info(
+        "lifecycle.write_install filename=%s folder=%s",
+        path.name,
         path.parent.name,
     )
