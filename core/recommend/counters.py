@@ -33,6 +33,12 @@ class RecommendCounters:
     tokens_out_total: int = 0
     memory_unavailable_count: int = 0
     parse_failed_count: int = 0
+    # Fixture-drift counter (Tier 2 / N14). Bumped once per call
+    # whose response shape drifts from the fixture specification
+    # enforced by `core.recommend.validator.validate_response_shape`.
+    # Surfaced in /health so the operator sees the magnitude of
+    # API-shape evolution over the 48h shakedown window.
+    fixture_drift_count: int = 0
 
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
@@ -50,6 +56,10 @@ class RecommendCounters:
         with self._lock:
             self.parse_failed_count += 1
 
+    def record_fixture_drift(self) -> None:
+        with self._lock:
+            self.fixture_drift_count += 1
+
     def snapshot(self) -> dict[str, int]:
         with self._lock:
             return {
@@ -58,6 +68,7 @@ class RecommendCounters:
                 "tokens_out": self.tokens_out_total,
                 "memory_unavailable": self.memory_unavailable_count,
                 "parse_failed": self.parse_failed_count,
+                "fixture_drift": self.fixture_drift_count,
             }
 
 
@@ -92,10 +103,11 @@ def log_shutdown_summary() -> None:
     snap = get_counters().snapshot()
     logger.info(
         "recommend.session_summary requests=%d tokens_in=%d tokens_out=%d "
-        "memory_unavailable=%d parse_failed=%d",
+        "memory_unavailable=%d parse_failed=%d fixture_drift=%d",
         snap["requests"],
         snap["tokens_in"],
         snap["tokens_out"],
         snap["memory_unavailable"],
         snap["parse_failed"],
+        snap["fixture_drift"],
     )

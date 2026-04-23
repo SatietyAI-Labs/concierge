@@ -42,6 +42,25 @@ class TestRecommendCounters:
         # are tagged separately from successful request tallies.
         assert snap["requests"] == 0
 
+    def test_fixture_drift_counter_is_independent(self):
+        """Tier-2 counter (N14) — tracks how many recommend calls
+        had their response shape drift from the fixture specification.
+        Bumped by service.recommend() when validate_response_shape
+        returns non-empty drift messages. Does not auto-bump request
+        count; a drifted call still served successfully from the
+        user's point of view.
+        """
+        reset_counters_for_tests()
+        c = get_counters()
+        c.record_fixture_drift()
+        c.record_fixture_drift()
+        c.record_fixture_drift()
+        snap = c.snapshot()
+        assert snap["fixture_drift"] == 3
+        assert snap["requests"] == 0
+        assert snap["memory_unavailable"] == 0
+        assert snap["parse_failed"] == 0
+
     def test_snapshot_is_a_copy(self):
         reset_counters_for_tests()
         c = get_counters()
@@ -85,6 +104,8 @@ class TestShutdownSummaryLog:
         assert "tokens_out=45" in msg
         assert "memory_unavailable=1" in msg
         assert "parse_failed=2" in msg
+        # fixture_drift was not bumped in this setup → 0 in the line.
+        assert "fixture_drift=0" in msg
 
     def test_shutdown_summary_with_zero_activity(self, caplog):
         reset_counters_for_tests()

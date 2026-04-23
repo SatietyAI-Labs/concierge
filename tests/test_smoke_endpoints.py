@@ -116,7 +116,7 @@ class TestHealthOperationalPulse:
         assert "recommend" in body["counters"]
         assert "lifecycle" in body["counters"]
         # Shape: zero initial state, but all expected keys present.
-        for key in ("requests", "tokens_in", "tokens_out", "memory_unavailable", "parse_failed"):
+        for key in ("requests", "tokens_in", "tokens_out", "memory_unavailable", "parse_failed", "fixture_drift"):
             assert key in body["counters"]["recommend"]
         for key in ("created", "transitioned", "invalid_transitions", "parse_failed", "not_found"):
             assert key in body["counters"]["lifecycle"]

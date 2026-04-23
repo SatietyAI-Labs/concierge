@@ -54,6 +54,7 @@ from core.recommend.schemas import (
     RecommendResponse,
     TokenUsage,
 )
+from core.recommend.validator import validate_response_shape
 
 
 logger = logging.getLogger(__name__)
@@ -217,7 +218,7 @@ class RecommendationService:
         )
 
         # 7. Response
-        return RecommendResponse(
+        response = RecommendResponse(
             request_id=request_id,
             recommendations=recommendations,
             memory_available=memory_available,
@@ -238,6 +239,27 @@ class RecommendationService:
             reasoning=reasoning,
             stop_reason=call.stop_reason,
         )
+
+        # 8. Tier 1 drift detection — fixture-spec structural check
+        # against the real response. Never raises; logs WARNING per
+        # drift message and bumps the fixture_drift_count counter
+        # once per drifted call (Tier 2 surface in /health). The
+        # user's call still returns the response regardless.
+        drift_messages = validate_response_shape(
+            response.model_dump(), request_id=request_id
+        )
+        if drift_messages:
+            self.counters.record_fixture_drift()
+            drift_summary = "; ".join(drift_messages)
+            logger.warning(
+                "recommend.fixture_drift_detected request_id=%s "
+                'drift_count=%d drift_summary="%s"',
+                short,
+                len(drift_messages),
+                drift_summary,
+            )
+
+        return response
 
     # ---- Helpers ------------------------------------------------------
 
