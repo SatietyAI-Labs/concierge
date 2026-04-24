@@ -375,3 +375,65 @@ class TestDispatcherIntegrationUnit:
         resp = await dispatcher.dispatch(req)
         assert "error" in resp
         assert resp["error"]["code"] == INVALID_PARAMS
+
+
+class TestBackingServerRegistryUnload:
+    """Fix Day 3 Task 5: symmetric unload(tool_prefix) tears down a
+    single registered backing server. Never-spawned servers unload
+    cleanly; already-unloaded / never-registered prefixes return False
+    without raising."""
+
+    @pytest.mark.asyncio
+    async def test_unload_removes_registered_server(self):
+        registry = BackingServerRegistry()
+        registry.register(_spec(name="mock", prefix="mock_"))
+        assert len(registry) == 1
+
+        result = await registry.unload("mock_")
+
+        assert result is True
+        assert len(registry) == 0
+        assert "mock_" not in registry.registered_prefixes()
+
+    @pytest.mark.asyncio
+    async def test_unload_missing_prefix_returns_false(self):
+        registry = BackingServerRegistry()
+        result = await registry.unload("never-registered_")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_unload_frees_tool_inventory(self):
+        """After unload, list_all_tools must not return the unloaded
+        server's tools — they're no longer reachable via routing."""
+        registry = BackingServerRegistry()
+        registry.register(_spec(name="mock", prefix="mock_"))
+        assert any(
+            t["name"].startswith("mock_") for t in registry.list_all_tools()
+        )
+
+        await registry.unload("mock_")
+
+        assert not any(
+            t["name"].startswith("mock_") for t in registry.list_all_tools()
+        )
+
+    @pytest.mark.asyncio
+    async def test_unload_twice_is_idempotent(self):
+        registry = BackingServerRegistry()
+        registry.register(_spec(name="mock", prefix="mock_"))
+        first = await registry.unload("mock_")
+        second = await registry.unload("mock_")
+        assert first is True
+        assert second is False  # already unloaded
+
+    @pytest.mark.asyncio
+    async def test_unload_preserves_other_servers(self):
+        registry = BackingServerRegistry()
+        registry.register(_spec(name="alpha", prefix="alpha_"))
+        registry.register(_spec(name="beta", prefix="beta_"))
+
+        await registry.unload("alpha_")
+
+        assert len(registry) == 1
+        assert "beta_" in registry.registered_prefixes()
+        assert "alpha_" not in registry.registered_prefixes()

@@ -2558,3 +2558,111 @@ No existing row mapped to `pending` or `retired` — both are transition-only st
 **Affects:** Documentation only. The migration `2fe7a135d9dd` is unchanged; the live-DB backfill result is unchanged; this entry adds the audit record for the mapping table and the process lesson for future sessions.
 
 ---
+
+## [2026-04-25 Fix Day 3] — Hybrid validation for Tool.lifecycle_state transitions (service method + `set` event listener)
+
+**Context:** Fix Day 3 Task 1 needed transition validation over the five-value `Tool.lifecycle_state` enum. The plan referenced `core/lifecycle_store/transitions.py` as the pattern, which is pure service-layer validation. But `Tool.lifecycle_state` has writers beyond the service (direct `setattr` in tests, future scanner auto-promotions, ad-hoc REPL sessions), and a service-only gate leaves those paths unchecked.
+
+**Options considered:**
+- Service-method-only — clean, bypassable by any caller doing `tool.lifecycle_state = X; session.flush()` directly
+- Event-listener-only — catches every ORM write but failure locus is less clear; service-layer intent-level logging lost
+- Hybrid: service method as canonical write path + `set` attribute event listener as belt-and-suspenders guard
+
+**Decision:** Hybrid. `core/tool_transitions.py::transition_tool_lifecycle(session, tool, new_state, *, on_transition=None)` is the canonical path; `@event.listens_for(Tool.lifecycle_state, "set", active_history=True, propagate=True)` validates every setattr regardless of caller. Raw SQL `connection.execute(UPDATE...)` intentionally bypasses both — explicit-by-design for Alembic migrations + audited backfills, codified as precedent via the Fix Day 2 `2fe7a135d9dd` backfill pattern and guarded by `TestRawSqlBypass` in the test suite.
+
+**Reasoning:** The service method gives callers a clear failure locus, intent-level log lines ("tool_transitions.apply slug=X old→new"), and the `on_transition` hook surface. The listener catches direct-setattr writes that would otherwise skip validation, including test code and future scanner invocations. Raw-SQL bypass is not a loophole — it's the documented path for schema-level operations that must ignore ORM-level invariants (e.g. a Fix Day 2-style backfill migrating many rows to a post-state without re-validating each edge).
+
+The listener's specific shape — `set` event with `active_history=True`, NOT `before_update` with `get_history` — is itself load-bearing evidence for the hybrid design. The first-pass implementation used `before_update`; initial tests green; the regression surfaced only when a test committed a row and then set `lifecycle_state` to an illegal value. SQLAlchemy expires attributes after commit, so the subsequent setattr + flush had `history.deleted = []` because the old value never loaded from DB. The `before_update` listener silently accepted the illegal transition. This failure mode — ORM-level validation silently accepting an illegal transition because the committed value was stale in the attribute cache — is a concrete argument for why the listener approach must exist at all, and why it must be wired to a DB-truth-forcing event. A service-layer-only validator would not have caught this class of bug in any realistic test shape, because a service caller with an expired attribute has the same blind spot: the validator compares the new value against whatever happens to be in the attribute cache. The `set` event with `active_history=True` forces the committed value to load from the DB before comparison, closing the blind spot. Future sessions considering service-only validation on other models should weigh this precedent before deciding.
+
+**Reversibility:** Easy. Removing the listener is a one-line delete in `core/tool_transitions.py` + removing the side-effect import in `core/db/__init__.py`; service method remains usable as the sole path. Removing the service method and keeping only the listener is also trivial. The two-surface design is additive.
+
+**Decided by:** Lewie (Fix Day 3 session open — accepted default (c) hybrid with note that docstring must call out the Alembic/backfill bypass explicit-by-design, 2026-04-25).
+
+**Affects:** `core/tool_transitions.py` (~220 lines, new); `core/db/__init__.py` (side-effect import); `tests/test_tool_transitions.py` (24 tests including regression guard for the expired-attribute bug). Future sessions implementing new state machines on other models should follow the same hybrid pattern.
+
+---
+
+## [2026-04-25 Fix Day 3] — `session_id` uniformly None across all three telemetry emit sites
+
+**Context:** Fix Day 3 Task 2 wired `ToolUsageEvent` emits across `concierge_recommend`, `install_by_method` (via `_maybe_install_on_approve`), and the Claude Code loader. The schema has `session_id: Optional[str]`. One emit site — the loader — has a trivially-available MCP session ID; the other two don't propagate session context today.
+
+**Options considered:**
+- True async propagation across all three sites (FastAPI request-context for recommend; a new param on LifecycleService for install; MCP session for loader) — ~1-2h work that overlaps Fix Day 4's narration-as-push surfaces
+- Partial population — loader populates, recommend + install leave null — ~15min cost, exploits the trivial availability on one site
+- Uniformly null for all three — Fix Day 4 lights all three coherently when narration-as-push touches the same surfaces
+
+**Decision:** Uniformly null. All three emit sites pass `session_id=None`. Fix Day 4 Task 6 is the coordinated wire-in across all three.
+
+**Reasoning:** A field's meaning should be stable. Partial population implies "session_id is the session that called this," but the recommend-path and install-path would deliver null for the same semantic concept. Readers (operator, scanner aggregation queries, future session-correlation tooling) would have to know which callers populate vs not — the field's meaning becomes caller-dependent rather than data-dependent. Uniform null says "we don't have this signal yet anywhere" and is honest; partial population is a lie about half the rows. The 15min savings from loader-only propagation isn't worth the semantic drift.
+
+**Reversibility:** Easy. Fix Day 4 Task 6 replaces the null placeholders with real session_id across all three sites in a single coordinated change.
+
+**Decided by:** Lewie (Fix Day 3 session open — accepted default with agreement that partial population is strictly worse, 2026-04-25).
+
+**Affects:** `core/telemetry.py::UsageEventSink` type alias (signature deliberately omits session_id today; kwarg lands Fix Day 4); `core/recommend/service.py` per-rec emit loop; `core/lifecycle_store/service.py::_maybe_install_on_approve`. Fix Day 4 Task 6 is the unblocker.
+
+---
+
+## [2026-04-25 Fix Day 3] — `_tool_state` deprecation via WARN fallback, not hard-removal
+
+**Context:** Fix Day 3 Task 3 deprecated `_tool_state(is_in_manifest, is_active)` — the four-state derived label — in favor of the stored five-state `Tool.lifecycle_state` column. Every `Tool` row should have `lifecycle_state` populated after Fix Day 2's backfill, but some code paths could theoretically insert a row without the column default (ORM construction bypassing server_default, a future migration adding Tool rows via raw SQL, etc.).
+
+**Options considered:**
+- Hard-remove `_tool_state` — cleanest; breaks any CatalogToolView constructed without `lifecycle_state` set, surfaces the regression as a test failure
+- Silent fallback — `_render_standard_row` falls back to `_tool_state(is_in_manifest, is_active)` without signal when `lifecycle_state` is None; no regression visibility
+- WARN-log fallback — fallback path logs `recommend.prompt.lifecycle_state_missing slug=X` so a regression is observable but the prompt still composes
+
+**Decision:** WARN-log fallback. `_tool_state` retains as the fallback path in `_render_standard_row`; the function logs WARN naming the slug when fallback fires. After Fix Day 2 backfill this should never fire in production; a WARN in the operational logs is the cheap detection signal if a future migration or ORM insert path ever bypasses the column default.
+
+**Reasoning:** Hard-remove breaks tests that construct `CatalogToolView` fixtures without lifecycle_state (there are several — they predate Task 3). Silent fallback loses the regression signal; the fallback could fire in production for months without anyone noticing that a migration silently introduced NULL lifecycle_state rows. WARN-log preserves the regression signal at cheap cost: one grep in 48h shakedown logs surfaces the class of bugs this deprecation was defending against. The 4-state vocabulary the fallback emits intentionally differs from the 5-state canonical output (`[active]` vs `[loaded-on-boot]`, etc.) — the mismatch is part of the signal, not a bug.
+
+**Reversibility:** Easy. Future session can hard-remove `_tool_state` + delete the fallback branch when soak data shows zero WARN fires across N weeks; the inline docstring names this as the cleanup trigger.
+
+**Decided by:** Lewie (Fix Day 3 session open — accepted default with note that WARN log must name the slug for actionability, 2026-04-25).
+
+**Affects:** `core/recommend/prompt.py` (`_tool_state` deprecation docstring + `_render_standard_row` branch logic + new logger); `core/recommend/prompt.py::CatalogToolView` (new `lifecycle_state: Optional[str]` field); `core/api/recommend.py::_catalog_view` (passes `lifecycle_state` through); `tests/test_recommend_prompt.py::TestLifecycleStateRendering` (4 tests including both canonical + fallback paths).
+
+---
+
+## [2026-04-25 Fix Day 3] — Identity block position between adapter preamble and X3 fragment
+
+**Context:** Fix Day 3 Task 7 injects operator-identity text into the composed system prompt. The existing composition is a deterministic 6-block sequence: preamble → X3 → X4 → X6 → X7-A → JSON envelope. Identity needs a position; the `TestSystemPromptStructure` tests assert block order, so adding a block is a schema change.
+
+**Options considered:**
+- Before preamble — identity comes before role-setting; risks identity contradicting "you are Concierge" framing
+- Between preamble and X3 — right after role-setting, before behavioral protocols begin
+- Right before the JSON envelope — last thing Opus sees; maximal recency weight but disconnected from role + protocols
+- Absorbed into the user message rather than system — breaks the system-only-for-stable-context convention
+
+**Decision:** Between preamble and X3. `compose_recommendation_prompt` accepts optional `identity` kwarg; when non-empty, renders as `# Operator identity\n\n{text}` in position 2 of the block sequence. Empty/None/whitespace-only collapses the block entirely — byte-identical to pre-Task-7 composition (regression-guarded by `test_empty_identity_prompt_byte_identical_to_pre_identity_composition`).
+
+**Reasoning:** Identity is "context about who you're serving," semantically adjacent to the preamble's "who you are" framing. Placing it between them flows "here's your role → here's whose preferences shape this task → here's how you reason" in that order. Before-preamble risks Opus reading identity as definitional about itself rather than about the operator. At-envelope is too late — by that point Opus has already traversed X3/X4/X6/X7-A and chosen its reasoning posture without operator context. User-message absorption loses the prompt-caching benefit (system block is cacheable across calls; user block changes per call).
+
+**Reversibility:** Easy. Block position is a single change in `compose_recommendation_prompt`; the identity block is optional and collapses cleanly when absent. Moving it would require updating `TestIdentityBlockPosition` assertions but nothing downstream.
+
+**Decided by:** Lewie (Fix Day 3 session open — accepted default as proposed, 2026-04-25).
+
+**Affects:** `core/recommend/prompt.py::compose_recommendation_prompt` + new `_render_identity_block`; `core/recommend/service.py` (reads identity via `self.memory.identity_get()` at recommend time); `tests/test_recommend_prompt.py::TestIdentityBlockPosition` (5 tests including byte-identity regression guard). Fix Day 4's narration-as-push MCP resources protocol will likely expose the X3/X4/X6/X7/X8 preambles via `resources/list`; identity is NOT in that set — it's dynamic per-call, not a session-long preamble.
+
+---
+
+## [2026-04-25 Fix Day 3] — Identity refresh triggers on loaded-on-boot boundary crossings only (both directions)
+
+**Context:** Fix Day 3 Task 7 wires a post-transition hook that updates the identity note. The hook needs a trigger rule — which `Tool.lifecycle_state` transitions warrant an identity refresh?
+
+**Options considered:**
+- Every `approved → installed` transition — noisy; every install fires identity refresh even when the tool is just session-scope-used and doesn't earn a permanent slot
+- Heuristic "new capability" detection — install of a previously unknown tool triggers refresh; requires maintaining a sidecar "previously known" set
+- Boundary crossings of `loaded-on-boot` in either direction — refresh fires iff `old == 'loaded-on-boot'` OR `new == 'loaded-on-boot'`
+
+**Decision:** Boundary crossings of `loaded-on-boot`, both directions explicitly. Refresh fires on: `* → loaded-on-boot` (gaining a permanent tool) and `loaded-on-boot → *` (losing a permanent tool, including `loaded-on-boot → retired`). Non-boundary transitions (e.g. `discovered → used`) are no-ops for identity.
+
+**Reasoning:** `loaded-on-boot` is the state that meaningfully changes "what's in my toolbelt." Other transitions represent lifecycle movement without changing the operator's permanently-available capability set — a `discovered → used` transition means "this tool just got used once," which is exercise-telemetry but not identity-signal. The loaded-on-boot → retired direction is explicitly in-scope per operator intent: losing a tool from the toolbelt is identity-relevant signal in the same way as gaining one (future sessions need to know the tool was available AND was revoked, not just that it was available). Every-install-transition would flood identity with churn; heuristic "new-capability" would require sidecar state that duplicates what `lifecycle_state` already encodes (`discovered` → "not yet exercised"; transitioning out means the tool just got exercised enough to move).
+
+**Reversibility:** Easy. `refresh_identity_on_loaded_on_boot_change` is one function; changing the trigger condition is a one-line edit to the `crossed_boundary` check.
+
+**Decided by:** Lewie (Fix Day 3 session open — accepted default with note that the `loaded-on-boot → retired` direction must be explicitly in-scope in the hook code, 2026-04-25).
+
+**Affects:** `core/identity.py::refresh_identity_on_loaded_on_boot_change`; `core/tool_transitions.py::transition_tool_lifecycle` (on_transition kwarg surface); `tests/test_identity.py::TestRefreshHookCrossings` (6 tests enforcing each boundary direction). Future session extending the hook's trigger surface (e.g. "should used→discovered also refresh?") must re-evaluate this principle: change the identity note only when the loaded-on-boot set changes.
+
+---

@@ -16,6 +16,10 @@ three-state memory sentinel. No semantic quality tested here.
 """
 from __future__ import annotations
 
+import logging
+
+import pytest
+
 from core.memory import MemoryHit
 from core.prompts import (
     TOOL_AWARENESS_PROTOCOL__FROM_TOOL_AWARENESS_MD,
@@ -427,6 +431,149 @@ class TestSkillsCatalogRendering:
         )
         assert "[on-demand]" in p.user
         assert "[ambient]" not in p.user
+
+
+class TestIdentityBlockPosition:
+    """Fix Day 3 Fork 4 ruling: the identity block inserts between the
+    adapter preamble and the X3 tool-awareness fragment — right after
+    role-setting, before the behavioral protocols. Absent/empty
+    identity collapses the block entirely."""
+
+    def test_identity_block_appears_between_preamble_and_x3(self):
+        identity_text = "Loaded-on-boot: csvkit (cli), ripgrep (cli)"
+        p = compose_recommendation_prompt(
+            task="t", catalog=[], memory_hits=None, identity=identity_text,
+        )
+        # Preamble first
+        preamble_idx = p.system.index(CONCIERGE_ADAPTER_PREAMBLE)
+        # Identity block with header + content
+        identity_idx = p.system.index("# Operator identity")
+        identity_content_idx = p.system.index(identity_text)
+        # X3 fragment after identity
+        x3_idx = p.system.index(
+            TOOL_AWARENESS_PROTOCOL__FROM_TOOL_AWARENESS_MD.rstrip()
+        )
+        assert preamble_idx < identity_idx < identity_content_idx < x3_idx
+
+    def test_identity_none_collapses_block(self):
+        p_none = compose_recommendation_prompt(
+            task="t", catalog=[], memory_hits=None, identity=None,
+        )
+        assert "# Operator identity" not in p_none.system
+
+    def test_identity_empty_string_collapses_block(self):
+        p_empty = compose_recommendation_prompt(
+            task="t", catalog=[], memory_hits=None, identity="",
+        )
+        assert "# Operator identity" not in p_empty.system
+
+    def test_identity_whitespace_only_collapses_block(self):
+        p_ws = compose_recommendation_prompt(
+            task="t", catalog=[], memory_hits=None, identity="   \n\t  ",
+        )
+        assert "# Operator identity" not in p_ws.system
+
+    def test_empty_identity_prompt_byte_identical_to_pre_identity_composition(
+        self,
+    ):
+        """Regression guard: absent identity must produce the same
+        system prompt as before Fix Day 3 Task 7 landed. Otherwise
+        prompt-hash-stability tests upstream would falsely detect
+        drift."""
+        p_none = compose_recommendation_prompt(
+            task="t", catalog=[], memory_hits=None, identity=None,
+        )
+        p_default = compose_recommendation_prompt(
+            task="t", catalog=[], memory_hits=None,
+        )
+        assert p_none.system == p_default.system
+
+
+class TestLifecycleStateRendering:
+    """Fix Day 3 Task 3: stored `lifecycle_state` is the canonical state
+    label for MCP/CLI/HTTP rendering; `_tool_state(is_in_manifest,
+    is_active)` is the deprecated fallback that logs WARN when it
+    fires. After Fix Day 2 backfill the fallback should never fire in
+    production; the WARN is cheap detection if it ever does."""
+
+    def _row(self, slug: str, *, lifecycle_state=None) -> CatalogToolView:
+        return CatalogToolView(
+            slug=slug,
+            name=slug,
+            description=None,
+            category=None,
+            pack_slug=None,
+            is_in_manifest=True,
+            is_active=True,
+            tool_type="cli",
+            lifecycle_state=lifecycle_state,
+        )
+
+    def test_canonical_path_renders_stored_lifecycle_state(self):
+        p = compose_recommendation_prompt(
+            task="t",
+            catalog=[self._row("csvkit", lifecycle_state="loaded-on-boot")],
+            memory_hits=None,
+        )
+        assert "[loaded-on-boot]" in p.user
+        # Old four-state vocab should NOT appear
+        assert "[active]" not in p.user
+
+    def test_all_five_canonical_states_render(self):
+        catalog = [
+            self._row("a-discovered", lifecycle_state="discovered"),
+            self._row("b-pending", lifecycle_state="pending"),
+            self._row("c-used", lifecycle_state="used"),
+            self._row("d-loaded", lifecycle_state="loaded-on-boot"),
+            self._row("e-retired", lifecycle_state="retired"),
+        ]
+        p = compose_recommendation_prompt(
+            task="t", catalog=catalog, memory_hits=None
+        )
+        for state in (
+            "discovered", "pending", "used", "loaded-on-boot", "retired"
+        ):
+            assert f"[{state}]" in p.user, f"missing [{state}] in output"
+
+    def test_fallback_fires_and_logs_warn_when_lifecycle_state_missing(
+        self, caplog: pytest.LogCaptureFixture
+    ):
+        row = self._row("legacy-row", lifecycle_state=None)
+        with caplog.at_level(logging.WARNING, logger="core.recommend.prompt"):
+            p = compose_recommendation_prompt(
+                task="t", catalog=[row], memory_hits=None
+            )
+        # Fallback produces the old four-state vocabulary label
+        assert "[active]" in p.user  # is_in_manifest=True & is_active=True
+        # WARN log fires naming the slug
+        warns = [
+            r for r in caplog.records
+            if "lifecycle_state_missing" in r.message
+        ]
+        assert len(warns) == 1
+        assert "legacy-row" in warns[0].message
+
+    def test_mixed_catalog_canonical_and_fallback_exercise_both_paths(
+        self, caplog: pytest.LogCaptureFixture
+    ):
+        catalog = [
+            self._row("canonical", lifecycle_state="loaded-on-boot"),
+            self._row("legacy", lifecycle_state=None),
+        ]
+        with caplog.at_level(logging.WARNING, logger="core.recommend.prompt"):
+            p = compose_recommendation_prompt(
+                task="t", catalog=catalog, memory_hits=None
+            )
+        assert "[loaded-on-boot]" in p.user  # canonical
+        assert "[active]" in p.user  # fallback
+        warns = [
+            r for r in caplog.records
+            if "lifecycle_state_missing" in r.message
+        ]
+        # Exactly one — only the legacy row triggers the fallback
+        assert len(warns) == 1
+        assert "legacy" in warns[0].message
+        assert "canonical" not in warns[0].message
 
 
 # ---- Memory tri-state (critical adversarial surface) --------------------

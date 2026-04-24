@@ -36,6 +36,7 @@ from core.recommend.parse import RecommendationParseError
 from core.recommend.prompt import CatalogToolView
 from core.recommend.schemas import RecommendRequest, RecommendResponse
 from core.recommend.service import RecommendationService
+from core.telemetry import make_db_sink
 
 
 logger = logging.getLogger(__name__)
@@ -59,6 +60,7 @@ def _catalog_view(tool: Tool) -> CatalogToolView:
         install_method=tool.install_method,
         path=tool.path,
         ambient_loading=tool.ambient_loading,
+        lifecycle_state=tool.lifecycle_state,
     )
 
 
@@ -110,6 +112,7 @@ def get_recommendation_service(
         anthropic=anthropic,
         fetch_catalog=_make_catalog_fetcher(db),
         memory_search_limit=settings.recommend_memory_search_limit,
+        emit_usage=make_db_sink(db),
     )
 
 

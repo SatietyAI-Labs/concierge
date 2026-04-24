@@ -55,6 +55,7 @@ from core.recommend.schemas import (
     TokenUsage,
 )
 from core.recommend.validator import validate_response_shape
+from core.telemetry import UsageEventSink, noop_sink
 
 
 logger = logging.getLogger(__name__)
@@ -91,6 +92,13 @@ class RecommendationService:
     fetch_catalog: CatalogFetcher
     memory_search_limit: int = 5
     counters: RecommendCounters = None  # type: ignore[assignment]
+    # Usage-event sink (§D telemetry). Defaults to noop so unit tests
+    # that don't care about telemetry stay clean; production wiring
+    # in `core/api/recommend.py` injects a DB-backed sink via
+    # `core.telemetry.make_db_sink(db)`. Per Fix Day 3 Fork 2,
+    # session_id is uniformly None until Fix Day 4 lights all three
+    # emit sites with real session propagation.
+    emit_usage: UsageEventSink = noop_sink
 
     def __post_init__(self) -> None:
         if self.counters is None:
@@ -108,6 +116,20 @@ class RecommendationService:
             req.task, request_id=request_id, short=short
         )
 
+        # 1b. Operator identity — Fix Day 3 Fork 4. Same graceful-
+        # degradation posture as memory_hits: on outage we pass None
+        # (block collapses); on healthy empty we pass "" (also
+        # collapses); on populated we inject between preamble and X3.
+        identity: Optional[str] = None
+        try:
+            identity = self.memory.identity_get()
+        except MemoryUnavailableError as exc:
+            logger.warning(
+                "recommend.identity_unavailable request_id=%s reason=%s: %s "
+                "— serving without identity block",
+                short, type(exc).__name__, exc,
+            )
+
         # 2. Catalog snapshot
         catalog = list(self.fetch_catalog())
 
@@ -119,6 +141,7 @@ class RecommendationService:
             cwd=req.cwd,
             task_hint=req.task_hint,
             active_tools=req.active_tools,
+            identity=identity,
         )
         system_hash = _hash(composed.system)
         user_hash = _hash(composed.user)
@@ -189,6 +212,33 @@ class RecommendationService:
             len(recommendations),
             len(reasoning),
         )
+
+        # 6a. §D usage telemetry: emit one `recommended` event per
+        # in-catalog recommendation so the §C7 promotion/demotion
+        # scanner has per-tool recency data. Discovery recs
+        # (tool_slug is None) are skipped — there's no catalog row
+        # yet to attach the event to. Any emit failure is logged by
+        # the sink and swallowed so telemetry problems never fail
+        # the recommend call.
+        for rank, rec in enumerate(recommendations, start=1):
+            if rec.tool_slug is None:
+                continue
+            try:
+                self.emit_usage(
+                    rec.tool_slug,
+                    "recommended",
+                    {
+                        "rank": rank,
+                        "request_id": short,
+                        "task_hint": req.task_hint,
+                    },
+                )
+            except Exception as exc:
+                logger.warning(
+                    "recommend.telemetry_emit_failed request_id=%s "
+                    "tool_slug=%s rank=%d error=%s: %s",
+                    short, rec.tool_slug, rank, type(exc).__name__, exc,
+                )
 
         # 6. Counters + INFO summary
         self.counters.record_request(

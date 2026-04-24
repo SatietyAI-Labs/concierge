@@ -286,6 +286,50 @@ class TestRoundtrip:
         assert len(hits) == 3
         assert hits[0].created_at >= hits[1].created_at >= hits[2].created_at
 
+
+@pytest.mark.integration
+class TestIdentityNotes:
+    """End-to-end identity_get / identity_set against temp-dir ChromaDB.
+
+    Fix Day 3 Task 7 adds identity as the compact running summary of
+    operator tool preferences. Unset → "", set → round-trips exactly,
+    set-twice → second write wins (upsert semantics)."""
+
+    def test_unset_identity_returns_empty_string(self, tmp_path: Path):
+        client = MemoryClient(memory_dir=tmp_path / "store")
+        assert client.identity_get() == ""
+
+    def test_set_then_get_roundtrips(self, tmp_path: Path):
+        client = MemoryClient(memory_dir=tmp_path / "store")
+        text = "Loaded-on-boot: csvkit (cli), ripgrep (cli)"
+        client.identity_set(text)
+        assert client.identity_get() == text
+
+    def test_set_twice_overwrites(self, tmp_path: Path):
+        client = MemoryClient(memory_dir=tmp_path / "store")
+        client.identity_set("first version")
+        client.identity_set("second version")
+        assert client.identity_get() == "second version"
+
+    def test_named_key_scopes_independently(self, tmp_path: Path):
+        client = MemoryClient(memory_dir=tmp_path / "store")
+        client.identity_set("default-content")
+        client.identity_set("recent-installs-content", key="recent-installs")
+        assert client.identity_get() == "default-content"
+        assert client.identity_get(key="recent-installs") == "recent-installs-content"
+
+    def test_identity_and_memories_collections_are_independent(
+        self, tmp_path: Path
+    ):
+        """Storing memories must not populate identity and vice versa."""
+        client = MemoryClient(memory_dir=tmp_path / "store")
+        client.store("a memory", tags=["test"])
+        client.identity_set("an identity note")
+        assert client.identity_get() == "an identity note"
+        # Memory search doesn't surface the identity text
+        hits = client.search("an identity note", limit=5)
+        assert all("identity note" not in h.text for h in hits)
+
     def test_stats_reports_correct_counts(self, tmp_path: Path):
         client = MemoryClient(memory_dir=tmp_path / "store")
         assert client.stats()["total_memories"] == 0

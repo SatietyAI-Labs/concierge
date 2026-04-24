@@ -259,11 +259,15 @@ class TestValidatorRichContentDrift:
 @dataclass
 class _FakeMemory:
     raise_on_search: bool = False
+    identity: str = ""
 
     def search(self, q, *, limit=5):
         if self.raise_on_search:
             raise MemoryUnavailableError("stub")
         return []
+
+    def identity_get(self, *, key: str = "default") -> str:
+        return self.identity
 
 
 @dataclass

@@ -95,6 +95,47 @@ class BackingServerRegistry:
 
     # ---- Lifecycle --------------------------------------------------
 
+    async def unload(self, tool_prefix: str) -> bool:
+        """Tear down a single registered backing server by prefix.
+
+        Symmetric with `register(spec)`. Per Fix Day 3 Task 5, this is
+        the Claude Code loader's unload surface — the checkpoint
+        criterion ("unload('csvkit') removes csvkit from active and
+        frees resources") maps to: find the server, call its async
+        stop() (graceful stdin-close → SIGTERM → SIGKILL cascade per
+        backing_server.stop), remove from the registry dict.
+
+        Returns True if a server was found and unloaded, False if no
+        server was registered under the given prefix.
+
+        Stop() is safe to call before start(); a never-spawned server
+        unloads cleanly without issuing any SIGTERM/SIGKILL.
+        """
+        server = self._servers.get(tool_prefix)
+        if server is None:
+            logger.info(
+                "backing_server.unload_miss prefix=%s — not registered",
+                tool_prefix,
+            )
+            return False
+
+        try:
+            await server.stop()
+        except Exception as exc:
+            logger.warning(
+                "backing_server.unload_error name=%s prefix=%s error=%s",
+                server.spec.name, tool_prefix, exc,
+            )
+            # Continue to remove from registry — a leaked subprocess
+            # is a worse outcome than a leaked process that might get
+            # retried on restart.
+        del self._servers[tool_prefix]
+        logger.info(
+            "backing_server.unload name=%s prefix=%s",
+            server.spec.name, tool_prefix,
+        )
+        return True
+
     async def shutdown_all(self) -> None:
         """Tear down every registered backing server. Called from the
         shim's `main()` finally block alongside the http-client

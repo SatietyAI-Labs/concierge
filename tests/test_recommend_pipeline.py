@@ -191,9 +191,13 @@ class FakeMemory:
     """Memory stand-in — returns a fixed hit list, no ChromaDB."""
 
     hits: list[MemoryHit] = field(default_factory=list)
+    identity: str = ""
 
     def search(self, query: str, *, limit: int = 5) -> list[MemoryHit]:
         return list(self.hits)
+
+    def identity_get(self, *, key: str = "default") -> str:
+        return self.identity
 
 
 @dataclass

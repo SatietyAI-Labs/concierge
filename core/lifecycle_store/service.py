@@ -74,6 +74,7 @@ from core.lifecycle_store.writer import (
 )
 from core.install.schemas import InstallResult
 from core.install.service import install_by_method, normalize_install_method
+from core.telemetry import emit_usage_event
 
 
 # Signature for the install dispatcher so tests can inject a stub
@@ -481,6 +482,30 @@ class LifecycleService:
             result.returncode,
             result.elapsed_ms,
         )
+
+        # §D usage telemetry — emit on successful install only. Failed
+        # installs leave the tool's lifecycle_state unchanged; no event
+        # to record. session_id=None per Fix Day 3 Fork 2.
+        if result.success:
+            tool_slug = slugify(tool_name)
+            try:
+                emit_usage_event(
+                    self.session,
+                    tool_slug=tool_slug,
+                    event_type="installed",
+                    context={
+                        "filename": filename,
+                        "install_method": result.method,
+                        "elapsed_ms": result.elapsed_ms,
+                    },
+                )
+            except Exception as exc:
+                logger.warning(
+                    "lifecycle.telemetry_emit_failed filename=%s "
+                    "tool_slug=%s error=%s: %s",
+                    filename, tool_slug, type(exc).__name__, exc,
+                )
+
         return self.update_status(
             filename=filename,
             change=StatusChange(status=follow_up_status),

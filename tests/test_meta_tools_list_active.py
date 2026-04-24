@@ -195,3 +195,96 @@ class TestListActiveHandler:
 
         assert result["isError"] is True
         assert "items" in result["content"][0]["text"]
+
+    @pytest.mark.asyncio
+    async def test_rich_rendering_includes_lifecycle_state_and_tool_type(self):
+        """Fix Day 3 Task 6: list_active rendering must surface
+        `lifecycle_state` and `tool_type` per item so Claude can reason
+        about the toolbelt's shape without a second call."""
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "id": 1,
+                            "slug": "csvstat",
+                            "name": "csvstat",
+                            "description": "Column statistics for CSVs.",
+                            "tool_type": "cli",
+                            "lifecycle_state": "loaded-on-boot",
+                            "is_in_manifest": True,
+                            "is_active": True,
+                            "pack_slug": "csvkit",
+                            "pack_name": "csvkit",
+                            "created_at": "2026-04-21T00:00:00Z",
+                            "updated_at": "2026-04-21T00:00:00Z",
+                        },
+                        {
+                            "id": 2,
+                            "slug": "update-config",
+                            "name": "update-config",
+                            "description": "Configure settings.json.",
+                            "tool_type": "skill",
+                            "lifecycle_state": "discovered",
+                            "is_in_manifest": True,
+                            "is_active": True,
+                            "pack_slug": None,
+                            "pack_name": None,
+                            "path": "/mnt/skills/public/update-config/SKILL.md",
+                            "ambient_loading": True,
+                            "created_at": "2026-04-21T00:00:00Z",
+                            "updated_at": "2026-04-21T00:00:00Z",
+                        },
+                    ],
+                    "total": 2,
+                },
+            )
+
+        _install_mock_transport(mock_handler)
+        result = await handle_list_active({})
+
+        text = result["content"][0]["text"]
+        assert result["isError"] is False
+        # CLI tool: <cli> tag + [loaded-on-boot] state
+        assert "<cli>" in text
+        assert "[loaded-on-boot]" in text
+        # Skill tool: <skill> tag + [discovered] state
+        assert "<skill>" in text
+        assert "[discovered]" in text
+
+    @pytest.mark.asyncio
+    async def test_rich_rendering_degrades_on_missing_annotations(self):
+        """Rows without lifecycle_state / tool_type should still render
+        cleanly — no crash, just no annotation decorations."""
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "id": 1,
+                            "slug": "legacy-tool",
+                            "name": "legacy-tool",
+                            "description": "pre-enrichment row",
+                            "is_in_manifest": True,
+                            "is_active": True,
+                            "pack_slug": None,
+                            "pack_name": None,
+                            "created_at": "2026-04-21T00:00:00Z",
+                            "updated_at": "2026-04-21T00:00:00Z",
+                        },
+                    ],
+                    "total": 1,
+                },
+            )
+
+        _install_mock_transport(mock_handler)
+        result = await handle_list_active({})
+
+        text = result["content"][0]["text"]
+        assert result["isError"] is False
+        assert "**`legacy-tool`**" in text
+        # No annotation brackets where data is absent
+        assert "<cli>" not in text
+        assert "[loaded-on-boot]" not in text

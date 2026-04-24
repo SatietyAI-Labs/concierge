@@ -35,6 +35,14 @@ zero-ingested. First boot on a fresh Claude Code CLI clone (where
 either points `CONCIERGE_SKILLS_ROOT` at a real skills directory or
 lives without skill-category rows until the next deploy env has
 them mounted.
+
+**Ingest is NOT "used"** — see `core/tool_transitions.py` module
+docstring §Skills-specific lifecycle semantics. Newly-ingested
+rows land at `lifecycle_state='discovered'` (via the column's
+server_default). They transition to `used` only when a session
+actually exercises the skill (per the scanner's forthcoming
+telemetry aggregation in Fix Day 4). Treating ingest as usage would
+collapse the promotion signal for every skill.
 """
 from __future__ import annotations
 

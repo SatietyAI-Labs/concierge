@@ -72,8 +72,21 @@ cross-read compatibility on a shared store.
 """
 
 COLLECTION_IDENTITY = "identity"
-"""Identity-notes collection name. Present for parity with moltbot;
-no Concierge consumer yet.
+"""Identity-notes collection name.
+
+Per DECISIONS `[2026-04-23]` (Identity Notes included in v1), the
+identity collection holds a compact running summary of operator tool
+preferences. `MemoryClient.identity_get` / `identity_set` (Fix Day 3
+Task 7) are the read/write surfaces; the recommend prompt composer
+injects the note between the adapter preamble and X3 so Opus has
+persistent operator context without re-deriving from memory search
+on every call.
+"""
+
+IDENTITY_DEFAULT_KEY = "default"
+"""Default identity-note key. Identity notes are keyed so multiple
+facets (preferences, recent installs, etc.) could coexist — v1 uses
+a single default key. The key doubles as the ChromaDB document id.
 """
 
 
@@ -131,6 +144,7 @@ class MemoryClient:
         self.embedding_model = embedding_model
         self._client: Any = None
         self._memories: Any = None
+        self._identity: Any = None
         self._embedding_fn: Any = None
         logger.debug(
             "MemoryClient configured: dir=%s model=%s (lazy init)",
@@ -184,6 +198,23 @@ class MemoryClient:
                 metadata={"hnsw:space": "cosine"},
             )
         return self._memories
+
+    def _get_identity_collection(self) -> Any:
+        """Lazy init for the identity-notes collection.
+
+        Identity notes are stored without an embedding function at the
+        cosine-space level — they're fetched by id, not by similarity.
+        But ChromaDB collections need an embedding function regardless
+        (it gates `add` calls); reusing the memories collection's fn
+        keeps the client footprint minimal.
+        """
+        if self._identity is None:
+            self._identity = self._get_client().get_or_create_collection(
+                name=COLLECTION_IDENTITY,
+                embedding_function=self._get_embedding_fn(),
+                metadata={"hnsw:space": "cosine"},
+            )
+        return self._identity
 
     # ---- Public API ---------------------------------------------------
 
@@ -371,6 +402,66 @@ class MemoryClient:
             }
         except Exception as exc:
             raise MemoryUnavailableError(f"memory.stats failed: {exc}") from exc
+
+    # ---- Identity notes (Fix Day 3 Task 7) ----------------------------
+
+    def identity_get(self, *, key: str = IDENTITY_DEFAULT_KEY) -> str:
+        """Return the stored identity note for `key`, or "" if none.
+
+        Identity notes are a compact running summary of operator tool
+        preferences — injected into the recommend prompt between the
+        adapter preamble and X3 (DECISIONS [2026-04-23] + Fix Day 3
+        Fork 4). Empty string on first call before `identity_set`
+        lets callers fold an unset identity into an empty-block render
+        without a distinct "no identity" sentinel.
+
+        Raises:
+            MemoryUnavailableError: on backing-store failure.
+        """
+        try:
+            col = self._get_identity_collection()
+            result = col.get(ids=[key])
+            docs = result.get("documents") or []
+            if not docs:
+                return ""
+            return docs[0] or ""
+        except Exception as exc:
+            raise MemoryUnavailableError(
+                f"memory.identity_get(key={key!r}) failed: {exc}"
+            ) from exc
+
+    def identity_set(
+        self, text: str, *, key: str = IDENTITY_DEFAULT_KEY
+    ) -> None:
+        """Upsert the identity note for `key`.
+
+        ChromaDB does not have a native upsert — this delete-then-add
+        pattern guarantees the row has the current text even across
+        repeated calls. Delete-before-add is safe when the id is
+        absent (ChromaDB returns silently).
+
+        Raises:
+            MemoryUnavailableError: on backing-store failure.
+        """
+        try:
+            col = self._get_identity_collection()
+            # ChromaDB's delete is idempotent on missing ids; no
+            # exists-check needed.
+            col.delete(ids=[key])
+            metadata: dict[str, Any] = {
+                "created_at": datetime.now(timezone.utc)
+                .replace(tzinfo=None)
+                .isoformat(),
+                "key": key,
+            }
+            col.add(ids=[key], documents=[text], metadatas=[metadata])
+            logger.debug(
+                "memory.identity_set(key=%s, len=%d): ok", key, len(text)
+            )
+        except Exception as exc:
+            raise MemoryUnavailableError(
+                f"memory.identity_set(key={key!r}) failed: {exc}"
+            ) from exc
 
     # ---- Internal helpers ---------------------------------------------
 

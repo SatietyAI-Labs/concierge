@@ -27,7 +27,11 @@ the caller.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
+
+
+log = logging.getLogger(__name__)
 from typing import Iterable, Optional
 
 from core.memory import MemoryHit
@@ -132,9 +136,21 @@ Rules:
 
 
 def _tool_state(is_in_manifest: bool, is_active: bool) -> str:
-    """Map the two-bit (manifest, active) encoding onto a
-    four-state human label. Matches the Tool model fields from
-    N2 and the Tool Registry UI's dormant-badge semantics.
+    """**Deprecated** — derived four-state label from `(is_in_manifest, is_active)`.
+
+    Fix Day 3 Task 3 deprecated this in favor of the stored five-state
+    `Tool.lifecycle_state` column (the canonical authority per §D audit).
+    Kept as a fall-back path for rows where `lifecycle_state` is unset —
+    after Fix Day 2's backfill this should never fire in production, and
+    `_render_standard_row` emits a WARN log citing the tool slug when it
+    does, as a signal of either a row inserted without the column default
+    or a future migration that introduced a regression.
+
+    The fallback's four-state vocabulary (`active` / `dormant` / `pending`
+    / `retired`) does NOT match the stored five-state vocabulary
+    (`loaded-on-boot` / `discovered` / `pending` / `used` / `retired`).
+    Opus sees different labels in the fallback vs. canonical paths; the
+    WARN log exists precisely so the divergence is observable.
     """
     if is_in_manifest and is_active:
         return "active"
@@ -180,6 +196,12 @@ class CatalogToolView:
     install_method: Optional[str] = None
     path: Optional[str] = None
     ambient_loading: Optional[bool] = None
+    # Canonical state per §D audit (Fix Day 3 Task 3). Preferred over
+    # the `_tool_state(is_in_manifest, is_active)` fallback derivation;
+    # if None, `_render_standard_row` falls back + logs a WARN naming
+    # the slug so the "should never fire in production" invariant is
+    # observable if it ever does.
+    lifecycle_state: Optional[str] = None
 
 
 def _render_catalog(tools: Iterable[CatalogToolView]) -> str:
@@ -199,8 +221,24 @@ def _render_catalog(tools: Iterable[CatalogToolView]) -> str:
 
 
 def _render_standard_row(t: CatalogToolView) -> str:
-    """MCP / CLI / HTTP rendering. Skills get a different shape below."""
-    state = _tool_state(t.is_in_manifest, t.is_active)
+    """MCP / CLI / HTTP rendering. Skills get a different shape below.
+
+    Uses the canonical stored `lifecycle_state` when set; falls back to
+    `_tool_state(is_in_manifest, is_active)` + WARN log when absent.
+    Per Fix Day 3 Fork 3, the fallback should never fire after Fix
+    Day 2's backfill — the WARN is cheap detection for an insert that
+    bypassed the column default or a future migration regression.
+    """
+    if t.lifecycle_state is not None:
+        state = t.lifecycle_state
+    else:
+        log.warning(
+            "recommend.prompt.lifecycle_state_missing slug=%s "
+            "— falling back to derived _tool_state; this should never "
+            "fire in production after Fix Day 2 backfill",
+            t.slug,
+        )
+        state = _tool_state(t.is_in_manifest, t.is_active)
     pack = f" (pack: {t.pack_slug})" if t.pack_slug else ""
     category = f" [{t.category}]" if t.category else ""
     tool_type = f" <{t.tool_type}>" if t.tool_type else ""
@@ -284,6 +322,21 @@ class ComposedPrompt:
     user: str
 
 
+def _render_identity_block(identity: Optional[str]) -> Optional[str]:
+    """Render the operator-identity block, or return None when absent.
+
+    Per Fix Day 3 Fork 4, the identity block sits between the adapter
+    preamble and the X3 tool-awareness fragment — right after
+    role-setting, before the behavioral protocols. None when identity
+    is unset OR empty: a missing/empty identity collapses the block
+    entirely rather than rendering a "no identity available" sentinel
+    that would inflate every prompt pointlessly.
+    """
+    if not identity or not identity.strip():
+        return None
+    return f"# Operator identity\n\n{identity.strip()}"
+
+
 def compose_recommendation_prompt(
     *,
     task: str,
@@ -292,6 +345,7 @@ def compose_recommendation_prompt(
     cwd: Optional[str] = None,
     task_hint: Optional[str] = None,
     active_tools: Optional[list[str]] = None,
+    identity: Optional[str] = None,
 ) -> ComposedPrompt:
     """Compose the full system + user prompts for one recommendation.
 
@@ -299,10 +353,21 @@ def compose_recommendation_prompt(
     Callers must not pre-format any of the string inputs; this
     function owns all rendering so that prompt hashes in logs are
     stable across calls with identical semantic content.
+
+    `identity` (Fix Day 3 Task 7) is an optional operator-identity
+    summary pulled from `MemoryClient.identity_get()`. When set and
+    non-empty, it inserts between the adapter preamble and the X3
+    fragment so Opus has persistent operator context before the
+    behavioral protocols. Absent/empty identity is a no-op — the
+    block collapses entirely and the surrounding blocks stay
+    byte-identical to the pre-identity composition.
     """
-    system = BLOCK_SEPARATOR.join(
+    system_blocks = [CONCIERGE_ADAPTER_PREAMBLE]
+    identity_block = _render_identity_block(identity)
+    if identity_block is not None:
+        system_blocks.append(identity_block)
+    system_blocks.extend(
         [
-            CONCIERGE_ADAPTER_PREAMBLE,
             TOOL_AWARENESS_PROTOCOL__FROM_TOOL_AWARENESS_MD.rstrip(),
             TOOL_RECOMMENDATION_PROTOCOL__FROM_TOOL_RECOMMENDATION_MD.rstrip(),
             TOOL_DISCOVERY_PROTOCOL__FROM_TOOL_DISCOVERY_SKILL.rstrip(),
@@ -310,6 +375,7 @@ def compose_recommendation_prompt(
             JSON_OUTPUT_ENVELOPE,
         ]
     )
+    system = BLOCK_SEPARATOR.join(system_blocks)
 
     cwd_line = cwd if cwd else "(caller did not provide a working directory)"
     hint_line = task_hint if task_hint else "(no caller-provided category hint)"

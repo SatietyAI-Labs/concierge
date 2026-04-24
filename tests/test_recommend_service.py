@@ -44,12 +44,26 @@ class FakeMemory:
     raise_on_search: bool = False
     error_msg: str = "chromadb init failed: disk is on fire"
     search_calls: int = 0
+    # Identity notes (Fix Day 3 Task 7) — stand-in follows the same
+    # shape as MemoryClient: identity_get returns current text ("" if
+    # none); raise_on_identity forces the outage path.
+    identity: str = ""
+    raise_on_identity: bool = False
+    identity_get_calls: int = 0
 
     def search(self, query: str, *, limit: int = 5):
         self.search_calls += 1
         if self.raise_on_search:
             raise MemoryUnavailableError(self.error_msg)
         return list(self.hits)
+
+    def identity_get(self, *, key: str = "default") -> str:
+        self.identity_get_calls += 1
+        if self.raise_on_identity:
+            raise MemoryUnavailableError(
+                "chromadb identity collection unavailable"
+            )
+        return self.identity
 
 
 @dataclass
@@ -86,6 +100,10 @@ class FakeAnthropic:
 
 
 def _sample_catalog() -> list[CatalogToolView]:
+    # lifecycle_state is set explicitly — per Fix Day 3 Task 3 the
+    # stored value is the canonical render source. Tests that want to
+    # exercise the deprecated _tool_state fallback + WARN log are in
+    # TestLifecycleStateRendering (test_recommend_prompt.py).
     return [
         CatalogToolView(
             slug="csvstat",
@@ -95,6 +113,7 @@ def _sample_catalog() -> list[CatalogToolView]:
             pack_slug="csvkit",
             is_in_manifest=True,
             is_active=True,
+            lifecycle_state="loaded-on-boot",
         ),
         CatalogToolView(
             slug="pandas",
@@ -104,6 +123,7 @@ def _sample_catalog() -> list[CatalogToolView]:
             pack_slug=None,
             is_in_manifest=True,
             is_active=False,  # dormant
+            lifecycle_state="discovered",
         ),
     ]
 
@@ -434,3 +454,102 @@ class TestContextPropagation:
         )
         assert "pandas" in anthropic.last_user
         assert "csvstat" in anthropic.last_user
+
+
+# ---- Usage-telemetry wiring (Fix Day 3 Task 2) --------------------------
+
+
+class _CapturingSink:
+    """Records calls to the UsageEventSink contract for assertion."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, dict | None]] = []
+
+    def __call__(
+        self,
+        tool_slug: str,
+        event_type: str,
+        context: dict | None = None,
+    ) -> None:
+        self.calls.append((tool_slug, event_type, context))
+
+
+class TestUsageTelemetryWiring:
+    def _svc_with_sink(self, anthropic_content: str, sink) -> RecommendationService:
+        return RecommendationService(
+            memory=FakeMemory(hits=[]),  # type: ignore[arg-type]
+            anthropic=FakeAnthropic(content=anthropic_content),  # type: ignore[arg-type]
+            fetch_catalog=_sample_catalog,
+            memory_search_limit=5,
+            counters=RecommendCounters(),
+            emit_usage=sink,
+        )
+
+    def test_in_catalog_recs_emit_one_event_each(self):
+        # rec_count=2 → rec 1 has tool_slug="csvstat" (in catalog);
+        # rec 2 has tool_slug=None (discovery).
+        sink = _CapturingSink()
+        svc = self._svc_with_sink(_good_response_json(rec_count=2), sink)
+        svc.recommend(RecommendRequest(task="analyze a CSV"))
+        # One event for the in-catalog rec only; discovery rec skipped.
+        assert len(sink.calls) == 1
+        slug, event_type, context = sink.calls[0]
+        assert slug == "csvstat"
+        assert event_type == "recommended"
+        assert context is not None
+        assert context["rank"] == 1
+        assert "request_id" in context
+
+    def test_discovery_only_response_emits_zero_events(self):
+        # Construct a response where both recs are discovery (tool_slug=None)
+        discovery_only = json.dumps(
+            {
+                "reasoning": "Nothing in catalog fits; both discovery.",
+                "recommendations": [
+                    {
+                        "rank": 1,
+                        "tool_slug": None,
+                        "tool_name": "discovery-a",
+                        "rationale": "Suggested",
+                        "confidence": "medium",
+                        "is_in_catalog": False,
+                    },
+                    {
+                        "rank": 2,
+                        "tool_slug": None,
+                        "tool_name": "discovery-b",
+                        "rationale": "Suggested",
+                        "confidence": "low",
+                        "is_in_catalog": False,
+                    },
+                ],
+            }
+        )
+        sink = _CapturingSink()
+        svc = self._svc_with_sink(discovery_only, sink)
+        svc.recommend(RecommendRequest(task="t"))
+        assert sink.calls == []
+
+    def test_sink_failure_does_not_fail_recommend_call(self, caplog):
+        def broken_sink(slug, event_type, context=None):
+            raise RuntimeError("sink exploded")
+
+        svc = self._svc_with_sink(_good_response_json(rec_count=2), broken_sink)
+        # Must NOT raise — telemetry failures are soft.
+        with caplog.at_level(logging.WARNING, logger="core.recommend.service"):
+            resp = svc.recommend(RecommendRequest(task="t"))
+        assert len(resp.recommendations) == 2
+        warnings = [
+            r for r in caplog.records
+            if "telemetry_emit_failed" in r.message
+        ]
+        assert len(warnings) == 1  # one in-catalog rec, one failed emit
+
+    def test_context_includes_task_hint_when_provided(self):
+        sink = _CapturingSink()
+        svc = self._svc_with_sink(_good_response_json(rec_count=1), sink)
+        svc.recommend(
+            RecommendRequest(task="t", task_hint="data-analysis")
+        )
+        assert len(sink.calls) == 1
+        assert sink.calls[0][2]["task_hint"] == "data-analysis"

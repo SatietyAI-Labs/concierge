@@ -342,3 +342,85 @@ class TestApproveTriggersInstall:
             "install_dispatch_failed" in r.getMessage() for r in caplog.records
         )
         assert "## Install" not in detail.raw_markdown
+
+
+class TestApproveTriggersInstallTelemetry:
+    """§D usage telemetry wiring (Fix Day 3 Task 2) — a successful
+    approve-triggers-install produces a `ToolUsageEvent(event_type=
+    'installed')` row for the matching Tool. A failed install produces
+    no event."""
+
+    def test_successful_install_emits_installed_event(
+        self, db_session, lifecycle_root
+    ):
+        from core.db.models import Tool, ToolUsageEvent
+
+        # Seed the catalog Tool row so telemetry's slug lookup hits.
+        db_session.add(Tool(slug="csvkit", name="csvkit", tool_type="cli"))
+        db_session.commit()
+
+        def dispatcher(method, *, tool_name, **kw):
+            return _make_install_result(success=True)
+
+        svc = _make_service_with_dispatcher(db_session, lifecycle_root, dispatcher)
+        filename = svc.create_request(
+            NewRequestDraft(tool_name="csvkit", install_method="pip-user")
+        ).filename
+        svc.update_status(
+            filename=filename, change=StatusChange(status="approved")
+        )
+
+        events = db_session.query(ToolUsageEvent).all()
+        assert len(events) == 1
+        evt = events[0]
+        assert evt.event_type == "installed"
+        assert evt.context["install_method"] == "pip_user"
+        assert evt.context["filename"] == filename
+        assert evt.session_id is None  # Fork 2
+
+    def test_failed_install_emits_no_event(
+        self, db_session, lifecycle_root
+    ):
+        from core.db.models import Tool, ToolUsageEvent
+
+        db_session.add(Tool(slug="csvkit", name="csvkit", tool_type="cli"))
+        db_session.commit()
+
+        def dispatcher(method, *, tool_name, **kw):
+            return _make_install_result(success=False, returncode=1)
+
+        svc = _make_service_with_dispatcher(db_session, lifecycle_root, dispatcher)
+        filename = svc.create_request(
+            NewRequestDraft(tool_name="csvkit", install_method="pip-user")
+        ).filename
+        svc.update_status(
+            filename=filename, change=StatusChange(status="approved")
+        )
+
+        assert db_session.query(ToolUsageEvent).count() == 0
+
+    def test_unknown_tool_slug_warns_without_failing(
+        self, db_session, lifecycle_root, caplog
+    ):
+        """If the approved tool isn't in the catalog (e.g. a discovery-
+        sourced request that was approved before catalog ingest ran),
+        telemetry logs WARN and continues — the install still
+        transitions to `installed`."""
+        from core.db.models import ToolUsageEvent
+
+        def dispatcher(method, *, tool_name, **kw):
+            return _make_install_result(success=True)
+
+        svc = _make_service_with_dispatcher(db_session, lifecycle_root, dispatcher)
+        filename = svc.create_request(
+            NewRequestDraft(tool_name="uncatalogued", install_method="pip-user")
+        ).filename
+
+        with caplog.at_level(logging.WARNING, logger="concierge.telemetry"):
+            detail = svc.update_status(
+                filename=filename, change=StatusChange(status="approved")
+            )
+
+        assert detail.status == "installed"
+        assert any("slug_not_found" in r.message for r in caplog.records)
+        assert db_session.query(ToolUsageEvent).count() == 0

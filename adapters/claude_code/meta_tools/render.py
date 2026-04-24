@@ -197,6 +197,31 @@ def render_request_tool_result(response: dict[str, Any]) -> str:
 # ---- concierge_list_active -----------------------------------------------
 
 
+def _render_tool_line(item: dict[str, Any]) -> str:
+    """Render one tool as a bullet for list_active output.
+
+    Per Fix Day 3 Task 6, the rich shape includes `lifecycle_state` +
+    `tool_type` so Claude can reason about what's in the toolbelt
+    without re-asking. The blueprint's five-state vocabulary
+    (`loaded-on-boot` / `used` / `discovered` / `pending` / `retired`)
+    is surfaced verbatim; older rows without `lifecycle_state` get no
+    annotation (gracefully degrades to the prior shape).
+    """
+    slug = item.get("slug", "(unknown)")
+    desc = item.get("description") or "*(no description)*"
+    tool_type = item.get("tool_type")
+    lifecycle_state = item.get("lifecycle_state")
+
+    annotations: list[str] = []
+    if tool_type:
+        annotations.append(f"<{tool_type}>")
+    if lifecycle_state:
+        annotations.append(f"[{lifecycle_state}]")
+    annotation_str = f" {' '.join(annotations)}" if annotations else ""
+
+    return f"- **`{slug}`**{annotation_str} — {desc}"
+
+
 def render_list_active_result(response: dict[str, Any]) -> str:
     items = response.get("items", []) or []
     total = response.get("total", 0)
@@ -224,18 +249,14 @@ def render_list_active_result(response: dict[str, Any]) -> str:
         lines.append(f"### {pack_name} (`{pack_slug}`)")
         lines.append("")
         for item in by_pack[(pack_name, pack_slug)]:
-            slug = item.get("slug", "(unknown)")
-            desc = item.get("description") or "*(no description)*"
-            lines.append(f"- **`{slug}`** — {desc}")
+            lines.append(_render_tool_line(item))
         lines.append("")
 
     if unpacked:
         lines.append("### (unpacked)")
         lines.append("")
         for item in unpacked:
-            slug = item.get("slug", "(unknown)")
-            desc = item.get("description") or "*(no description)*"
-            lines.append(f"- **`{slug}`** — {desc}")
+            lines.append(_render_tool_line(item))
         lines.append("")
 
     if not items:
