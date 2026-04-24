@@ -30,7 +30,13 @@ from core.db import models  # noqa: F401 — register models on Base.metadata
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers=False preserves the `concierge` logger
+    # (and any other pre-existing loggers) when Alembic is invoked
+    # programmatically from a running process — e.g. the drift test
+    # or the FastAPI startup hook. Without this, fileConfig's default
+    # disables every logger not named in alembic.ini, breaking
+    # caplog-based log-assertion tests that run after Alembic has run.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 _settings = get_settings()
 config.set_main_option(
