@@ -57,6 +57,8 @@ def _catalog_view(tool: Tool) -> CatalogToolView:
         is_active=tool.is_active,
         tool_type=tool.tool_type,
         install_method=tool.install_method,
+        path=tool.path,
+        ambient_loading=tool.ambient_loading,
     )
 
 

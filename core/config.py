@@ -26,6 +26,17 @@ class Settings(BaseSettings):
     memory_dir: Path = Path.home() / ".concierge-memory"
     memory_embedding_model: str = "all-MiniLM-L6-v2"
 
+    # Root dir under which the three Claude skills-layout subdirs
+    # (`public`, `user`, `examples`) live. Default is the Anthropic-
+    # hosted path (Claude.ai / sandboxed-managed harness) — local
+    # Claude Code CLI installs can override via `CONCIERGE_SKILLS_ROOT`
+    # to point at e.g. `/home/you/.codex/skills/.system/` or a tmp
+    # fixture dir. A missing root (or missing subdirs) is not an
+    # error: the skills ingest path logs WARN and returns zero-ingested,
+    # so first-boot on a fresh clone doesn't crash when /mnt/skills/
+    # isn't present.
+    skills_root: Path = Path("/mnt/skills")
+
     # Lifecycle-store root (N7). Isolated default — mirrors the
     # memory-isolation pattern per DECISIONS [2026-04-21 18:00]. The
     # `_legacy/tool-requests/` symlink points at Alfred's live

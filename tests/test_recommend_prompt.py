@@ -318,6 +318,117 @@ class TestUserMessage:
         assert p_none.user != p_empty.user
 
 
+class TestSkillsCatalogRendering:
+    """Skills are the fourth peer catalog category — DECISIONS
+    [2026-04-23]. They render differently from MCP/CLI/HTTP because
+    they're ambient-loaded (no install step) and carry a path to
+    their SKILL.md."""
+
+    def _skill(
+        self,
+        slug: str,
+        *,
+        ambient_loading: bool = True,
+        path: str = "/mnt/skills/public/sk/SKILL.md",
+        description: str | None = None,
+    ) -> CatalogToolView:
+        return CatalogToolView(
+            slug=slug,
+            name=slug,
+            description=description,
+            category=None,
+            pack_slug=None,
+            is_in_manifest=True,
+            is_active=True,
+            tool_type="skill",
+            install_method=None,
+            path=path,
+            ambient_loading=ambient_loading,
+        )
+
+    def test_skill_row_tagged_as_skill_not_mcp_state(self):
+        p = compose_recommendation_prompt(
+            task="t",
+            catalog=[self._skill("update-config")],
+            memory_hits=None,
+        )
+        # Skills render with <skill> tag — not [active]/[dormant] state
+        assert "<skill>" in p.user
+        assert "**update-config**" in p.user
+
+    def test_skill_row_exposes_ambient_loading_flag(self):
+        p = compose_recommendation_prompt(
+            task="t",
+            catalog=[self._skill("update-config", ambient_loading=True)],
+            memory_hits=None,
+        )
+        assert "[ambient]" in p.user
+
+    def test_skill_row_exposes_path(self):
+        p = compose_recommendation_prompt(
+            task="t",
+            catalog=[
+                self._skill(
+                    "update-config",
+                    path="/mnt/skills/public/update-config/SKILL.md",
+                )
+            ],
+            memory_hits=None,
+        )
+        assert "/mnt/skills/public/update-config/SKILL.md" in p.user
+
+    def test_skill_row_has_no_install_annotation(self):
+        """Skills are ambient, not installed — render should omit install=."""
+        p = compose_recommendation_prompt(
+            task="t",
+            catalog=[self._skill("update-config")],
+            memory_hits=None,
+        )
+        # The line for this skill should not contain install=...
+        skill_line = next(
+            line for line in p.user.splitlines()
+            if "**update-config**" in line
+        )
+        assert "install=" not in skill_line
+
+    def test_mixed_catalog_mcp_and_skill_render_differently(self):
+        """Both categories coexist and keep their distinguishing tags."""
+        mcp_tool = CatalogToolView(
+            slug="memory-store",
+            name="memory_store",
+            description=None,
+            category="ai-services",
+            pack_slug="memory-mcp",
+            is_in_manifest=True,
+            is_active=True,
+            tool_type="mcp",
+            install_method="mcp-server",
+        )
+        p = compose_recommendation_prompt(
+            task="t",
+            catalog=[mcp_tool, self._skill("update-config")],
+            memory_hits=None,
+        )
+        assert "<mcp>" in p.user
+        assert "<skill>" in p.user
+        assert "install=mcp-server" in p.user
+        # Skill line stays free of install=
+        skill_line = next(
+            line for line in p.user.splitlines()
+            if "**update-config**" in line
+        )
+        assert "install=" not in skill_line
+
+    def test_on_demand_skill_rendered_distinctly_from_ambient(self):
+        p = compose_recommendation_prompt(
+            task="t",
+            catalog=[self._skill("on-demand-sk", ambient_loading=False)],
+            memory_hits=None,
+        )
+        assert "[on-demand]" in p.user
+        assert "[ambient]" not in p.user
+
+
 # ---- Memory tri-state (critical adversarial surface) --------------------
 
 

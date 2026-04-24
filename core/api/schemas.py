@@ -19,6 +19,9 @@ class ToolOut(BaseModel):
     install_method: Optional[str] = None
     is_in_manifest: bool
     is_active: bool
+    lifecycle_state: str
+    path: Optional[str] = None
+    ambient_loading: Optional[bool] = None
     pack_id: Optional[int] = None
     pack_slug: Optional[str] = None
     pack_name: Optional[str] = None

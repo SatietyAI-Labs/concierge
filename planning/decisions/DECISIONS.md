@@ -2530,3 +2530,31 @@ response shape recorded above.
 
 ---
 
+## [2026-04-25 Fix Day 2] — Backfill mapping executed without pre-review — recorded for audit
+
+**Context:** Fix Day 2 Task 3 landed the `lifecycle_state` column on the `tools` table with a backfill derived from the existing `(is_in_manifest, is_active)` pair. At session open, Claude Code surfaced a proposed mapping table among six ambiguity defaults; Lewie greenlit with "ready," which per memory `feedback_single_block_multi_task_days` is implicit authorization to execute under judgment without per-item veto. The surfaced mapping referenced `is_discovered` as a Tool field. During implementation, it became apparent that `is_discovered` is a `Request` field, not a `Tool` field (`core/db/models.py` — the Tool table has no `is_discovered` column). The mapping was simplified mid-stream to drop the non-existent field; the simplified mapping was documented inline in the migration module docstring but was **not re-surfaced to Lewie before the migration ran against the live DB**. This entry is the retroactive audit record Lewie requested at session close.
+
+**Executed mapping** (lives in migration `2fe7a135d9dd` docstring + this entry):
+
+| `is_active` | `is_in_manifest` | → `lifecycle_state` |
+|---|---|---|
+| True  | True  | `loaded-on-boot` |
+| True  | False | `used` (session-loaded but not permanent) |
+| False | True  | `discovered` (via server_default; no explicit UPDATE) |
+| False | False | `discovered` (via server_default; no explicit UPDATE) |
+
+No existing row mapped to `pending` or `retired` — both are transition-only states (pending = in-flight request tracker; retired = explicit operator demotion). Skills rows (added on Fix Day 2 Task 1 after this migration) default to `discovered` at ingest via the Enum's `server_default='discovered'`, matching the "dormant until exercised" posture.
+
+**Live-DB result after applying migration `2fe7a135d9dd`:** 48 rows backfilled — 34 → `loaded-on-boot`, 14 → `discovered`, 0 → `used` / `pending` / `retired`. Zero NULLs. The 14 `discovered` rows correspond to the catalog's Not-Installed CLI tools (is_active=False) plus any dormant MCP packs; the 34 `loaded-on-boot` rows are everything the live catalog currently carries as active + in-manifest.
+
+**Reasoning for the simplification:** `is_discovered` exists only on `Request` (the gap-capture surface for tools not yet in the catalog) — a Tool is always "at least discovered" the moment it lands in the catalog table, so a Tool-level `is_discovered` flag would be redundant. The two-bit `(is_in_manifest, is_active)` space fully characterizes pre-migration Tool state; three of the four combinations collapse to `discovered` as a safe floor (the fourth — active + in-manifest — is `loaded-on-boot`; the active + not-in-manifest edge is the short-lived "session-loaded" state captured as `used`). No semantic information was lost relative to the originally-surfaced mapping; the `is_discovered`-bearing branches in the original proposal were dead branches that never matched any row.
+
+**Reversibility:** Easy. `lifecycle_state` is a single column; a reverse-backfill migration can redistribute rows under any new mapping without data loss (provided the source fields `is_active` / `is_in_manifest` aren't themselves modified in the interim). The specific row counts above are preserved in the live DB state and in this entry for before/after comparison.
+
+**Process note for future multi-task days:** When a proposed mapping turns out to reference a non-existent field mid-implementation, re-surface the correction before executing the migration, even under an implicit-authorization framing. The memory's "infer judgment from absence of vetoes" rule applies to minor design ambiguities surfaced up front, not to silent modifications of the surfaced proposal itself. This entry is the correction for the Fix Day 2 slip; Fix Day 3 + subsequent sessions should re-surface any mid-stream deviation from surfaced proposals even when the deviation is correctness-motivated.
+
+**Decided by:** Claude Code (mapping simplification — implicit); Lewie (retroactive audit entry request at Fix Day 2 session close, 2026-04-25).
+
+**Affects:** Documentation only. The migration `2fe7a135d9dd` is unchanged; the live-DB backfill result is unchanged; this entry adds the audit record for the mapping table and the process lesson for future sessions.
+
+---

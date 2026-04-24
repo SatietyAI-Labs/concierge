@@ -157,3 +157,46 @@ def test_get_tool_by_id_404(client_with_db):
     resp = client_with_db.get("/tools/99999")
     assert resp.status_code == 404
     assert resp.json() == {"detail": "tool not found"}
+
+
+def test_list_tools_filter_by_skill_tool_type_surfaces_path_and_ambient_loading(
+    client_with_db, db_session
+):
+    _seed(db_session)
+    db_session.add(
+        Tool(
+            slug="update-config",
+            name="update-config",
+            description="Configure settings.json",
+            tool_type="skill",
+            path="/mnt/skills/public/update-config/SKILL.md",
+            ambient_loading=True,
+            is_in_manifest=True,
+            is_active=True,
+        )
+    )
+    db_session.commit()
+
+    resp = client_with_db.get("/tools", params={"tool_type": "skill"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    item = data["items"][0]
+    assert item["slug"] == "update-config"
+    assert item["tool_type"] == "skill"
+    assert item["path"] == "/mnt/skills/public/update-config/SKILL.md"
+    assert item["ambient_loading"] is True
+    assert item["lifecycle_state"] == "discovered"
+
+
+def test_list_tools_non_skill_rows_report_null_path_and_ambient_loading(
+    client_with_db, db_session
+):
+    _seed(db_session)
+    resp = client_with_db.get("/tools")
+    assert resp.status_code == 200
+    data = resp.json()
+    for item in data["items"]:
+        assert item["path"] is None
+        assert item["ambient_loading"] is None
+        assert item["lifecycle_state"] == "discovered"

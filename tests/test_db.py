@@ -130,6 +130,82 @@ def test_memory_event_roundtrip(db_session: Session):
     assert fetched.occurred_at is not None
 
 
+def test_tool_lifecycle_state_defaults_to_discovered(db_session: Session):
+    tool = models.Tool(slug="new-tool", name="new-tool")
+    db_session.add(tool)
+    db_session.commit()
+    assert tool.lifecycle_state == "discovered"
+
+
+def test_tool_lifecycle_state_accepts_all_five_values(db_session: Session):
+    for i, state in enumerate(models.LIFECYCLE_STATE_VALUES):
+        db_session.add(
+            models.Tool(slug=f"ls-{i}", name=f"ls-{i}", lifecycle_state=state)
+        )
+    db_session.commit()
+    fetched = {
+        t.slug: t.lifecycle_state
+        for t in db_session.query(models.Tool).filter(
+            models.Tool.slug.startswith("ls-")
+        )
+    }
+    assert set(fetched.values()) == set(models.LIFECYCLE_STATE_VALUES)
+
+
+def test_tool_usage_event_roundtrip(db_session: Session):
+    tool = models.Tool(slug="csvkit", name="csvkit")
+    db_session.add(tool)
+    db_session.commit()
+
+    evt = models.ToolUsageEvent(
+        tool_id=tool.id,
+        event_type="recommended",
+        session_id="session-abc123",
+        context={"task_hint": "parse a CSV", "rank": 1},
+    )
+    db_session.add(evt)
+    db_session.commit()
+
+    fetched = db_session.query(models.ToolUsageEvent).one()
+    assert fetched.tool_id == tool.id
+    assert fetched.event_type == "recommended"
+    assert fetched.session_id == "session-abc123"
+    assert fetched.context["rank"] == 1
+    assert fetched.timestamp is not None
+
+
+def test_tool_usage_event_accepts_all_five_event_types(db_session: Session):
+    tool = models.Tool(slug="ripgrep", name="ripgrep")
+    db_session.add(tool)
+    db_session.commit()
+
+    for et in models.USAGE_EVENT_TYPE_VALUES:
+        db_session.add(models.ToolUsageEvent(tool_id=tool.id, event_type=et))
+    db_session.commit()
+
+    seen = {
+        evt.event_type
+        for evt in db_session.query(models.ToolUsageEvent).filter_by(
+            tool_id=tool.id
+        )
+    }
+    assert seen == set(models.USAGE_EVENT_TYPE_VALUES)
+
+
+def test_tool_usage_event_nullable_session_and_context(db_session: Session):
+    tool = models.Tool(slug="jq", name="jq")
+    db_session.add(tool)
+    db_session.commit()
+
+    evt = models.ToolUsageEvent(tool_id=tool.id, event_type="loaded")
+    db_session.add(evt)
+    db_session.commit()
+
+    fetched = db_session.query(models.ToolUsageEvent).one()
+    assert fetched.session_id is None
+    assert fetched.context is None
+
+
 def test_init_db_materializes_schema_on_disk(tmp_path: Path):
     db_file = tmp_path / "test-concierge.db"
     settings = Settings(database_path=db_file)

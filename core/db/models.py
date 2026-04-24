@@ -20,6 +20,42 @@ that updates the Enum's CHECK constraint.
 """
 
 
+LIFECYCLE_STATE_VALUES = (
+    "discovered",
+    "pending",
+    "used",
+    "loaded-on-boot",
+    "retired",
+)
+"""Tool-level lifecycle states per TOOL-CONCIERGE-OVERVIEW §Tool Lifecycle
+Management and the blueprint-v2 §D audit (third state machine; distinct
+from Request folder state and Request status field).
+
+Transition validation lives in Fix Day 3 (`core/tool_transitions.py`);
+this revision only lands the schema + backfill. Writes happen today via
+normal SQLAlchemy setattr — transitions become gated once the validation
+module is wired in.
+"""
+
+
+USAGE_EVENT_TYPE_VALUES = (
+    "recommended",
+    "installed",
+    "loaded",
+    "used",
+    "removed",
+)
+"""ToolUsageEvent.event_type enum — the five kinds of per-tool telemetry
+the §C7 promotion/demotion scanner aggregates over.
+
+Emit hooks wire in Fix Day 3 (`concierge_recommend`, `install_by_method`,
+loader `load()`). This revision only lands the table so the schema is
+ready to accept writes. CHECK-constraint + Python-level enum validation
+keeps the value set tight — scanner aggregation queries assume these
+exact five event_type labels.
+"""
+
+
 class Pack(Base):
     __tablename__ = "packs"
 
@@ -58,6 +94,22 @@ class Tool(Base):
     install_method: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     is_in_manifest: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    lifecycle_state: Mapped[str] = mapped_column(
+        Enum(*LIFECYCLE_STATE_VALUES, name="lifecycle_state"),
+        nullable=False,
+        default="discovered",
+        server_default="discovered",
+        index=True,
+    )
+    # Skills-specific fields (tool_type='skill'). Both nullable for
+    # non-skill rows: `path` has no analogue for MCP/CLI/HTTP, and
+    # `ambient_loading` is a skills-only concept (loaded-into-context
+    # whenever the SKILL.md's trigger conditions match, vs. MCP which
+    # is explicitly loaded into a session).
+    path: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    ambient_loading: Mapped[Optional[bool]] = mapped_column(
+        Boolean, nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
@@ -98,3 +150,24 @@ class MemoryEvent(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     source: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class ToolUsageEvent(Base):
+    __tablename__ = "tool_usage_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tool_id: Mapped[int] = mapped_column(
+        ForeignKey("tools.id"), nullable=False, index=True
+    )
+    event_type: Mapped[str] = mapped_column(
+        Enum(*USAGE_EVENT_TYPE_VALUES, name="usage_event_type"),
+        nullable=False,
+        index=True,
+    )
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False, index=True
+    )
+    session_id: Mapped[Optional[str]] = mapped_column(
+        String(128), nullable=True, index=True
+    )
+    context: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)

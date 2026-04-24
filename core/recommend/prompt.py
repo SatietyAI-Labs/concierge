@@ -160,6 +160,13 @@ class CatalogToolView:
     rich in-chat content fields (category / install_method /
     risk_cost on each recommendation) can be copied from the
     catalog entry rather than re-derived by Opus.
+
+    `path` and `ambient_loading` are skills-specific: skills sit in
+    the context via ambient triggers rather than per-session loads,
+    so Opus needs to reason about "this capability is already
+    available as a skill" differently from "install this CLI tool."
+    Non-skill rows carry `path=None, ambient_loading=None` and render
+    with the prior MCP/CLI/HTTP branch unchanged.
     """
 
     slug: str
@@ -171,6 +178,8 @@ class CatalogToolView:
     is_active: bool
     tool_type: Optional[str] = None
     install_method: Optional[str] = None
+    path: Optional[str] = None
+    ambient_loading: Optional[bool] = None
 
 
 def _render_catalog(tools: Iterable[CatalogToolView]) -> str:
@@ -182,17 +191,50 @@ def _render_catalog(tools: Iterable[CatalogToolView]) -> str:
     items_sorted = sorted(items, key=lambda t: t.slug)
     lines = []
     for t in items_sorted:
-        state = _tool_state(t.is_in_manifest, t.is_active)
-        pack = f" (pack: {t.pack_slug})" if t.pack_slug else ""
-        category = f" [{t.category}]" if t.category else ""
-        tool_type = f" <{t.tool_type}>" if t.tool_type else ""
-        install = f" install={t.install_method}" if t.install_method else ""
-        description = f" — {t.description}" if t.description else ""
-        lines.append(
-            f"- **{t.slug}**{pack}{tool_type}{category} [{state}]{install}: "
-            f"{t.name}{description}"
-        )
+        if t.tool_type == "skill":
+            lines.append(_render_skill_row(t))
+        else:
+            lines.append(_render_standard_row(t))
     return "\n".join(lines)
+
+
+def _render_standard_row(t: CatalogToolView) -> str:
+    """MCP / CLI / HTTP rendering. Skills get a different shape below."""
+    state = _tool_state(t.is_in_manifest, t.is_active)
+    pack = f" (pack: {t.pack_slug})" if t.pack_slug else ""
+    category = f" [{t.category}]" if t.category else ""
+    tool_type = f" <{t.tool_type}>" if t.tool_type else ""
+    install = f" install={t.install_method}" if t.install_method else ""
+    description = f" — {t.description}" if t.description else ""
+    return (
+        f"- **{t.slug}**{pack}{tool_type}{category} [{state}]{install}: "
+        f"{t.name}{description}"
+    )
+
+
+def _render_skill_row(t: CatalogToolView) -> str:
+    """Skills rendering.
+
+    Skills differ from MCP/CLI/HTTP in two ways Opus needs to see:
+
+    - They are **ambient-loaded**: the SKILL.md enters context when
+      its trigger conditions match, not via an explicit install or
+      load step. Recommending a skill means "invoke this ambient
+      capability" — there is no `install_method` to copy into the
+      rich in-chat content fields. Opus should set `install_method`
+      to `null` for skill recommendations.
+    - Their `path` points at a SKILL.md file, so downstream tools
+      (and the narration-as-push layer in Fix Day 4) can reference
+      it directly rather than re-discovering where the skill lives.
+    """
+    category = f" [{t.category}]" if t.category else ""
+    description = f" — {t.description}" if t.description else ""
+    ambient_tag = "ambient" if t.ambient_loading else "on-demand"
+    path = f" path={t.path}" if t.path else ""
+    return (
+        f"- **{t.slug}** <skill>{category} [{ambient_tag}]{path}: "
+        f"{t.name}{description}"
+    )
 
 
 def _render_memory(memory_hits: Optional[list[MemoryHit]]) -> str:
