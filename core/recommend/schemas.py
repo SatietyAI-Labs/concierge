@@ -50,6 +50,19 @@ class RecommendRequest(BaseModel):
             "prefer recommendations that leverage what's already active."
         ),
     )
+    session_id: Optional[str] = Field(
+        None,
+        description=(
+            "Caller-provided session identifier for telemetry "
+            "correlation (Fix Day 4 Task 6 — session_id propagation). "
+            "MCP-originated calls send the shim-lifetime UUID4 from "
+            "`adapters/claude_code/session.SHIM_SESSION_ID`; non-MCP "
+            "callers may omit. The value flows into the `recommended` "
+            "ToolUsageEvent rows emitted for each in-catalog "
+            "recommendation so the scanner + /health can aggregate by "
+            "session."
+        ),
+    )
 
 
 class ToolRecommendation(BaseModel):
@@ -175,5 +188,19 @@ class RecommendResponse(BaseModel):
             "Promoted to INFO log per the operational-first pivot so "
             "truncation during soak is visible in the primary log "
             "stream, not buried in DEBUG."
+        ),
+    )
+    side_observations: Optional[list[str]] = Field(
+        None,
+        description=(
+            "Fix Day 4 Task 3 — narration-as-push pattern 3. Optional "
+            "array of at most two short observations Opus surfaces "
+            "alongside the ranked list. Trigger categories per Fork C: "
+            "(a) retired-tool overlap with the task, (b) idle loaded-"
+            "on-boot tool whose category matches the task's domain. "
+            "The agent caller surfaces these in its narration to the "
+            "operator. Null when absent; `[]` when Opus produced an "
+            "empty list. The renderer collapses an empty/absent list "
+            "to a no-op — no `### Observations` section rendered."
         ),
     )

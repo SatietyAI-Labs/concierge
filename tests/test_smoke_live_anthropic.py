@@ -91,6 +91,13 @@ def test_live_anthropic_recommendation_prefers_csvkit_over_pandas():
                 )
             ]
 
+        def identity_get(self, *, key="primary"):
+            # Fix Day 3 added RecommendationService.recommend's
+            # identity read via self.memory.identity_get(); the three
+            # in-tree FakeMemory stand-ins grew this stub but this
+            # live-anthropic-marked smoke was missed at the time.
+            return ""
+
     anthropic = AnthropicRecommender(
         api_key=api_key,
         model="claude-opus-4-7",

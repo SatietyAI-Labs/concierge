@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from typing import Any, Optional
 
 from core.recommend.schemas import ToolRecommendation
 
@@ -64,14 +64,21 @@ def _require(payload: dict, key: str, expected_type: type) -> Any:
 
 def parse_recommendation_response(
     content: str,
-) -> tuple[str, list[ToolRecommendation]]:
+) -> tuple[str, list[ToolRecommendation], Optional[list[str]]]:
     """Parse an Anthropic response content string into a
-    (reasoning, recommendations) tuple.
+    (reasoning, recommendations, side_observations) tuple.
+
+    `side_observations` is Fix Day 4 Task 3's optional field: None
+    when the key is absent or explicitly null, a list of strings
+    (possibly empty) when present. Malformed shapes (non-list, list
+    with non-string entries) raise RecommendationParseError so the
+    service layer's standard error pathway surfaces them.
 
     Raises:
         RecommendationParseError: if content is not valid JSON,
             not an object, missing required top-level keys, or
-            contains malformed recommendation entries.
+            contains malformed recommendation or side_observations
+            entries.
     """
     stripped = _strip_fence(content).strip()
     if not stripped:
@@ -106,4 +113,32 @@ def parse_recommendation_response(
             ) from exc
         recommendations.append(rec)
 
-    return reasoning, recommendations
+    side_observations = _parse_side_observations(payload)
+
+    return reasoning, recommendations, side_observations
+
+
+def _parse_side_observations(payload: dict) -> Optional[list[str]]:
+    """Parse the optional `side_observations` top-level key.
+
+    Returns None when the key is absent OR explicitly null (both
+    read as "Opus did not surface observations"). Returns a list
+    of strings when present as a list — empty list passes through.
+    Raises RecommendationParseError on list-with-non-string entries
+    or non-list-non-null values.
+    """
+    if "side_observations" not in payload:
+        return None
+    raw = payload["side_observations"]
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        raise RecommendationParseError(
+            f"side_observations must be a list or null, got {type(raw).__name__}"
+        )
+    for idx, item in enumerate(raw):
+        if not isinstance(item, str):
+            raise RecommendationParseError(
+                f"side_observations[{idx}] must be a string, got {type(item).__name__}"
+            )
+    return list(raw)

@@ -30,14 +30,22 @@ a known insertion point rather than having to parse variable output.
     (#### Not in catalog / #### Low-confidence matches) plus always
     the #### Memory coverage and #### Suggested next action sub-sections>
 
+    ### Observations
+
+    - <side_observation 1>
+    - <side_observation 2>
+
     ### Summary
 
     <reasoning or "(no summary provided)">
 
 **Pinned grammar:** ordering is `## Recommendations → ### Top-ranked →
-### Gap report → ### Summary`. Heading text is the anchor; ordering is
-the grammar. Gap report is unconditionally present so future consumers
-(UI, soak-log parsers) can rely on a stable shape.
+### Gap report → [### Observations] → ### Summary`. The Observations
+section is **conditional** — rendered only when Opus returned a non-
+empty `side_observations` list (Fix Day 4 Task 3 narration-as-push
+pattern 3); absent / empty / null collapses the block entirely so the
+pre-Task-3 rendering is byte-identical when observations are silent.
+Other section ordering is unconditional.
 
 ### concierge_request_tool
 
@@ -158,9 +166,27 @@ def render_recommend_result(
     lines.append("### Gap report")
     lines.append("")
     # gap_report_markdown may include a trailing newline from its
-    # generator; rstrip so we don't double-blank before Summary.
+    # generator; rstrip so we don't double-blank before the next
+    # section.
     lines.append(gap_report_markdown.rstrip("\n"))
     lines.append("")
+
+    # Fix Day 4 Task 3 — narration-as-push pattern 3. Render an
+    # `### Observations` block ONLY when the response carried one or
+    # more non-empty side_observations. Absence / empty list / None
+    # collapses the block so a silent Opus run is byte-identical to
+    # the pre-Task-3 rendering.
+    side_observations = response.get("side_observations")
+    if side_observations:
+        lines.append("### Observations")
+        lines.append("")
+        for obs in side_observations:
+            # Defensive: skip empty-string entries that would render
+            # as orphan bullets. Parser already rejects non-strings,
+            # so per-item type is guaranteed here.
+            if obs and obs.strip():
+                lines.append(f"- {obs.strip()}")
+        lines.append("")
 
     lines.append("### Summary")
     lines.append("")

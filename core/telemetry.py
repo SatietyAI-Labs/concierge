@@ -6,22 +6,30 @@ produce weekly-review signal. This module is the write-side counterpart
 to that: a thin helper that resolves a Tool by slug and inserts a usage
 event with the correct event_type + optional context.
 
-Callable sites (Fix Day 3 Task 2):
+Callable sites:
 
 - `core/recommend/service.py::recommend` — emits one
   `event_type='recommended'` event per in-catalog recommendation
-- `core/lifecycle_store/service.py::_maybe_install_on_approve` — emits
-  `event_type='installed'` on successful install
-- `adapters/claude_code/backing_server_registry.py::load` — emits
-  `event_type='loaded'` when a backing server is loaded into a Claude
-  Code session
+  (wired Fix Day 3 Task 2; session_id propagation wired Fix Day 4
+  Task 6 via `RecommendRequest.session_id`)
+- `core/lifecycle_store/service.py::_maybe_install_on_approve` —
+  emits `event_type='installed'` on successful install (wired Fix
+  Day 3 Task 2; session_id propagation wired Fix Day 4 Task 6 via
+  `StatusChange.session_id`)
+- Loader emit (`event_type='loaded'` when a backing server
+  registers): **not yet wired**. `BackingServerRegistry.register`
+  doesn't emit today — the session snapshot tracks this as a
+  remaining gap. Once wired, the shim's `SHIM_SESSION_ID` constant
+  (see `adapters/claude_code/session.py`) provides session_id
+  trivially.
 
-**Session-id propagation is deliberately deferred.** Per Fix Day 3
-Fork 2, `session_id=None` is the correct shape today — partial
-population (loader sets session_id, recommend leaves null) would imply
-the field means something it doesn't yet. Fix Day 4's narration-as-push
-work touches the same three surfaces; real session-id propagation lands
-there as a coordinated change.
+**Session-id propagation (Fix Day 4 Task 6):** Per Fix Day 3 Fork 2,
+session_id was uniformly None across all emits until today. Fix Day 4
+extends the sink signature with `session_id: Optional[str] = None`
+and plumbs real values through the recommend and install paths.
+MCP-originated calls carry a shim-lifetime UUID4. UI-originated
+calls (operator approve from the browser) leave session_id null —
+there is no session concept for that caller surface.
 
 **Missing-slug policy:** when `emit_usage_event` is called with a slug
 that isn't in the catalog (e.g. a discovery recommendation where the
@@ -44,19 +52,25 @@ from core.db.models import Tool, ToolUsageEvent, USAGE_EVENT_TYPE_VALUES
 log = logging.getLogger("concierge.telemetry")
 
 
-UsageEventSink = Callable[[str, str, Optional[dict[str, Any]]], None]
+UsageEventSink = Callable[
+    [str, str, Optional[dict[str, Any]], Optional[str]], None
+]
 """Injectable sink signature for telemetry emits.
 
-Signature: `(tool_slug, event_type, context) -> None`. `session_id`
-is intentionally NOT in the signature per Fix Day 3 Fork 2 — leaving
-it null uniformly until Fix Day 4 wires real session-id propagation
-across all three emit sites. When that happens this signature
-extends with a `session_id: Optional[str] = None` kwarg.
+Signature: `(tool_slug, event_type, context, session_id) -> None`.
+`session_id` was added in Fix Day 4 Task 6 per the Fork 2 plan (Fix
+Day 3 accepted null-everywhere as a placeholder; Task 6 lights real
+propagation). Callers that don't have a session_id pass `None` —
+that's still the correct value for UI-originated installs and any
+non-MCP caller.
 """
 
 
 def noop_sink(
-    tool_slug: str, event_type: str, context: Optional[dict[str, Any]] = None
+    tool_slug: str,
+    event_type: str,
+    context: Optional[dict[str, Any]] = None,
+    session_id: Optional[str] = None,
 ) -> None:
     """Default sink — accepts and drops. Used by tests and by
     RecommendationService when no DB-backed sink is wired.
@@ -77,12 +91,14 @@ def make_db_sink(session: Session) -> UsageEventSink:
         tool_slug: str,
         event_type: str,
         context: Optional[dict[str, Any]] = None,
+        session_id: Optional[str] = None,
     ) -> None:
         emit_usage_event(
             session,
             tool_slug=tool_slug,
             event_type=event_type,
             context=context,
+            session_id=session_id,
         )
 
     return sink

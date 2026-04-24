@@ -89,10 +89,53 @@ class ToolSpec:
 
 
 @dataclass
+class ResourceSpec:
+    """One entry in the `resources/list` advertisement.
+
+    Matches MCP's resource shape: `uri` + `name` + `description`
+    + `mimeType`, plus the verbatim `text` body returned by
+    `resources/read`. Fix Day 4 Task 2 uses this for the six
+    prompt resources exposed under `concierge://prompts/{name}.md`.
+
+    The `text` field is intentionally held in-memory: prompt
+    fragments are small (a few KB each) and verbatim-sourced from
+    Python constants, so loading them lazily from disk would add
+    startup complexity without measurable benefit.
+    """
+
+    uri: str
+    name: str
+    description: str
+    mime_type: str
+    text: str
+
+    def to_mcp(self) -> dict[str, Any]:
+        """Shape for a `resources/list` entry — metadata only."""
+        return {
+            "uri": self.uri,
+            "name": self.name,
+            "description": self.description,
+            "mimeType": self.mime_type,
+        }
+
+    def to_contents(self) -> dict[str, Any]:
+        """Shape for one entry in a `resources/read` response's
+        `contents` array — includes the verbatim body.
+        """
+        return {
+            "uri": self.uri,
+            "mimeType": self.mime_type,
+            "text": self.text,
+        }
+
+
+@dataclass
 class Dispatcher:
     _methods: dict[str, Handler] = field(default_factory=dict)
     _tools: dict[str, ToolSpec] = field(default_factory=dict)
     _tool_handlers: dict[str, ToolHandler] = field(default_factory=dict)
+    _resources: dict[str, ResourceSpec] = field(default_factory=dict)
+    _capabilities: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     # ---- Registration --------------------------------------------------
 
@@ -107,13 +150,41 @@ class Dispatcher:
         self._tools[spec.name] = spec
         self._tool_handlers[spec.name] = handler
 
-    # ---- Introspection (used by default tools/list handler) -----------
+    def register_resource(self, spec: ResourceSpec) -> None:
+        """Register a resource that will appear in `resources/list`
+        and be readable via `resources/read`. Keyed by URI; re-
+        registering the same URI replaces the prior spec.
+        """
+        self._resources[spec.uri] = spec
+
+    def declare_capability(self, name: str, config: dict[str, Any]) -> None:
+        """Declare an MCP capability advertised in the `initialize`
+        response. `name` is the capability group (`"tools"`,
+        `"resources"`); `config` is the sub-feature dict (empty
+        `{}` for capabilities without sub-features).
+        """
+        self._capabilities[name] = config
+
+    # ---- Introspection (used by default method handlers) --------------
 
     def list_tools(self) -> list[dict[str, Any]]:
         return [spec.to_mcp() for spec in self._tools.values()]
 
     def resolve_tool(self, name: str) -> Optional[ToolHandler]:
         return self._tool_handlers.get(name)
+
+    def list_resources(self) -> list[dict[str, Any]]:
+        return [spec.to_mcp() for spec in self._resources.values()]
+
+    def resolve_resource(self, uri: str) -> Optional[ResourceSpec]:
+        return self._resources.get(uri)
+
+    def capabilities(self) -> dict[str, Any]:
+        """Return a shallow copy of the current capability map for
+        the `initialize` response. Copy so callers can't mutate
+        state via the returned dict.
+        """
+        return dict(self._capabilities)
 
     # ---- Dispatch -----------------------------------------------------
 
@@ -192,55 +263,61 @@ def build_default_dispatcher() -> Dispatcher:
       tools/call     — routes to tool handler by name
 
     N11+ layers additional registrations onto this dispatcher
-    without reconstructing it.
+    without reconstructing it. Fix Day 4's narration-as-push
+    pattern 2 adds the `resources` capability + two method
+    handlers via `adapters.claude_code.resources.register_resources`.
     """
     d = Dispatcher()
-    d.register_method("initialize", _handle_initialize)
-    d.register_method("initialized", _handle_initialized)
-    d.register_method("notifications/initialized", _handle_initialized)
+    # Tools is the foundational capability; resources / prompts /
+    # logging are additive and declared by their own registration
+    # modules when active.
+    d.declare_capability("tools", {})
     # Closures capture `d` so the handlers have introspection access
     # without importing the dispatcher module circularly.
+    d.register_method("initialize", _make_handle_initialize(d))
+    d.register_method("initialized", _handle_initialized)
+    d.register_method("notifications/initialized", _handle_initialized)
     d.register_method("tools/list", _make_handle_tools_list(d))
     d.register_method("tools/call", _make_handle_tools_call(d))
     return d
 
 
-async def _handle_initialize(params: Optional[Any]) -> dict[str, Any]:
-    """Respond to `initialize` with our pinned protocol version +
-    capabilities + server info. If the client requested a different
-    protocol version, log at INFO and still respond with ours —
-    letting the client decide whether to proceed is the non-hostile
-    default per MCP spec.
+def _make_handle_initialize(d: Dispatcher) -> Handler:
+    """Build the `initialize` handler with a bound dispatcher so the
+    advertised capabilities reflect whatever has been declared on
+    `d` at call time (post-registration). This is why `initialize`
+    must be registered AFTER the default tools capability is
+    declared but BEFORE any `initialize` request arrives — the
+    current ordering in `build_default_dispatcher` satisfies both.
     """
-    client_version = None
-    if isinstance(params, dict):
-        client_version = params.get("protocolVersion")
-    if client_version and client_version != PROTOCOL_VERSION:
-        logger.info(
-            "shim.initialize protocol_mismatch client=%r shim=%r — "
-            "responding with shim version; client decides whether to proceed",
-            client_version,
-            PROTOCOL_VERSION,
-        )
-    else:
-        logger.info(
-            "shim.initialize protocol=%s client_version=%r",
-            PROTOCOL_VERSION,
-            client_version,
-        )
-    return {
-        "protocolVersion": PROTOCOL_VERSION,
-        "capabilities": {
-            # Day 2 framework: tools only. Resources, prompts,
-            # logging capability all deferred — tightest valid
-            # surface per the stdout-purity invariant.
-            "tools": {},
-        },
-        "serverInfo": {
-            "name": SERVER_NAME,
-            "version": SERVER_VERSION,
-        },
-    }
+
+    async def _handle(params: Optional[Any]) -> dict[str, Any]:
+        client_version = None
+        if isinstance(params, dict):
+            client_version = params.get("protocolVersion")
+        if client_version and client_version != PROTOCOL_VERSION:
+            logger.info(
+                "shim.initialize protocol_mismatch client=%r shim=%r — "
+                "responding with shim version; client decides whether to proceed",
+                client_version,
+                PROTOCOL_VERSION,
+            )
+        else:
+            logger.info(
+                "shim.initialize protocol=%s client_version=%r",
+                PROTOCOL_VERSION,
+                client_version,
+            )
+        return {
+            "protocolVersion": PROTOCOL_VERSION,
+            "capabilities": d.capabilities(),
+            "serverInfo": {
+                "name": SERVER_NAME,
+                "version": SERVER_VERSION,
+            },
+        }
+
+    return _handle
 
 
 async def _handle_initialized(params: Optional[Any]) -> None:

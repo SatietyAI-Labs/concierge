@@ -74,6 +74,18 @@ class StatusChange(BaseModel):
     decision: Optional[str] = None
     conditions: Optional[str] = None
     notes: Optional[str] = None
+    session_id: Optional[str] = Field(
+        None,
+        description=(
+            "Optional session identifier for telemetry correlation "
+            "(Fix Day 4 Task 6 — session_id propagation). When an "
+            "approve transition triggers a successful install, this "
+            "value populates the `installed` ToolUsageEvent's "
+            "session_id column. UI-originated approvals from the "
+            "browser leave this null; future MCP-originated approvals "
+            "may pass the shim's SHIM_SESSION_ID."
+        ),
+    )
 
 
 class ListedRequest(BaseModel):

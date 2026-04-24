@@ -37,7 +37,7 @@ class TestValidJSON:
                 }
             ]
         )
-        reasoning, recs = parse_recommendation_response(content)
+        reasoning, recs, _side = parse_recommendation_response(content)
         assert reasoning == "Lightweight first."
         assert len(recs) == 1
         assert recs[0].tool_slug == "csvstat"
@@ -56,7 +56,7 @@ class TestValidJSON:
             ]
         )
         content = f"```json\n{inner}\n```"
-        reasoning, recs = parse_recommendation_response(content)
+        reasoning, recs, _side = parse_recommendation_response(content)
         assert recs[0].tool_slug == "csvstat"
 
     def test_bare_triple_backtick_fence_parses(self):
@@ -73,7 +73,7 @@ class TestValidJSON:
             ]
         )
         content = f"```\n{inner}\n```"
-        reasoning, recs = parse_recommendation_response(content)
+        reasoning, recs, _side = parse_recommendation_response(content)
         assert recs[0].tool_slug == "csvstat"
 
     def test_preserves_ordering(self):
@@ -105,7 +105,7 @@ class TestValidJSON:
                 },
             ]
         )
-        _reasoning, recs = parse_recommendation_response(content)
+        _reasoning, recs, _side = parse_recommendation_response(content)
         assert [r.tool_name for r in recs] == ["a", "b", "discovery-tool"]
         assert recs[2].is_in_catalog is False
         assert recs[2].tool_slug is None
@@ -115,7 +115,7 @@ class TestValidJSON:
         parse-valid; callers decide whether to 502 or return as-is.
         """
         content = json.dumps({"reasoning": "Nothing matches.", "recommendations": []})
-        reasoning, recs = parse_recommendation_response(content)
+        reasoning, recs, _side = parse_recommendation_response(content)
         assert reasoning == "Nothing matches."
         assert recs == []
 
@@ -216,3 +216,79 @@ class TestErrorClassDistinct:
         except RecommendationParseError as exc:
             assert isinstance(exc, ValueError)
             assert not isinstance(exc, RuntimeError)
+
+
+# ---- side_observations (Fix Day 4 Task 3 narration pattern 3) -----------
+
+
+class TestSideObservations:
+    """Optional top-level field. Absent or null → None. Present → list
+    of strings (possibly empty). Malformed → RecommendationParseError.
+    """
+
+    _BASIC_RECS = [
+        {
+            "rank": 1,
+            "tool_slug": "csvstat",
+            "tool_name": "csvstat",
+            "rationale": "Lightweight.",
+            "confidence": "high",
+            "is_in_catalog": True,
+        }
+    ]
+
+    def _payload(self, extras: dict) -> str:
+        base = {"reasoning": "r", "recommendations": self._BASIC_RECS}
+        base.update(extras)
+        return json.dumps(base)
+
+    def test_absent_key_returns_none(self):
+        """Omitting the key entirely reads as 'Opus surfaced no
+        observations' — the None return signals absence.
+        """
+        _r, _recs, side = parse_recommendation_response(self._payload({}))
+        assert side is None
+
+    def test_explicit_null_returns_none(self):
+        """Explicit `"side_observations": null` is also absence."""
+        _r, _recs, side = parse_recommendation_response(
+            self._payload({"side_observations": None})
+        )
+        assert side is None
+
+    def test_empty_list_returns_empty_list(self):
+        """`[]` is a distinct signal from None — Opus explicitly
+        returned an empty list (the prompt allows it). The renderer
+        collapses both the same way, but the parser preserves the
+        distinction for any future consumer that cares.
+        """
+        _r, _recs, side = parse_recommendation_response(
+            self._payload({"side_observations": []})
+        )
+        assert side == []
+
+    def test_populated_list_round_trips(self):
+        observations = [
+            "`jq-old` is retired but would fit this task.",
+            "`duckdb` is loaded-on-boot but hasn't been applied to CSV tasks recently.",
+        ]
+        _r, _recs, side = parse_recommendation_response(
+            self._payload({"side_observations": observations})
+        )
+        assert side == observations
+
+    def test_non_list_raises(self):
+        with pytest.raises(
+            RecommendationParseError, match="side_observations must be a list"
+        ):
+            parse_recommendation_response(
+                self._payload({"side_observations": "not a list"})
+            )
+
+    def test_list_with_non_string_entry_raises(self):
+        with pytest.raises(
+            RecommendationParseError, match=r"side_observations\[1\]"
+        ):
+            parse_recommendation_response(
+                self._payload({"side_observations": ["ok", 123]})
+            )

@@ -2666,3 +2666,140 @@ The listener's specific shape — `set` event with `active_history=True`, NOT `b
 **Affects:** `core/identity.py::refresh_identity_on_loaded_on_boot_change`; `core/tool_transitions.py::transition_tool_lifecycle` (on_transition kwarg surface); `tests/test_identity.py::TestRefreshHookCrossings` (6 tests enforcing each boundary direction). Future session extending the hook's trigger surface (e.g. "should used→discovered also refresh?") must re-evaluate this principle: change the identity note only when the loaded-on-boot set changes.
 
 ---
+
+## [2026-04-25 Fix Day 4] — MCP resources URI scheme: `concierge://prompts/{name}.md` (audit-discovered reversal)
+
+**Context:** Fix Day 4 Task 2 exposes Concierge's prompt fragments via the MCP `resources/list` + `resources/read` protocol so sessions have persistent posture context beyond per-tool instructions (narration-as-push pattern 2 per DECISIONS `[2026-04-23]`). The URI scheme fork surfaced at session open with a proposed default; open-phase audit discovered an existing precedent in the codebase that argued for a different shape.
+
+**Options considered:**
+- Original proposal `concierge://preamble/{name}` — matches the "these are preamble resources" semantic framing used in the DECISIONS narration-as-push entry
+- Audit-discovered `concierge://prompts/{name}.md` — matches the existing docstring at `adapters/claude_code/meta_tools/gap_preamble.py:55-56` which anticipates a "future X-slot" advertising X8 under exactly this URI
+- A third `mcp://concierge/preamble/{name}` — RFC-style nested scheme; rejected as unnecessarily verbose
+
+**Decision:** `concierge://prompts/{name}.md`. Explicit reversal from the originally-proposed default after the open-phase audit found the in-repo precedent that predates Fix Day 4 and explicitly anticipates this slot. The URI convention is now: `concierge://prompts/{kebab-case-source-filename}.md`.
+
+**Reasoning:** A future reader grepping for `concierge://` finds one convention, not two. The existing `gap_preamble.py` docstring transitions cleanly from "Deferred per N12 proposal Q4 answer" to "Implemented in Fix Day 4 Task 2 under this same URI." Matching pre-existing documented intent is more load-bearing than my originally-proposed scheme.
+
+Bonus finding worth recording: Fix Day 4 Task 2 closes a **documented deferral** (originally cut in the N12 proposal Q4 answer) rather than introducing a new surface. This matters for scope discipline — the "Task 2 is session-long posture" framing in the narration-as-push DECISIONS entry is actually finishing known work, not opening a new design space.
+
+**Reversibility:** Easy. URI scheme is advertised in `resources/list` output; clients read URIs back from that list. Changing the scheme is one line in `core/adapters/claude_code/resources.py::CONCIERGE_RESOURCES` + the corresponding gap_preamble.py docstring update. No wire-protocol migration needed — clients always see the current scheme.
+
+**Decided by:** Lewie (Fix Day 4 session open — accepted my reversal explicitly after audit surfaced the precedent, 2026-04-25). Process note: Lewie flagged this as "exactly the Fix Day 2 discipline applied" — surface default → audit → propose reversal with citation → greenlight before proceeding.
+
+**Affects:** `adapters/claude_code/resources.py::CONCIERGE_RESOURCES` (6 URIs under the scheme); `adapters/claude_code/meta_tools/gap_preamble.py` docstring transition from Deferred → Implemented; `tests/test_mcp_resources.py::EXPECTED_URIS_IN_ORDER` + parametrized byte-identity regression guards. Future MCP-resources additions (e.g. new prompt fragments) follow this URI convention unconditionally.
+
+---
+
+## [2026-04-25 Fix Day 4] — MCP resources inventory: six resources (X3/X4/X6/X7-A/X8 + gap-preamble)
+
+**Context:** Fork B at Fix Day 4 session open: "what exactly belongs in the resources set?" The DECISIONS narration-as-push entry named "X3/X4/X6/X7/X8 + gap-preamble" but today's `compose_recommendation_prompt` composes only four fragments (X3/X4/X6/X7-A) plus an adapter preamble and the JSON envelope. Audit against `core/prompts/SKILL_FRAGMENT_SYNC_LOG.md` + `core/prompts/soul_delta.py`'s closure note resolved the ambiguity.
+
+**Options considered:**
+- Expose only the four fragments currently in `compose_recommendation_prompt` (X3/X4/X6/X7-A) + gap-preamble = 5 resources — matches the runtime composition but omits X8 which exists as a constant but isn't composed into the recommend prompt
+- Expose the full five-member Class-1 prompt-fragment set (X3/X4/X6/X7-A/X8) + adapter-authored gap-preamble = 6 resources — matches the DECISIONS enumeration
+- Expose every prompt-fragment-ish thing in the codebase (also include the adapter preamble from `core/recommend/prompt.py`) = 7 resources
+
+**Decision:** Six resources — the full Class-1 prompt-fragment set (X3 tool-awareness, X4 tool-recommendation, X6 tool-discovery, X7-A tool-lifecycle-weekly-review, X8 behavioral-rules) plus the adapter-authored `CLAUDE_CODE_GAP_PREAMBLE`. Matches the DECISIONS enumeration exactly. The `CONCIERGE_ADAPTER_PREAMBLE` in `core/recommend/prompt.py` is explicitly NOT exposed — it's Concierge's server-side Opus framing, not a session-posture resource. Ordering in `CONCIERGE_RESOURCES` is the order a session-long posture reader would want: three reasoning protocols first, lifecycle review fourth, behavioral rules fifth, condensed gap-preamble last.
+
+**Reasoning:** The five Class-1 fragments are canonical-verbatim (governed by DECISIONS `[2026-04-21 05:50]` EXTRACT invariant). Exposing them byte-for-byte preserves the same "authored by skill source files, agent reads them as posture" semantic the skill protocols had in the OpenClaw consumer. X8 specifically — the SOUL-delta behavioral rules — closes a Fix Day 3-era deferral: `adapters/claude_code/meta_tools/gap_preamble.py:55-56` anticipated "Future X-slot may advertise X8 via MCP resources/list + resources/read." Fix Day 4 Task 2 IS that X-slot.
+
+The adapter-authored gap-preamble coexists with X8 (which is verbatim OpenClaw-framed) deliberately — the gap-preamble is the Claude-Code-single-agent-framed condensed mirror. Sessions reading resources see both and get the multi-perspective view the author intended.
+
+**Reversibility:** Easy. `CONCIERGE_RESOURCES` is a static list in one module. Adding/removing a resource is a one-line edit + updating the test's `EXPECTED_URIS_IN_ORDER`. Verbatim-identity tests are parametrized so adding a resource auto-covers under the same pattern.
+
+**Decided by:** Lewie (Fix Day 4 session open — accepted default as proposed, post-audit, 2026-04-25). Audit found the precedent in the fragment closure docstring; Lewie greenlit immediately.
+
+**Affects:** `adapters/claude_code/resources.py::CONCIERGE_RESOURCES` (the authoritative list); `tests/test_mcp_resources.py::URI_TO_SOURCE` (byte-identity contract); `core/prompts/SKILL_FRAGMENT_SYNC_LOG.md` is the upstream source tracker — future re-sync of any Class-1 fragment automatically propagates into `resources/read` output without code change.
+
+---
+
+## [2026-04-25 Fix Day 4] — side_observations trigger categories: retired-tool overlap + idle loaded-on-boot (two, not four)
+
+**Context:** Fix Day 4 Task 3 added an optional `side_observations` field to the Opus recommendation response — pattern 3 of narration-as-push. My initial default proposed four trigger categories: (a) retired-tool overlap with the task, (b) adjacent-to-installed-pack-member, (c) idle loaded-on-boot tool whose category matches the task's domain, (d) catalog-gap-for-request. Lewie trimmed to two at session open.
+
+**Options considered:**
+- Four categories as originally proposed (a, b, c, d)
+- Two strong-signal categories (a, c) — retired-tool overlap + idle loaded-on-boot
+- Open-ended ("observe anything interesting") — rejected: Opus reliably over- or under-generates on open-ended list fields
+
+**Decision:** Two categories — (a) retired-tool overlap and (c) idle loaded-on-boot. Documented with concrete example phrasing in `core/recommend/prompt.py::JSON_OUTPUT_ENVELOPE`'s §side_observations section. Cap at two observations. Prompt explicitly permits silence ("omit the key or return []", "silence is correct when the patterns don't fire").
+
+**Reasoning:** Lewie's reasoning at greenlight: "(a) and (c) are high-signal patterns a generic agent would miss — retirement memory and idle-capital detection. (b) 'adjacent' needs a definition and the action is unclear. (d) risks Opus repeating its own recommendation in the observations channel. Two strong categories beat four mixed-signal ones, and adding more later is easier than cutting."
+
+The two chosen categories target distinct operator concerns: (a) surfaces knowledge the operator may have forgotten they had (retired tools that could be reinstated); (c) surfaces idle capital (permanently-loaded tools that haven't been applied to the domain they were acquired for). Both are patterns a generic-LLM-without-Concierge-context cannot easily produce because they depend on catalog state + recency signal that only the system knows.
+
+**Reversibility:** Easy. Category list lives in one prompt constant. Adding (b) or (d) back later is a docstring edit + test addition. The JSON schema and parser accept up to 2 string entries — expansion to 3+ requires validator update and prompt cap change.
+
+**Decided by:** Lewie (Fix Day 4 session open — trimmed from my four-category default, 2026-04-25).
+
+**Affects:** `core/recommend/prompt.py::JSON_OUTPUT_ENVELOPE` §side_observations (prompt text with the two category blocks); `core/recommend/schemas.py::RecommendResponse.side_observations` (Optional[list[str]]); `core/recommend/parse.py::_parse_side_observations` (shape validation); `core/recommend/validator.py::_check_side_observations` (>2 cap as drift signal); `adapters/claude_code/meta_tools/render.py::render_recommend_result` (conditional `### Observations` section between Gap report and Summary). Soak data on which of the two categories Opus actually triggers on may inform a future decision about expanding / contracting the set.
+
+---
+
+## [2026-04-25 Fix Day 4] — SSE new-request emit site: service-layer, not endpoint-layer
+
+**Context:** Fix Day 4 Task 4 adds a real-time SSE surface (`GET /ui/events`) emitting `new_request` events when a pending request is filed. Fork D at session open: where does the publish happen — inside `LifecycleService.create_request` (service layer) or inside `POST /requests` (endpoint layer)?
+
+**Options considered:**
+- Endpoint-layer emit — simpler DI, but couples SSE to the HTTP entry point; future non-HTTP filing paths (future MCP-originated create_request, future scheduled imports) would need to repeat the publish logic
+- Service-layer emit — broker is a constructor field on `LifecycleService`, `create_request` publishes directly. Any caller (HTTP, MCP, scheduler, CLI) that creates a request feeds the same broker without a second wiring step
+
+**Decision:** Service-layer. `LifecycleService.event_broker: Optional[EventBroker] = None`; `create_request` publishes the `new_request` event after the DB commit. Optional field — tests / non-SSE-aware callers construct without a broker and the publish becomes a no-op.
+
+**Reasoning:** SSE is a cross-cutting concern, not an HTTP concern. Any path that files a pending request should feed the notification surface; service-layer is the natural choke point. The "publish after commit" ordering is load-bearing — subscribers never see an event for a row that rolled back, which matters for UI consistency guarantees. Optional-broker keeps legacy tests / non-HTTP callers working unchanged.
+
+**Reversibility:** Easy. Moving the publish to the endpoint layer is a one-line relocation. The EventBroker itself doesn't care about the call site.
+
+**Decided by:** Lewie (Fix Day 4 session open — accepted default, 2026-04-25).
+
+**Affects:** `core/lifecycle_store/service.py::LifecycleService` (new event_broker field + publish call after commit); `core/api/requests.py::get_lifecycle_service` (wires broker from `app.state` via FastAPI DI); `core/app.py` lifespan (constructs the per-app broker singleton); `core/api/requests.py::get_event_broker` (defensive fallback to None for legacy TestClient fixtures that skip lifespan). Future non-HTTP create_request callers inherit SSE fan-out for free.
+
+---
+
+## [2026-04-25 Fix Day 4] — Scanner auto-promotion install-age threshold: 30 days
+
+**Context:** Fix Day 4 Task 5 — §C7 promotion scanner — auto-promotes tools meeting the 5-events-in-30-days threshold, but only when install age is "old enough" that the burst-of-initial-recommendations signal isn't mistaken for sustained usage. Fork G at session open proposed 14 days as the default; Lewie pushed to 30 days.
+
+**Options considered:**
+- 14 days (original proposal) — earlier auto-promotion; tools start contributing to the toolbelt faster
+- 30 days — delayed auto-promotion; requires genuine sustained use across a full month
+- No threshold — promote on events alone, ignore install age — rejected: newly-installed tools often get a burst of exploratory recommendations that aren't sustained signal
+
+**Decision:** 30 days. `AUTO_PROMOTE_MIN_INSTALL_AGE_DAYS = 30` in `core/lifecycle_scanner.py`. Tools with install age < 30 days that meet the event threshold are flagged as ambiguous candidates (classification reason `install_age_below_threshold`) rather than auto-promoted; operator reviews and manually transitions if appropriate.
+
+**Reasoning:** Lewie's reasoning: "Trigger-happy promotion is the worse failure mode; demotion-by-missed-signal is recoverable via re-use patterns, but false-promotion requires explicit retirement to undo. 30d gives sustained-usage signal cleanly." The asymmetric-recoverability argument is the key: a tool that SHOULD be loaded-on-boot but isn't will accumulate more events over time and eventually cross the 30-day threshold; a tool that was WRONGLY promoted to loaded-on-boot churns the operator's identity (via the refresh hook), changes Opus's context framing, and requires explicit operator intervention to undo.
+
+Install age is proxied by `Tool.created_at` — a per-tool 'installed' event timestamp would be more authoritative but that table is still sparse today (Fix Day 3 wired installs via approve, but operator-bootstrapped tools have no install event). `created_at` defaults to `server_default=func.now()` so it tracks catalog-insert time reliably.
+
+**Reversibility:** Easy. Threshold is a single constant `AUTO_PROMOTE_MIN_INSTALL_AGE_DAYS` in `core/lifecycle_scanner.py`. Lowering to 14 or raising to 60 is a one-line edit. If a future scanner wants per-tool-type thresholds (e.g. CLI vs MCP have different "settling time"), the constant grows into a dispatch function.
+
+**Decided by:** Lewie (Fix Day 4 session open — chose 30 over 14 with explicit asymmetric-recoverability reasoning, 2026-04-25).
+
+**Affects:** `core/lifecycle_scanner.py::AUTO_PROMOTE_MIN_INSTALL_AGE_DAYS`; `_classify_promotion` branching; `tests/test_lifecycle_scanner.py::TestPromotionClassification` (parametric tests at and around the threshold, including the "just-below-threshold" ambiguous-classification guard). Future "tighten to 14" or "relax to 60" debates should cite this entry's reasoning.
+
+---
+
+## [2026-04-25 Fix Day 4] — session_id semantic rule: MCP-originated → SHIM_SESSION_ID; non-MCP → null
+
+**Context:** Fix Day 4 Task 6 wired `session_id` propagation across the recommend and install telemetry emit sites (per Fix Day 3 Fork 2's plan for Day 4). Fork I at session open: what value does session_id carry, and what value does it take when the caller has no MCP session context (e.g. UI-originated approval)?
+
+**Options considered:**
+- Populate session_id on every emit (generate a new UUID per request for non-MCP callers) — creates N "sessions" per browser tab, none of which correspond to an actual session
+- MCP-originated emits → shim process UUID; non-MCP emits → null — honest signal, partial population but caller-context-aligned
+- Cookie-based web-session id for browser callers + MCP session id for MCP callers — real session semantics on both paths but requires cookie infra that isn't built yet
+
+**Decision:** MCP-originated emits carry `SHIM_SESSION_ID` (UUID4 minted at shim process import time); non-MCP emits (FastAPI calls from UI, direct HTTP clients) leave `session_id=null`. Captured in `adapters/claude_code/session.py::SHIM_SESSION_ID` + threaded through the `RecommendRequest.session_id` and `StatusChange.session_id` schema fields.
+
+**Reasoning:** A field's meaning should be caller-context-aligned, not data-context-aligned. "session_id = the session that originated this event" has a well-defined meaning only when the caller has a session — for MCP that's the shim process lifetime (one UUID per shim start), for non-MCP there is no session to identify. Null is the honest shape for non-MCP.
+
+The alternative — synthesizing a UUID per HTTP request for non-MCP — would inflate scanner aggregation queries with noise ("this tool was used in 47 different sessions this week" when it was really just 47 distinct HTTP calls from one browser tab). Cookie-based real web-session identification is the right long-term design but requires infrastructure (session store, expiration, middleware) that isn't built and isn't on the Fix Day 4 scope.
+
+Shim-process-lifetime UUID is the right grain: one session = one continuous MCP connection. Long-running shim processes accumulate events under one session_id; short-lived ones produce more distinct ids. Scanner queries by tool + window care about the aggregate, not the session count.
+
+**Reversibility:** Easy. The `session_id` column is already nullable (Fix Day 3 provision). Extending to cookie-based web sessions is additive — the MCP path unchanged, non-MCP callers start populating session_id from a middleware-set context var instead of null.
+
+**Decided by:** Lewie (Fix Day 4 session open — accepted default, 2026-04-25). Documented in `adapters/claude_code/session.py` module docstring for future readers.
+
+**Affects:** `adapters/claude_code/session.py::SHIM_SESSION_ID`; `adapters/claude_code/meta_tools/recommend.py::_build_request_body` (reads at call time, monkeypatchable); `core/telemetry.py::UsageEventSink` 4-arg signature; `core/recommend/schemas.py::RecommendRequest.session_id`; `core/recommend/service.py` (threads through to emit sink); `core/lifecycle_store/schema.py::StatusChange.session_id`; `core/lifecycle_store/service.py::update_status` + `_maybe_install_on_approve` (pass-through). Loader emit site remains deferred (BackingServerRegistry.register() doesn't emit today); when it lands it will read SHIM_SESSION_ID trivially.
+
+---

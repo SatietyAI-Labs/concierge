@@ -43,6 +43,14 @@ request_tool_spec = ToolSpec(
         "request lands in Concierge's pending inbox; the operator "
         "approves / denies / defers. Do not block your current task "
         "waiting for approval — continue with existing tools."
+        "\n\n"
+        "After invoking this tool, your next user-visible message "
+        "must briefly narrate the request: what gap you noticed, "
+        "what tool you filed, and confirm you are continuing the "
+        "current task with existing tools rather than waiting. Keep "
+        "this to one or two sentences. Silent tool calls make the "
+        "collaboration invisible to the operator; a brief narration "
+        "keeps Concierge's work legible."
     ),
     input_schema={
         "type": "object",

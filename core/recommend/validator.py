@@ -131,6 +131,11 @@ def validate_response_shape(
     # Opus starts silently dropping a field.
     drift.extend(_check_rich_content_fields(recommendations))
 
+    # 7. side_observations (Fix Day 4 Task 3). Optional field:
+    # absent or null is fine. Present-but-wrong-shape is drift so
+    # soak surfaces it before the renderer stumbles on it.
+    drift.extend(_check_side_observations(response))
+
     return drift
 
 
@@ -235,6 +240,39 @@ def _check_effort(response: dict[str, Any]) -> list[str]:
         f"effort_outside_known_set:got={effort!r} "
         f"known={sorted(_KNOWN_EFFORTS)}"
     ]
+
+
+def _check_side_observations(response: dict[str, Any]) -> list[str]:
+    """side_observations is an optional Fix Day 4 Task 3 field. Absent
+    or null is fine — Opus observed nothing worth surfacing. Present
+    but wrong-typed (non-list, non-null) or containing non-string
+    entries is drift. Over-length lists (>2 entries) also drift per
+    the prompt instruction cap.
+    """
+    drift: list[str] = []
+    if "side_observations" not in response:
+        return drift
+    raw = response["side_observations"]
+    if raw is None:
+        return drift
+    if not isinstance(raw, list):
+        drift.append(
+            f"side_observations_wrong_type:expected=list|null "
+            f"got={type(raw).__name__}"
+        )
+        return drift
+    if len(raw) > 2:
+        drift.append(
+            f"side_observations_over_cap:got={len(raw)} cap=2 "
+            "(prompt instructs at most two observations)"
+        )
+    for idx, item in enumerate(raw):
+        if not isinstance(item, str):
+            drift.append(
+                f"side_observations_item_wrong_type:index={idx} "
+                f"got={type(item).__name__}"
+            )
+    return drift
 
 
 _RICH_CONTENT_FIELDS = ("category", "install_method", "risk_cost")

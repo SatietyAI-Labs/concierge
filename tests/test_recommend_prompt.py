@@ -637,3 +637,62 @@ class TestMemoryTriState:
         assert "0.812" in p.user
         assert "tag-a" in p.user
         assert "tag-b" in p.user
+
+
+class TestSideObservationsPromptInstruction:
+    """Fix Day 4 Task 3: JSON_OUTPUT_ENVELOPE must instruct Opus on
+    the two Fork C trigger categories. These tests are anchor-phrase
+    checks; they protect the instruction from accidentally losing
+    either trigger when the envelope text is refactored.
+    """
+
+    def test_envelope_mentions_side_observations_field(self):
+        p = compose_recommendation_prompt(
+            task="t", catalog=[], memory_hits=None
+        )
+        assert "side_observations" in p.system
+
+    def test_envelope_names_retired_tool_overlap_category(self):
+        """Fork C category (a): retired-tool overlap. The phrase
+        'Retired-tool overlap' and the `[retired]` anchor must both
+        appear so Opus has a concrete trigger bar.
+        """
+        p = compose_recommendation_prompt(
+            task="t", catalog=[], memory_hits=None
+        )
+        assert "Retired-tool overlap" in p.system
+        assert "[retired]" in p.system
+
+    def test_envelope_names_idle_loaded_on_boot_category(self):
+        """Fork C category (c): idle loaded-on-boot tool. Anchor
+        phrases 'Idle loaded-on-boot' and `[loaded-on-boot]` pin the
+        category into the prompt.
+        """
+        p = compose_recommendation_prompt(
+            task="t", catalog=[], memory_hits=None
+        )
+        assert "Idle loaded-on-boot" in p.system
+        assert "[loaded-on-boot]" in p.system
+
+    def test_envelope_caps_at_two_observations(self):
+        """Prompt instructs at most two entries; validator enforces
+        the cap as a drift signal. Both surfaces reference the same
+        number — if the prompt drops the cap without updating the
+        validator, this guard fires first.
+        """
+        p = compose_recommendation_prompt(
+            task="t", catalog=[], memory_hits=None
+        )
+        assert "at most two" in p.system
+
+    def test_envelope_permits_silence(self):
+        """Opus must be told explicitly that omitting the key / empty
+        list is correct behavior — otherwise it fills in low-signal
+        observations to feel 'complete.'
+        """
+        p = compose_recommendation_prompt(
+            task="t", catalog=[], memory_hits=None
+        )
+        # Anchor phrases that permit silence without sentinel drift.
+        assert "omit the key" in p.system
+        assert "silence is correct" in p.system

@@ -40,6 +40,7 @@ from adapters.claude_code.backing_server_registry import (
 )
 from adapters.claude_code.meta_tools import register_meta_tools
 from adapters.claude_code.meta_tools.http_client import aclose as _aclose_meta_tools_client
+from adapters.claude_code.resources import register_resources
 
 
 logger = logging.getLogger(__name__)
@@ -149,6 +150,12 @@ async def _run_with_cleanup() -> int:
     """
     dispatcher = build_default_dispatcher()
     register_meta_tools(dispatcher)
+    # Fix Day 4 narration-as-push pattern 2: expose Concierge's six
+    # prompt resources under concierge://prompts/{name}.md so the
+    # session has persistent posture context beyond per-tool
+    # instructions. Must precede stdin-read start for the same reason
+    # meta-tools do (DECISIONS [2026-04-22 11:48]).
+    register_resources(dispatcher)
     # V1: empty backing-server registry. N13 ships the plumbing;
     # real backing-server registrations are a Day-5-or-later slot.
     # install_backing_server_routing replaces the dispatcher's

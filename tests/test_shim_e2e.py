@@ -118,7 +118,13 @@ class TestInitialize:
         resp = shim.recv_json()
         assert resp["id"] == 1
         assert resp["result"]["protocolVersion"] == PROTOCOL_VERSION
-        assert resp["result"]["capabilities"] == {"tools": {}}
+        # Fix Day 4 Task 2 added the `resources` capability to the
+        # shim startup path via `register_resources(dispatcher)`. The
+        # per-capability registration is covered by
+        # tests/test_mcp_resources.py; the e2e assertion here pins
+        # the composed shape so accidental capability removal at
+        # wire-up time surfaces as a test failure.
+        assert resp["result"]["capabilities"] == {"tools": {}, "resources": {}}
         assert resp["result"]["serverInfo"]["name"] == "concierge-shim"
 
     def test_tools_list_advertises_n11_meta_tools(self, shim):

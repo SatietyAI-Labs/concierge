@@ -208,6 +208,59 @@ class TestValidatorEffortDrift:
         )
 
 
+class TestValidatorSideObservationsDrift:
+    """Fix Day 4 Task 3. Absent / null side_observations is not drift
+    (the field is optional). Present-with-wrong-type or list-with-non-
+    string-entries IS drift. Over-cap (>2 entries) is drift per the
+    prompt instruction.
+    """
+
+    def test_absent_is_not_drift(self):
+        d = _valid_response_dict()
+        d.pop("side_observations", None)
+        drift = validate_response_shape(d, request_id="r1")
+        assert not any("side_observations" in m for m in drift)
+
+    def test_null_is_not_drift(self):
+        d = _valid_response_dict()
+        d["side_observations"] = None
+        drift = validate_response_shape(d, request_id="r1")
+        assert not any("side_observations" in m for m in drift)
+
+    def test_empty_list_is_not_drift(self):
+        d = _valid_response_dict()
+        d["side_observations"] = []
+        drift = validate_response_shape(d, request_id="r1")
+        assert not any("side_observations" in m for m in drift)
+
+    def test_populated_list_within_cap_is_not_drift(self):
+        d = _valid_response_dict()
+        d["side_observations"] = ["first obs", "second obs"]
+        drift = validate_response_shape(d, request_id="r1")
+        assert not any("side_observations" in m for m in drift)
+
+    def test_non_list_flagged(self):
+        d = _valid_response_dict()
+        d["side_observations"] = "should-be-list"
+        drift = validate_response_shape(d, request_id="r1")
+        assert any("side_observations_wrong_type" in m for m in drift)
+
+    def test_over_cap_flagged(self):
+        """Prompt instructs at most two. Three-or-more is drift."""
+        d = _valid_response_dict()
+        d["side_observations"] = ["a", "b", "c"]
+        drift = validate_response_shape(d, request_id="r1")
+        assert any("side_observations_over_cap" in m for m in drift)
+
+    def test_non_string_entry_flagged(self):
+        d = _valid_response_dict()
+        d["side_observations"] = ["ok", 42]
+        drift = validate_response_shape(d, request_id="r1")
+        assert any(
+            "side_observations_item_wrong_type:index=1" in m for m in drift
+        )
+
+
 class TestValidatorRichContentDrift:
     """Rich in-chat content fields (category / install_method /
     risk_cost) must be present on every recommendation. Explicit

@@ -4,9 +4,22 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from core.api import health, packs, recommend, requests as requests_api, tools
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+
+from core.api import (
+    events as events_api,
+    health,
+    packs,
+    recommend,
+    requests as requests_api,
+    scanner as scanner_api,
+    tools,
+)
 from core.config import get_settings
 from core.db.session import ensure_schema_current, get_session_factory
+from core.events import EventBroker
+from core.lifecycle_scanner import run_once as scanner_run_once
 from core.lifecycle_store.store import reconcile as reconcile_lifecycle
 from core.logging import configure_logging
 from core.recommend.counters import log_shutdown_summary
@@ -19,6 +32,11 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     configure_logging(settings.log_level)
     ensure_schema_current()
+    # Fix Day 4 Task 4 — per-app singleton EventBroker on app.state.
+    # Service construction (`get_lifecycle_service`) and the SSE
+    # endpoint (`get_event_broker`) both read it from here so the
+    # broker is shared across all requests on this process.
+    app.state.event_broker = EventBroker()
     logger.info(
         "Concierge starting (env=%s debug=%s db=%s model=%s effort=%s "
         "lifecycle_root=%s)",
@@ -47,11 +65,80 @@ async def lifespan(app: FastAPI):
         )
     finally:
         session.close()
+
+    # Fix Day 4 Task 5 — promotion/demotion scanner via APScheduler
+    # (not cron per DECISIONS [2026-04-23]). The `last_scanner_summary`
+    # starts None; `/health` tolerates that until the first run
+    # completes.
+    #
+    # SHAKEDOWN CADENCE: daily at 03:00 local during the 48h
+    # operational-shakedown window so the scanner actually fires
+    # inside the soak period. Steady-state weekly cadence (the
+    # originally-designed Sunday-03:00 frequency per `## Weekly review`
+    # in the tool-lifecycle skill) is restored post-soak — revert this
+    # trigger back to `day_of_week="sun"` once the shakedown gate is
+    # cleared. Day 5 today.md carries the revert as a checklist item.
+    app.state.last_scanner_summary = None
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(
+        _run_scheduled_scan,
+        trigger=CronTrigger(hour=3, minute=0),  # daily during shakedown; revert to day_of_week="sun" post-soak
+        args=[app],
+        id="concierge.weekly_scanner",
+        name="Concierge promotion/demotion scan (daily during shakedown)",
+        replace_existing=True,
+    )
+    scheduler.start()
+    app.state.scheduler = scheduler
+    logger.info("scheduler.started weekly_scanner=concierge.weekly_scanner")
+
     yield
+
+    # Teardown — stop the scheduler before the event loop winds down
+    # so in-flight jobs get a clean cancellation rather than a
+    # traceback at exit.
+    try:
+        scheduler.shutdown(wait=False)
+        logger.info("scheduler.stopped")
+    except Exception as exc:  # pragma: no cover — defensive
+        logger.warning("scheduler.shutdown_failed error=%s", exc)
+
     # Session-level recommendation summary — load-bearing for the
     # 48h operational-shakedown gate per DECISIONS [2026-04-21 18:00].
     log_shutdown_summary()
     logger.info("Concierge shutting down")
+
+
+def _run_scheduled_scan(app: FastAPI) -> None:
+    """APScheduler job entrypoint — opens a short-lived session,
+    runs one scan, commits, stores the summary on `app.state`.
+
+    Synchronous on purpose: APScheduler's AsyncIOScheduler can run
+    sync jobs on its own thread-pool, and the scanner + DB session
+    are sync. Makes commit semantics crisp.
+    """
+    session = get_session_factory()()
+    try:
+        summary = scanner_run_once(
+            session,
+            memory=getattr(app.state, "memory", None),
+        )
+        session.commit()
+        app.state.last_scanner_summary = summary
+        logger.info(
+            "scheduler.scan_complete auto_promoted=%d promotion_candidates=%d "
+            "demotion_candidates=%d stale_pending=%d errors=%d",
+            len(summary.auto_promoted),
+            len(summary.promotion_candidates),
+            len(summary.demotion_candidates),
+            len(summary.stale_pending),
+            len(summary.errors),
+        )
+    except Exception as exc:
+        logger.exception("scheduler.scan_failed error=%s", exc)
+        session.rollback()
+    finally:
+        session.close()
 
 
 def create_app() -> FastAPI:
@@ -67,6 +154,8 @@ def create_app() -> FastAPI:
     app.include_router(packs.router)
     app.include_router(recommend.router)
     app.include_router(requests_api.router)
+    app.include_router(events_api.router)
+    app.include_router(scanner_api.router)
 
     return app
 

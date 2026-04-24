@@ -334,6 +334,47 @@ class TestRecommendHandlerSuccess:
         assert received_body["cwd"] == "/tmp/work"
         assert received_body["task_hint"] == "data-analysis"
         assert received_body["active_tools"] == ["pandas", "csvkit"]
+        # Fix Day 4 Task 6 — session_id auto-attaches from the shim
+        # module. Exact value is process-random, just confirm presence
+        # and non-empty string shape.
+        assert isinstance(received_body["session_id"], str)
+        assert len(received_body["session_id"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_session_id_from_shim_module_included_in_body(self, monkeypatch):
+        """Fix Day 4 Task 6 — the handler reads SHIM_SESSION_ID at call
+        time (not at import), so a test monkeypatch of the module
+        attribute flows through to the HTTP body. This mirrors the
+        pattern a future integration test uses to assert a known
+        session_id end-to-end.
+        """
+        import json as _json
+
+        received_body: dict = {}
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            received_body.update(_json.loads(request.read().decode()))
+            return httpx.Response(
+                200,
+                json={
+                    "request_id": "sid" + "0" * 21,
+                    "recommendations": [],
+                    "memory_available": True,
+                    "memory_hit_count": 0,
+                    "model": "claude-opus-4-7",
+                    "effort": "xhigh",
+                    "latency_ms": {"total": 0, "memory": 0, "model": 0, "parse": 0},
+                    "token_usage": {"input": 0, "output": 0, "total": 0},
+                },
+            )
+
+        _install_mock_transport(mock_handler)
+        monkeypatch.setattr(
+            "adapters.claude_code.session.SHIM_SESSION_ID",
+            "test-session-fixed-uuid",
+        )
+        await handle_recommend({"task": "task"})
+        assert received_body["session_id"] == "test-session-fixed-uuid"
 
     @pytest.mark.asyncio
     async def test_memory_unavailable_renders_in_context_line(self):
@@ -357,6 +398,126 @@ class TestRecommendHandlerSuccess:
 
         text = result["content"][0]["text"]
         assert "memory_available=False" in text
+
+
+# ---- side_observations rendering (Fix Day 4 Task 3) ---------------------
+
+
+class TestSideObservationsRendering:
+    """Fix Day 4 Task 3 — narration-as-push pattern 3. The renderer
+    inserts an `### Observations` section between Gap report and
+    Summary when the response carries a non-empty `side_observations`
+    list. Absent / empty / None collapses the block so pre-Task-3
+    output is preserved byte-identical.
+    """
+
+    def _response_with(self, side_observations):
+        """Build a minimal response dict. If `side_observations` is
+        the sentinel `_OMIT`, the key is left out entirely (tests
+        both absence and explicit null/empty semantics).
+        """
+        body = {
+            "request_id": "obs_" + "0" * 24,
+            "recommendations": [
+                {
+                    "rank": 1,
+                    "tool_slug": "csvkit",
+                    "tool_name": "csvkit",
+                    "rationale": "fits",
+                    "confidence": "high",
+                    "is_in_catalog": True,
+                }
+            ],
+            "memory_available": True,
+            "memory_hit_count": 0,
+            "model": "claude-opus-4-7",
+            "effort": "xhigh",
+            "latency_ms": {"total": 0, "memory": 0, "model": 0, "parse": 0},
+            "token_usage": {"input": 0, "output": 0, "total": 0},
+        }
+        if side_observations is not self._OMIT:
+            body["side_observations"] = side_observations
+        return body
+
+    _OMIT = object()
+
+    def _run(self, body):
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=body)
+        _install_mock_transport(mock_handler)
+        return mock_handler
+
+    @pytest.mark.asyncio
+    async def test_populated_list_renders_observations_section(self):
+        body = self._response_with([
+            "`jq-old` is retired but would fit this task.",
+            "`duckdb` is loaded-on-boot but idle for CSV tasks.",
+        ])
+        self._run(body)
+        result = await handle_recommend({"task": "csv"})
+        text = result["content"][0]["text"]
+        assert "### Observations" in text
+        assert "`jq-old` is retired" in text
+        assert "`duckdb` is loaded-on-boot" in text
+
+    @pytest.mark.asyncio
+    async def test_observations_rendered_as_bullets(self):
+        body = self._response_with(["first obs", "second obs"])
+        self._run(body)
+        result = await handle_recommend({"task": "csv"})
+        text = result["content"][0]["text"]
+        assert "- first obs" in text
+        assert "- second obs" in text
+
+    @pytest.mark.asyncio
+    async def test_observations_ordered_between_gap_report_and_summary(self):
+        body = self._response_with(["x"])
+        self._run(body)
+        result = await handle_recommend({"task": "csv"})
+        text = result["content"][0]["text"]
+        idx_gap = text.index("### Gap report")
+        idx_obs = text.index("### Observations")
+        idx_sum = text.index("### Summary")
+        assert idx_gap < idx_obs < idx_sum
+
+    @pytest.mark.asyncio
+    async def test_absent_key_collapses_section(self):
+        body = self._response_with(self._OMIT)
+        self._run(body)
+        result = await handle_recommend({"task": "csv"})
+        text = result["content"][0]["text"]
+        assert "### Observations" not in text
+
+    @pytest.mark.asyncio
+    async def test_null_collapses_section(self):
+        body = self._response_with(None)
+        self._run(body)
+        result = await handle_recommend({"task": "csv"})
+        text = result["content"][0]["text"]
+        assert "### Observations" not in text
+
+    @pytest.mark.asyncio
+    async def test_empty_list_collapses_section(self):
+        body = self._response_with([])
+        self._run(body)
+        result = await handle_recommend({"task": "csv"})
+        text = result["content"][0]["text"]
+        assert "### Observations" not in text
+
+    @pytest.mark.asyncio
+    async def test_empty_string_entry_skipped_not_rendered(self):
+        """Defensive rendering: an empty-string entry (shouldn't happen
+        post-parser-validation, but defense-in-depth) produces no
+        orphan bullet line.
+        """
+        body = self._response_with(["real obs", "   "])
+        self._run(body)
+        result = await handle_recommend({"task": "csv"})
+        text = result["content"][0]["text"]
+        assert "- real obs" in text
+        # No orphan bullet with just whitespace.
+        assert "- \n" not in text
+        assert "-    " not in text
 
 
 # ---- Handler failure paths -----------------------------------------------

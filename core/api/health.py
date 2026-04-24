@@ -22,12 +22,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from core.config import Settings, get_settings
-from core.db.models import Pack, Request, Tool
+from core.db.models import Pack, Request as RequestRow, Tool
 from core.db.session import get_db
 from core.lifecycle_store.service import get_counters as get_lifecycle_counters
 from core.recommend.counters import get_counters as get_recommend_counters
@@ -53,7 +53,7 @@ def _catalog_counts(db: Session) -> dict[str, int]:
 
 def _requests_counts_by_folder(db: Session) -> dict[str, int]:
     rows = (
-        db.query(Request.folder, func.count(Request.id)).group_by(Request.folder).all()
+        db.query(RequestRow.folder, func.count(RequestRow.id)).group_by(RequestRow.folder).all()
     )
     counts = {"pending": 0, "resolved": 0, "archived": 0}
     for folder, n in rows:
@@ -64,6 +64,7 @@ def _requests_counts_by_folder(db: Session) -> dict[str, int]:
 
 @router.get("/health")
 def health(
+    request: Request,
     settings: Settings = Depends(get_settings),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
@@ -97,6 +98,15 @@ def health(
         requests_by_folder = {}
         warnings.append(f"requests_counts_unavailable: {exc}")
 
+    # Fix Day 4 Task 5 — scanner summary field. `None` when no scan
+    # has run yet (fresh process); dict shape otherwise. Per Fork F,
+    # summary is in-memory (app.state), not persisted to DB, so a
+    # restart clears it until the next scan run.
+    last_summary = getattr(request.app.state, "last_scanner_summary", None)
+    scanner_field: Any = (
+        last_summary.to_health_dict() if last_summary is not None else None
+    )
+
     body: dict[str, Any] = {
         "status": "ok",
         "env": settings.env,
@@ -114,6 +124,7 @@ def health(
         },
         "catalog": catalog,
         "requests": requests_by_folder,
+        "scanner": scanner_field,
     }
     if warnings:
         body["health_warnings"] = warnings

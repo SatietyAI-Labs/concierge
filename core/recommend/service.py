@@ -193,7 +193,9 @@ class RecommendationService:
         # 5. Parse
         parse_start = time.monotonic()
         try:
-            reasoning, recommendations = parse_recommendation_response(call.content)
+            reasoning, recommendations, side_observations = parse_recommendation_response(
+                call.content
+            )
         except RecommendationParseError as exc:
             self.counters.record_parse_failed()
             logger.error(
@@ -232,6 +234,7 @@ class RecommendationService:
                         "request_id": short,
                         "task_hint": req.task_hint,
                     },
+                    req.session_id,
                 )
             except Exception as exc:
                 logger.warning(
@@ -288,6 +291,7 @@ class RecommendationService:
             ),
             reasoning=reasoning,
             stop_reason=call.stop_reason,
+            side_observations=side_observations,
         )
 
         # 8. Tier 1 drift detection — fixture-spec structural check

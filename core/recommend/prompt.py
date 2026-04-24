@@ -102,6 +102,9 @@ tolerated but not expected). Keys must appear in the order shown.
       "install_method": "<normalized method, e.g. 'apt', 'pip-user', 'npx-mcp', 'npm-global', 'binary'; null if unknown>",
       "risk_cost": "<one phrase: install weight / runtime cost / license; null if nothing material>"
     }
+  ],
+  "side_observations": [
+    "<short adjacent observation, one per string; omit the key or return [] when no observation applies>"
   ]
 }
 
@@ -129,7 +132,40 @@ Rules:
 - Prefer lightweight tools over heavyweight ones when both would
   serve the task (per the tool-awareness and tool-recommendation
   protocols). Factor `active_tools` (already loaded) into your
-  ranking when provided."""
+  ranking when provided.
+
+## side_observations (optional, at most two entries)
+
+`side_observations` is an array of at most two short observations
+(each under 140 characters). The agent caller surfaces these in its
+narration to the operator alongside the recommendations, so they
+must be observations the operator would actually want to act on —
+not re-statements of the recommendation itself.
+
+Trigger ONLY on either of these two specific patterns. Do not
+fabricate observations to fill space; silence is correct when
+neither pattern fires.
+
+1. **Retired-tool overlap.** A catalog row annotated `[retired]`
+   would plausibly have served this task. Example phrasing:
+   "`<slug>` is retired but would fit this task — operator may
+   want to reinstate if the retirement was premature." Only surface
+   when the retired tool's category or capability genuinely
+   overlaps the task; do not mention every retired row.
+
+2. **Idle loaded-on-boot tool.** A catalog row annotated
+   `[loaded-on-boot]` whose category or stated capability matches
+   the task's domain, but which has no recent usage evidence in
+   the rendered memory / catalog. Example phrasing: "`<slug>` is
+   loaded-on-boot but hasn't been applied to {domain} tasks
+   recently — consider using it here instead of recommending a
+   new install." Only surface when the idle tool plausibly fits;
+   loaded-on-boot tools outside the current domain should not
+   trigger this.
+
+If neither pattern applies, omit the key entirely or return `[]`.
+Returning more than two observations is drift — pick the two most
+actionable and drop the rest."""
 
 
 # ---- State annotation for catalog rendering -----------------------------

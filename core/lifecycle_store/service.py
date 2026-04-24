@@ -74,6 +74,7 @@ from core.lifecycle_store.writer import (
 )
 from core.install.schemas import InstallResult
 from core.install.service import install_by_method, normalize_install_method
+from core.events import EventBroker
 from core.telemetry import emit_usage_event
 
 
@@ -167,6 +168,13 @@ class LifecycleService:
     lifecycle_root: Path
     counters: LifecycleCounters = None  # type: ignore[assignment]
     install_dispatcher: InstallDispatcher = field(default=install_by_method)
+    # Fix Day 4 Task 4 — optional SSE broker for `new_request` fan-out.
+    # Per Fork D, service-layer publishes (not endpoint-layer) so any
+    # non-HTTP filing path eventually added (e.g. future MCP-originated
+    # create_request) also feeds the same broker without a second
+    # wiring step. None = no broker wired (unit tests that don't care
+    # about SSE construct without one).
+    event_broker: Optional["EventBroker"] = None
 
     def __post_init__(self) -> None:
         if self.counters is None:
@@ -241,6 +249,26 @@ class LifecycleService:
             parsed.tool_slug,
             parsed.is_discovered,
         )
+
+        # Fix Day 4 Task 4 — SSE `new_request` fan-out. Broker is
+        # optional: tests / non-API callers construct without one and
+        # the publish becomes a no-op. Publish AFTER the DB commit so
+        # subscribers never see an event for a row that rolled back.
+        if self.event_broker is not None:
+            self.event_broker.publish(
+                {
+                    "event": "new_request",
+                    "data": {
+                        "filename": parsed.filename,
+                        "tool_name": parsed.tool_name,
+                        "tool_slug": parsed.tool_slug,
+                        "category": parsed.category,
+                        "confidence": parsed.confidence,
+                        "is_discovered": parsed.is_discovered,
+                    },
+                }
+            )
+
         return RequestDetail(
             id=row.id,
             filename=row.filename,
@@ -396,10 +424,17 @@ class LifecycleService:
         # X13 wire-in: approving a request with a canonical install
         # method auto-installs and transitions to installed/failed.
         # Non-canonical methods (mcp-server pre-T5, unknown, empty)
-        # leave status=approved for operator handling.
+        # leave status=approved for operator handling. Fix Day 4 Task
+        # 6: session_id flows from StatusChange into the install emit
+        # site — UI-originated approvals pass null (no MCP session to
+        # correlate against); MCP-originated approvals (future) carry
+        # the shim's SHIM_SESSION_ID.
         if change.status == "approved":
             follow_up = self._maybe_install_on_approve(
-                filename=filename, path=path, parsed=parsed
+                filename=filename,
+                path=path,
+                parsed=parsed,
+                session_id=change.session_id,
             )
             if follow_up is not None:
                 detail = follow_up
@@ -409,11 +444,20 @@ class LifecycleService:
     # ---- X13 wire-in ----------------------------------------------------
 
     def _maybe_install_on_approve(
-        self, *, filename: str, path: Path, parsed
+        self,
+        *,
+        filename: str,
+        path: Path,
+        parsed,
+        session_id: Optional[str] = None,
     ) -> Optional[RequestDetail]:
         """Post-approval install dispatch. Returns the RequestDetail
         from the follow-up installed/failed transition, or None when
         no install was attempted (manual-handling path).
+
+        `session_id` (Fix Day 4 Task 6) flows into the `installed`
+        ToolUsageEvent emit on success. Null when caller didn't
+        provide one (e.g. UI-originated approvals).
         """
         request_section = parsed.sections.get("request", {})
         install_method_raw = (request_section.get("install_method") or "").strip()
@@ -485,7 +529,9 @@ class LifecycleService:
 
         # §D usage telemetry — emit on successful install only. Failed
         # installs leave the tool's lifecycle_state unchanged; no event
-        # to record. session_id=None per Fix Day 3 Fork 2.
+        # to record. Fix Day 4 Task 6: session_id flows from the
+        # StatusChange payload through `update_status` into this emit;
+        # null when the approval came from a non-MCP caller (e.g. UI).
         if result.success:
             tool_slug = slugify(tool_name)
             try:
@@ -498,6 +544,7 @@ class LifecycleService:
                         "install_method": result.method,
                         "elapsed_ms": result.elapsed_ms,
                     },
+                    session_id=session_id,
                 )
             except Exception as exc:
                 logger.warning(

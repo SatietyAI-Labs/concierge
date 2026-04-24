@@ -376,7 +376,39 @@ class TestApproveTriggersInstallTelemetry:
         assert evt.event_type == "installed"
         assert evt.context["install_method"] == "pip_user"
         assert evt.context["filename"] == filename
-        assert evt.session_id is None  # Fork 2
+        # Default StatusChange has no session_id → null event. Fix
+        # Day 4 Task 6 opened the session_id channel without changing
+        # the default behavior for UI-originated approvals.
+        assert evt.session_id is None
+
+    def test_session_id_on_status_change_propagates_to_event(
+        self, db_session, lifecycle_root
+    ):
+        """Fix Day 4 Task 6 — a StatusChange carrying session_id lands
+        that value on the emitted ToolUsageEvent row. Demonstrates the
+        MCP-originated approval path (UI-originated approvals leave
+        session_id null; this test is the positive case).
+        """
+        from core.db.models import Tool, ToolUsageEvent
+
+        db_session.add(Tool(slug="csvkit", name="csvkit", tool_type="cli"))
+        db_session.commit()
+
+        def dispatcher(method, *, tool_name, **kw):
+            return _make_install_result(success=True)
+
+        svc = _make_service_with_dispatcher(db_session, lifecycle_root, dispatcher)
+        filename = svc.create_request(
+            NewRequestDraft(tool_name="csvkit", install_method="pip-user")
+        ).filename
+        svc.update_status(
+            filename=filename,
+            change=StatusChange(status="approved", session_id="shim-abc-123"),
+        )
+
+        events = db_session.query(ToolUsageEvent).all()
+        assert len(events) == 1
+        assert events[0].session_id == "shim-abc-123"
 
     def test_failed_install_emits_no_event(
         self, db_session, lifecycle_root

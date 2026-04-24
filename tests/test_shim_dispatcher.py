@@ -32,6 +32,11 @@ from adapters.claude_code.jsonrpc import (
 
 @pytest.mark.asyncio
 async def test_initialize_response_pins_protocol_version():
+    """Default dispatcher declares the `tools` capability; Fix Day 4
+    Task 2 adds `resources` via the separate register_resources path,
+    so a bare build_default_dispatcher() shows tools only — the
+    register_resources coverage lives in tests/test_mcp_resources.py.
+    """
     d = build_default_dispatcher()
     req = JsonRpcRequest(
         method="initialize",
@@ -46,6 +51,24 @@ async def test_initialize_response_pins_protocol_version():
     assert result["protocolVersion"] == PROTOCOL_VERSION
     assert result["capabilities"] == {"tools": {}}
     assert result["serverInfo"] == {"name": SERVER_NAME, "version": SERVER_VERSION}
+
+
+@pytest.mark.asyncio
+async def test_declare_capability_reflects_in_initialize_response():
+    """An additive capability declaration made after build_default_dispatcher()
+    but before the initialize call surfaces in the initialize response —
+    this is the contract that register_resources relies on.
+    """
+    d = build_default_dispatcher()
+    d.declare_capability("resources", {})
+    req = JsonRpcRequest(
+        method="initialize",
+        params={"protocolVersion": PROTOCOL_VERSION},
+        id=1,
+        is_notification=False,
+    )
+    resp = await d.dispatch(req)
+    assert resp["result"]["capabilities"] == {"tools": {}, "resources": {}}
 
 
 @pytest.mark.asyncio

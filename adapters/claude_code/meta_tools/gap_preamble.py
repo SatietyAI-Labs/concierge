@@ -51,12 +51,15 @@ than copy-pasted as a trailing block.
 
 ## Verbatim X8 exposure to the session
 
-Deferred per N12 proposal Q4 answer. Future X-slot may advertise
-X8 via MCP `resources/list` + `resources/read` under URI
-`concierge://prompts/behavioral-rules.md`. Verbatim X8 is already
-available on disk in `core/prompts/soul_delta.py` for any future
-consumer that needs it; this preamble is the V1 adapter-side
-behavioral-voice surface.
+Implemented in Fix Day 4 Task 2 (per DECISIONS `[2026-04-23]` —
+Push channel reframed as narration-as-push, pattern 2). The X8
+body ships verbatim at `concierge://prompts/behavioral-rules.md`
+via the MCP `resources/list` + `resources/read` protocol wired in
+`adapters/claude_code/resources.py`. This condensed gap-preamble
+remains the adapter-side behavioral-voice surface consumed by the
+gap-report generator; the two coexist deliberately — this file is
+the action-framed condensed version, X8 is the verbatim source,
+and sessions reading resources see both together.
 """
 from __future__ import annotations
 

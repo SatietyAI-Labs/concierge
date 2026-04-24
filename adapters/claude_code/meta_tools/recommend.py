@@ -40,6 +40,7 @@ from typing import Any
 
 import httpx
 
+from adapters.claude_code import session as _shim_session
 from adapters.claude_code.dispatcher import ToolSpec
 from adapters.claude_code.meta_tools import http_client, render
 from adapters.claude_code.meta_tools.gap_report import build_gap_report
@@ -56,6 +57,15 @@ recommend_spec = ToolSpec(
         "discovery heuristics, then returns a ranked list with "
         "rationale and confidence. Use when you notice a capability "
         "gap or want to verify you are reaching for the right tool."
+        "\n\n"
+        "After invoking this tool, your next user-visible message "
+        "must briefly narrate the consultation: what you asked "
+        "Concierge about, what it recommended (top result and your "
+        "confidence in acting on it), and what you are doing with "
+        "that recommendation. Keep this to one or two sentences — "
+        "the goal is collaborative visibility, not a full transcript. "
+        "Silent tool calls make the collaboration invisible to the "
+        "operator; a brief narration keeps Concierge's work legible."
     ),
     input_schema={
         "type": "object",
@@ -88,6 +98,12 @@ def _build_request_body(args: dict[str, Any]) -> dict[str, Any]:
     validation will have rejected completely-malformed args before
     we see them; defense-in-depth here only pulls through documented
     fields.
+
+    Fix Day 4 Task 6 appends `session_id` to every body so the
+    recommend service's telemetry sink tags each emitted
+    `ToolUsageEvent` row with the shim-lifetime UUID4. Read at call
+    time (not captured in a closure at import) so tests can
+    monkeypatch `_shim_session.SHIM_SESSION_ID` for determinism.
     """
     body: dict[str, Any] = {"task": args.get("task", "")}
     if "cwd" in args and args["cwd"] is not None:
@@ -96,6 +112,7 @@ def _build_request_body(args: dict[str, Any]) -> dict[str, Any]:
         body["task_hint"] = args["task_hint"]
     if "active_tools" in args and args["active_tools"] is not None:
         body["active_tools"] = args["active_tools"]
+    body["session_id"] = _shim_session.SHIM_SESSION_ID
     return body
 
 

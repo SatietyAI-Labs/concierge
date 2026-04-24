@@ -460,18 +460,25 @@ class TestContextPropagation:
 
 
 class _CapturingSink:
-    """Records calls to the UsageEventSink contract for assertion."""
+    """Records calls to the UsageEventSink contract for assertion.
+
+    Signature matches the Fix Day 4 Task 6-extended sink shape:
+    `(slug, event_type, context, session_id) -> None`. Legacy tests
+    that only cared about the first three positional args unpack via
+    `(slug, event_type, context, *_) = sink.calls[i]` or index-read.
+    """
 
     def __init__(self) -> None:
-        self.calls: list[tuple[str, str, dict | None]] = []
+        self.calls: list[tuple[str, str, dict | None, str | None]] = []
 
     def __call__(
         self,
         tool_slug: str,
         event_type: str,
         context: dict | None = None,
+        session_id: str | None = None,
     ) -> None:
-        self.calls.append((tool_slug, event_type, context))
+        self.calls.append((tool_slug, event_type, context, session_id))
 
 
 class TestUsageTelemetryWiring:
@@ -493,7 +500,7 @@ class TestUsageTelemetryWiring:
         svc.recommend(RecommendRequest(task="analyze a CSV"))
         # One event for the in-catalog rec only; discovery rec skipped.
         assert len(sink.calls) == 1
-        slug, event_type, context = sink.calls[0]
+        slug, event_type, context, _session_id = sink.calls[0]
         assert slug == "csvstat"
         assert event_type == "recommended"
         assert context is not None
@@ -531,7 +538,7 @@ class TestUsageTelemetryWiring:
         assert sink.calls == []
 
     def test_sink_failure_does_not_fail_recommend_call(self, caplog):
-        def broken_sink(slug, event_type, context=None):
+        def broken_sink(slug, event_type, context=None, session_id=None):
             raise RuntimeError("sink exploded")
 
         svc = self._svc_with_sink(_good_response_json(rec_count=2), broken_sink)
@@ -553,3 +560,29 @@ class TestUsageTelemetryWiring:
         )
         assert len(sink.calls) == 1
         assert sink.calls[0][2]["task_hint"] == "data-analysis"
+
+    def test_session_id_propagates_through_sink_when_provided(self):
+        """Fix Day 4 Task 6 — the RecommendRequest.session_id value
+        must appear on the emitted sink call so downstream telemetry
+        rows carry the correlation id.
+        """
+        sink = _CapturingSink()
+        svc = self._svc_with_sink(_good_response_json(rec_count=1), sink)
+        svc.recommend(
+            RecommendRequest(task="t", session_id="shim-aaa-111")
+        )
+        assert len(sink.calls) == 1
+        _slug, _event, _ctx, session_id = sink.calls[0]
+        assert session_id == "shim-aaa-111"
+
+    def test_session_id_defaults_to_none_when_not_provided(self):
+        """Backward-compat: an absent session_id flows through as
+        None — legacy callers (pre-Fix Day 4 clients, UI-origin
+        FastAPI endpoints) don't need to change.
+        """
+        sink = _CapturingSink()
+        svc = self._svc_with_sink(_good_response_json(rec_count=1), sink)
+        svc.recommend(RecommendRequest(task="t"))
+        assert len(sink.calls) == 1
+        _slug, _event, _ctx, session_id = sink.calls[0]
+        assert session_id is None

@@ -11,11 +11,12 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from core.config import Settings, get_settings
+from core.events import EventBroker
 from core.db.session import get_db
 from core.lifecycle_store.schema import (
     ListedRequest,
@@ -35,11 +36,33 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/requests", tags=["requests"])
 
 
+def get_event_broker(request: Request) -> EventBroker | None:
+    """Resolve the per-app EventBroker from `app.state`. Wired in
+    `core/app.py`'s lifespan (Fix Day 4 Task 4). Returned to every
+    consumer (service construction + `/ui/events` endpoint) via
+    FastAPI DI so the broker is a true singleton per app.
+
+    Defensive fallback: older test fixtures construct `TestClient(app)`
+    without entering the context manager, which skips lifespan and
+    leaves `app.state` without the attribute. In that case we return
+    None; `LifecycleService.event_broker` is Optional so the service
+    still functions (publish becomes a no-op). Tests that care about
+    SSE behavior should use TestClient as a context manager or set
+    `app.state.event_broker` explicitly.
+    """
+    return getattr(request.app.state, "event_broker", None)
+
+
 def get_lifecycle_service(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    event_broker: EventBroker | None = Depends(get_event_broker),
 ) -> LifecycleService:
-    return LifecycleService(session=db, lifecycle_root=settings.lifecycle_root)
+    return LifecycleService(
+        session=db,
+        lifecycle_root=settings.lifecycle_root,
+        event_broker=event_broker,
+    )
 
 
 class PendingListResponse(BaseModel):
