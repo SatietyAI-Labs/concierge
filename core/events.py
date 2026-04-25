@@ -36,11 +36,17 @@ without becoming async.
 
 Publishers build a dict with at least:
   - `event`: str — the SSE event name (e.g. `"new_request"`)
-  - `data`: Any — JSON-serializable payload
+  - `data`: Any — JSON-serializable payload (raw Python objects;
+    SSE-wire serialization is the consumer's responsibility, see
+    `publish` docstring)
 
-Consumers pass through to `sse_starlette.sse.EventSourceResponse`,
-which serializes `data` (via `json.dumps` by default) and emits
-`event: <name>\ndata: <json>\n\n` on the wire.
+The SSE consumer (`core/api/events.py`) JSON-serializes `data`
+before yielding to `sse_starlette.sse.EventSourceResponse` so the
+on-wire format is `event: <name>\\ndata: <json>\\n\\n`. Note: this
+is NOT sse-starlette's default behavior — sse-starlette calls
+`str()` on non-string `data` fields, which produces Python repr
+(single quotes, `None`/`True`) that browser `JSON.parse` rejects.
+The handler-layer serialization (Fix Day 5 Task 1) corrects this.
 """
 from __future__ import annotations
 
@@ -108,6 +114,22 @@ class EventBroker:
         caught in case of future bounded-queue reconfiguration) is
         logged at WARNING; the publish itself never raises so a
         slow / disconnected subscriber cannot break a producer.
+
+        **Pass raw Python objects, not pre-serialized strings.**
+        The `data` field of `event` should be a `dict` / `list` /
+        `str` / number / bool / None — whatever the producer wants
+        consumers to see. Wire-format serialization (e.g.
+        `json.dumps` for the SSE handler at `core/api/events.py`)
+        is the consumer's responsibility, not the broker's. This
+        keeps the broker neutral so future non-SSE consumers
+        (WebSocket bridge, log tee, in-process tap) receive
+        unwrapped data without re-parsing.
+
+        Pre-serializing at publish-time was a Fix Day 5 Task 1
+        anti-pattern: it would force every consumer to choose
+        between accepting the SSE-flavored bytes or re-parsing
+        them, and break the design of the broker as a transport-
+        agnostic fanout.
         """
         if not self._subscribers:
             log.debug(

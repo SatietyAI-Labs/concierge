@@ -13,10 +13,13 @@ Each event is emitted as:
     event: new_request
     data: {"filename": "...", "tool_name": "...", ...}
 
-HTMX's `hx-sse` extension pairs `sse-swap="new_request"` /
-`hx-trigger="sse:new_request from:body"` with this event-name
-convention. No special client-side parsing needed beyond the
-built-in.
+The `data` value is JSON (double-quoted strings, `null`/`true`/`false`)
+so HTMX's `hx-sse` consumer (and any standard SSE client) can
+`JSON.parse(event.data)` directly. The wire-format serialization is
+this handler's responsibility (Fix Day 5 Task 1) — the broker
+upstream holds raw Python objects so future non-SSE consumers
+(WebSocket bridge, log tee, internal tap) get unwrapped data
+without re-parsing.
 
 ## Keep-alive / ping
 
@@ -32,6 +35,7 @@ removes the queue. The endpoint does not need explicit cleanup.
 """
 from __future__ import annotations
 
+import json
 import logging
 from typing import AsyncIterator
 
@@ -73,6 +77,16 @@ async def events(broker: EventBroker = Depends(get_event_broker_from_request)):
     async def _stream() -> AsyncIterator[dict]:
         logger.debug("ui.events.client_connected")
         async for event in broker.subscribe():
+            # Wire-format serialization. The broker holds raw
+            # Python objects (dicts/lists) so future non-SSE
+            # consumers see unwrapped data; sse-starlette's default
+            # str()-on-non-string would emit Python repr (single
+            # quotes, `None`/`True`) which `JSON.parse` rejects.
+            # Strings pass through unchanged so callers that
+            # already serialized get the bytes they expect.
+            data = event.get("data")
+            if isinstance(data, (dict, list)):
+                event = {**event, "data": json.dumps(data)}
             yield event
         logger.debug("ui.events.client_disconnected")
 
