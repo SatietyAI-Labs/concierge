@@ -39,4 +39,5 @@ asyncio_mode = "auto"
 markers = [
     "integration: heavy tests that load sentence-transformers and touch ChromaDB (slow first run)",
     "live_smoke: tests that call real external APIs (Anthropic); gated behind a valid API key. Never runs in CI.",
+    "slow: filesystem-touching integration tests that exercise real OS-level operations (real venv creation, real subprocess invocation, network access for pip install). Skipped in fast-iteration runs via `-m 'not slow'`.",
 ]

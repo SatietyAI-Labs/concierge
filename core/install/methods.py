@@ -24,6 +24,8 @@ import time
 from pathlib import Path
 
 from core.install.schemas import InstallResult
+from core.install.shims import _check_path_visibility, _generate_shim
+from core.install.venv import ConciergeVenvError, _ensure_concierge_venv
 
 
 logger = logging.getLogger(__name__)
@@ -52,13 +54,93 @@ def install_npm_global(package: str, *, timeout_seconds: float = DEFAULT_NPM_TIM
 
 
 def install_pip_user(package: str, *, timeout_seconds: float = DEFAULT_PIP_TIMEOUT) -> InstallResult:
-    """Install a Python package to the user site via `pip install --user`.
+    """Install a Python package into the Concierge-managed venv at
+    `~/.concierge/tools-venv/`.
 
-    The `--user` flag routes the install to `~/.local/` without
-    needing sudo and without polluting system site-packages.
+    Day 6 Option 3 (DECISIONS `[2026-04-27 Day 6]`): PEP-668 sidestep
+    via a Concierge-owned venv. Lazy bootstrap on first call —
+    `_ensure_concierge_venv()` creates the venv if it doesn't exist,
+    then returns the venv path immediately on every subsequent call
+    (idempotent fast path).
+
+    The METHOD_PIP_USER name is preserved for backward compatibility
+    with existing catalog rows and the `normalize_install_method`
+    dispatcher; the *behavior* changed (pip-via-venv instead of
+    `pip --user`), the canonical method key did not.
+
+    On `ConciergeVenvError` (venv bootstrap failure — e.g. stdlib
+    venv missing, disk full, partial venv state), the function
+    returns `InstallResult(success=False, ...)` carrying the
+    bootstrap diagnostic, mirroring the existing X13 "subprocess
+    failures collapse to typed failure objects" rule. Caller sees
+    the same shape regardless of whether the failure is in venv
+    bootstrap or in the actual pip subprocess.
     """
-    cmd = ["pip", "install", "--user", package]
-    return _run(METHOD_PIP_USER, cmd, timeout_seconds)
+    try:
+        venv = _ensure_concierge_venv()
+    except ConciergeVenvError as exc:
+        # Synthetic command string for audit consistency — the would-be
+        # pip command never ran, but the operator's audit trail should
+        # still show what was attempted.
+        synthetic_cmd = (
+            f"<concierge-venv>/bin/pip install {shlex.quote(package)} "
+            f"(venv bootstrap failed)"
+        )
+        logger.info(
+            "install.%s.venv_bootstrap_failed package=%s error=%s",
+            METHOD_PIP_USER, package, exc,
+        )
+        return InstallResult(
+            method=METHOD_PIP_USER,
+            command=synthetic_cmd,
+            success=False,
+            returncode=-1,
+            stdout="",
+            stderr=f"ConciergeVenvError: {exc}",
+            elapsed_ms=0,
+        )
+
+    cmd = [str(venv / "bin" / "pip"), "install", package]
+    result = _run(METHOD_PIP_USER, cmd, timeout_seconds)
+
+    if not result.success:
+        return result
+
+    # Post-install: generate the operator-facing shim at
+    # ~/.concierge/bin/<package> and check whether that directory is
+    # on PATH. Both are non-fatal — a shim-generation failure or a
+    # PATH-visibility warning leaves the install succeeded but appends
+    # diagnostic text to stderr so the operator sees it via the
+    # lifecycle markdown / install record.
+    extra_stderr: list[str] = []
+    try:
+        _generate_shim(package, venv)
+    except Exception as exc:
+        logger.warning(
+            "install.%s.shim_generate_failed package=%s error=%s",
+            METHOD_PIP_USER, package, exc,
+        )
+        extra_stderr.append(f"(shim generation failed: {exc})")
+
+    path_warning = _check_path_visibility()
+    if path_warning:
+        extra_stderr.append(path_warning)
+
+    if not extra_stderr:
+        return result
+
+    merged_stderr = result.stderr
+    for line in extra_stderr:
+        merged_stderr = (merged_stderr + "\n" + line) if merged_stderr else line
+    return InstallResult(
+        method=result.method,
+        command=result.command,
+        success=result.success,
+        returncode=result.returncode,
+        stdout=result.stdout,
+        stderr=merged_stderr,
+        elapsed_ms=result.elapsed_ms,
+    )
 
 
 def install_npx_mcp(

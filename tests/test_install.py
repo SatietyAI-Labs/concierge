@@ -113,26 +113,155 @@ class TestInstallNpxMcp:
 
 
 class TestInstallPipUser:
-    def test_success(self):
-        with patch("core.install.methods.subprocess.run") as mock_run:
+    """install_pip_user installs into the Concierge-managed venv at
+    `~/.concierge/tools-venv/` (Day 6 Option 3, DECISIONS
+    `[2026-04-27 Day 6]`). Tests mock four collaborators:
+
+    - `_ensure_concierge_venv` — returns a fake venv path under
+      tmp_path so the helper has its own dedicated test surface in
+      `tests/test_venv_bootstrap.py`
+    - `subprocess.run` — executes the pip install
+    - `_generate_shim` — writes the operator-facing shim at
+      `~/.concierge/bin/<tool>`; dedicated test surface in
+      `tests/test_shims.py`
+    - `_check_path_visibility` — emits the warning if `~/.concierge/bin/`
+      is not on PATH; dedicated test surface in `tests/test_shims.py`
+
+    Mocking all four keeps the test focused on `install_pip_user`'s
+    orchestration logic without writing to real `~/.concierge/`.
+    """
+
+    def test_success(self, tmp_path):
+        fake_venv = tmp_path / ".concierge" / "tools-venv"
+        with patch("core.install.methods._ensure_concierge_venv") as mock_ensure, \
+             patch("core.install.methods.subprocess.run") as mock_run, \
+             patch("core.install.methods._generate_shim") as mock_shim, \
+             patch("core.install.methods._check_path_visibility") as mock_path:
+            mock_ensure.return_value = fake_venv
             mock_run.return_value = _mock_completed(0, "Successfully installed csvkit-1.0\n", "")
+            mock_path.return_value = None  # PATH is fine, no warning
             result = install_pip_user("csvkit")
 
         assert result.method == METHOD_PIP_USER
         assert result.success is True
         assert "Successfully installed" in result.stdout
+        # Helper consulted exactly once (lazy bootstrap)
+        assert mock_ensure.call_count == 1
+        # Shim generated post-install (Decision A contract)
+        assert mock_shim.call_count == 1
+        shim_args, shim_kwargs = mock_shim.call_args
+        assert shim_args == ("csvkit", fake_venv)
+        # PATH visibility checked
+        assert mock_path.call_count == 1
 
-    def test_command_uses_user_flag_not_sudo(self):
-        with patch("core.install.methods.subprocess.run") as mock_run:
+    def test_command_uses_venv_pip_not_system_pip(self, tmp_path):
+        """Day 6 Option 3 contract: install goes through the
+        Concierge-managed venv's pip, not system `pip --user`.
+        PEP-668 is sidestepped because the venv isn't system Python
+        in the first place — no `--user` flag needed.
+        """
+        fake_venv = tmp_path / ".concierge" / "tools-venv"
+        with patch("core.install.methods._ensure_concierge_venv") as mock_ensure, \
+             patch("core.install.methods.subprocess.run") as mock_run, \
+             patch("core.install.methods._generate_shim"), \
+             patch("core.install.methods._check_path_visibility") as mock_path:
+            mock_ensure.return_value = fake_venv
             mock_run.return_value = _mock_completed(0)
+            mock_path.return_value = None
             result = install_pip_user("csvkit")
 
-        assert "--user" in result.command
+        # argv structure: [<venv>/bin/pip, "install", "csvkit"]
+        called_args = mock_run.call_args[0][0]
+        assert called_args[0] == str(fake_venv / "bin" / "pip"), (
+            f"argv[0] must be <venv>/bin/pip; got {called_args[0]!r}. "
+            f"Day 6 Option 3 routes pip through the Concierge-managed "
+            f"venv, not system pip."
+        )
+        assert called_args[1] == "install"
+        assert called_args[2] == "csvkit"
+        # No --user flag — venv is already isolated; --user would be
+        # meaningless inside a venv
+        assert "--user" not in called_args
         assert "sudo" not in result.command
 
-        called_args = mock_run.call_args[0][0]
-        assert called_args[0] == "pip"
-        assert "--user" in called_args
+    def test_venv_bootstrap_failure_returns_install_failure(self, tmp_path):
+        """Day 6 Option 3: when `_ensure_concierge_venv` raises
+        ConciergeVenvError (e.g. stdlib venv missing, disk full,
+        partial venv state), install_pip_user catches and converts
+        to InstallResult(success=False, ...) per the existing X13
+        "subprocess failures collapse to typed failure objects" rule.
+        Caller (install_by_method, then lifecycle service) sees the
+        same typed-failure shape regardless of whether the failure
+        is in venv bootstrap or in the actual pip subprocess.
+        """
+        from core.install.venv import ConciergeVenvError
+        with patch("core.install.methods._ensure_concierge_venv") as mock_ensure, \
+             patch("core.install.methods.subprocess.run") as mock_run, \
+             patch("core.install.methods._generate_shim") as mock_shim:
+            mock_ensure.side_effect = ConciergeVenvError(
+                "Concierge venv bootstrap failed (returncode=1): "
+                "Error: Python 3.4+ required for venv module"
+            )
+            result = install_pip_user("csvkit")
+
+        # subprocess.run was never called — bootstrap failed first
+        assert mock_run.call_count == 0
+        # Shim never generated — install never succeeded
+        assert mock_shim.call_count == 0
+        # Typed failure result, not a raised exception
+        assert result.method == METHOD_PIP_USER
+        assert result.success is False
+        assert result.returncode == -1
+        # Stderr carries the bootstrap diagnostic for operator audit
+        assert "venv bootstrap failed" in result.stderr
+        assert "Python 3.4+ required" in result.stderr
+
+    def test_path_visibility_warning_appended_to_stderr_on_success(self, tmp_path):
+        """Decision A contract: when ~/.concierge/bin/ is not on PATH,
+        the install still succeeds but the InstallResult.stderr carries
+        a one-line warning so the operator sees it via the lifecycle
+        markdown / install record. Per-install warning makes silent
+        invisibility impossible.
+        """
+        fake_venv = tmp_path / ".concierge" / "tools-venv"
+        with patch("core.install.methods._ensure_concierge_venv") as mock_ensure, \
+             patch("core.install.methods.subprocess.run") as mock_run, \
+             patch("core.install.methods._generate_shim"), \
+             patch("core.install.methods._check_path_visibility") as mock_path:
+            mock_ensure.return_value = fake_venv
+            mock_run.return_value = _mock_completed(0, "Successfully installed csvkit-1.0\n", "")
+            mock_path.return_value = (
+                "note: /home/op/.concierge/bin not on PATH; ..."
+            )
+            result = install_pip_user("csvkit")
+
+        # Install still successful — warning is non-fatal
+        assert result.success is True
+        # Stderr carries the PATH warning
+        assert "not on PATH" in result.stderr
+
+    def test_shim_generation_failure_does_not_fail_the_install(self, tmp_path):
+        """Shim generation failure is non-fatal — pip install already
+        succeeded, the operator's tool is in the venv. They just won't
+        be able to invoke it by name until the shim issue is resolved.
+        Diagnostic appended to stderr; install marked successful.
+        """
+        fake_venv = tmp_path / ".concierge" / "tools-venv"
+        with patch("core.install.methods._ensure_concierge_venv") as mock_ensure, \
+             patch("core.install.methods.subprocess.run") as mock_run, \
+             patch("core.install.methods._generate_shim") as mock_shim, \
+             patch("core.install.methods._check_path_visibility") as mock_path:
+            mock_ensure.return_value = fake_venv
+            mock_run.return_value = _mock_completed(0, "Successfully installed csvkit-1.0\n", "")
+            mock_shim.side_effect = OSError("disk full")
+            mock_path.return_value = None
+            result = install_pip_user("csvkit")
+
+        # Install still successful — shim failure is non-fatal
+        assert result.success is True
+        # Stderr carries the shim diagnostic
+        assert "shim generation failed" in result.stderr
+        assert "disk full" in result.stderr
 
 
 class TestInstallSingleBinary:
@@ -204,10 +333,13 @@ class TestInstallFailurePaths:
         assert "command not found" in result.stderr
         assert result.elapsed_ms >= 0
 
-    def test_timeout_collapses_to_returncode_minus_one(self):
-        with patch("core.install.methods.subprocess.run") as mock_run:
+    def test_timeout_collapses_to_returncode_minus_one(self, tmp_path):
+        fake_venv = tmp_path / ".concierge" / "tools-venv"
+        with patch("core.install.methods._ensure_concierge_venv") as mock_ensure, \
+             patch("core.install.methods.subprocess.run") as mock_run:
+            mock_ensure.return_value = fake_venv
             mock_run.side_effect = subprocess.TimeoutExpired(
-                cmd=["pip", "install", "--user", "slow-package"],
+                cmd=[str(fake_venv / "bin" / "pip"), "install", "slow-package"],
                 timeout=60,
                 output=b"partial output\n",
                 stderr=b"partial stderr\n",
@@ -220,8 +352,11 @@ class TestInstallFailurePaths:
         assert "partial output" in result.stdout
         assert "partial stderr" in result.stderr
 
-    def test_os_error_collapses_to_returncode_minus_one(self):
-        with patch("core.install.methods.subprocess.run") as mock_run:
+    def test_os_error_collapses_to_returncode_minus_one(self, tmp_path):
+        fake_venv = tmp_path / ".concierge" / "tools-venv"
+        with patch("core.install.methods._ensure_concierge_venv") as mock_ensure, \
+             patch("core.install.methods.subprocess.run") as mock_run:
+            mock_ensure.return_value = fake_venv
             mock_run.side_effect = OSError("permission denied on install dir")
             result = install_pip_user("csvkit")
 
