@@ -1,71 +1,34 @@
-"""Prompt fragment extracted from the tool-discovery skill.
+"""Prompt fragment for tool-discovery (X6).
 
-See `core/prompts/tool_awareness.py` for the full conventions —
-consumer compose model, OpenClaw coupling treatment, drift model,
-Phase 2 target. That module is the canonical reference for the
-prompt-fragment extraction pattern; this module only records the
-per-fragment facts and the OpenClaw-specific coupling notes unique
-to this source.
+Originally extracted verbatim from an OpenClaw skill source
+(`_legacy/openclaw-workspace/skills/tool-discovery/SKILL.md`) on
+2026-04-21 during the v3 build period. The constant below was
+already the lightest-coupled fragment in the set — generic `pandoc`
+worked example, no fleet names, no specific MCP tool IDs — so the
+DECISIONS `[2026-04-29 Day 8]` EXTRACT-invariant retirement
+sanitization left the body unchanged. The constant remains
+Concierge-canonical (no longer byte-identical-to-source by
+contract). See `core/prompts/SKILL_FRAGMENT_SYNC_LOG.md` for
+historical context.
 
-**Demo-critical:** per classification §C.5.3 and Phase E Risk 1, the
-signal-table content (green/yellow/red candidate evaluation) is the
-headline example of "prompt-fragment material, not reimplemented as
-a Python scoring function." N6 composition + N8 smoke fixture
+Consumer
+--------
+Composed into POST /recommend's Opus 4.7 system prompt by
+`core.recommend.prompt::compose_recommendation_prompt`, as the X6
+fragment in the X3→X4→X6→X7→X8 chain.
+
+**Demo-critical:** per classification §C.5.3 and Phase E Risk 1,
+the signal-table content (green/yellow/red candidate evaluation) is
+the headline example of "prompt-fragment material, not reimplemented
+as a Python scoring function." N6 composition + N8 smoke fixture
 assertion (`csvstat` ranks above `pandas` for "analyze a CSV") hang
 off this constant performing correctly inside Opus 4.7's system
 prompt.
 
-Source
-------
-Path (repo-relative, via symlink):
-    _legacy/openclaw-workspace/skills/tool-discovery/SKILL.md
-Absolute source at extract time:
-    /home/satiety/.openclaw/workspace/skills/tool-discovery/SKILL.md
-Source SHA-256:
-    64b9b365ba2f9b66eb1832e17214d4599af426a5ba92d6b8f49919fc25a628ca
-Source mtime:
-    2026-04-13 20:46:25 -0700
-Source bytes:
-    5223
-
-Extract
--------
-Extracted:
-    2026-04-21 16:25 PDT (SESSION-2026-04-21-02, item X6)
-Section extracted:
-    Full document body below the YAML frontmatter (source lines
-    6-111). YAML `name:` / `description:` fields excluded
-    (skill-loader metadata, not prompt content).
-Fidelity:
-    VERBATIM. No paraphrase, no reflow, no normalization. No
-    backslash / triple-quote hazards in source; no escaping applied.
-
-Constant naming
----------------
-`TOOL_DISCOVERY_PROTOCOL__FROM_TOOL_DISCOVERY_SKILL` — chosen for
-structural consistency with X3/X4's `{SOURCE}_PROTOCOL__FROM_{SOURCE}_*`
-pattern, since this file also covers a whole-document protocol
-(search → evaluate → file → follow-up). DECISIONS `[2026-04-21 05:50]`
-mitigation #3 suggested `DISCOVERY_SIGNALS__FROM_TOOL_DISCOVERY_SKILL`
-as an illustrative example, but that name only describes the
-signal-table subsection. Choosing `PROTOCOL` to reflect the whole
-extracted body. The governing requirement ("verbose on purpose so
-drift is visible in grep") is satisfied either way; structural
-consistency across X3/X4/X6 wins the tiebreak.
-
-OpenClaw coupling (this fragment's specifics)
----------------------------------------------
-Preserved verbatim in the constant:
-
-- Pipeline README path: `~/.satiety-pipeline/outbox/tool-requests/
-  README.md`
-- Catalog path: `~/satiety-docs/TOOL-CATALOG.md`
-- Catalog section names: "Installed" / "Not Installed"
-
-Coupling footprint is the lightest of the prompt-fragment set —
-worked example uses generic `pandoc` / markdown-to-PDF, no fleet
-agent names, no MCP tool IDs. Consumer (N6 compose step) handles
-substitution if an adapter doesn't expose those paths.
+Worked example preserves Class-2 operator paths
+(`~/.satiety-pipeline/outbox/tool-requests/README.md`,
+`~/satiety-docs/TOOL-CATALOG.md`) and catalog-section vocabulary
+("Installed" / "Not Installed").
 """
 
 TOOL_DISCOVERY_PROTOCOL__FROM_TOOL_DISCOVERY_SKILL = """\

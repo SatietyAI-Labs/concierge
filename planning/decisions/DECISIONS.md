@@ -2904,3 +2904,111 @@ The migration-helper option (auto-move `--user` artifacts into the venv) is reje
 **Affects (migration):** Catalog row format gains an `install_method_provenance` field (exact name TBD at code-write time). One-shot migration script (Alembic data migration or equivalent) runs as part of the Option 3 commit and tags every existing `Tool` row whose canonical install method is `pip_user` with `"pre-option-3-user-site"`. **The wiring test for the backfill asserts every existing pre-Option-3 row gets the marker** — not just "the migration ran" but "the marker appears on every applicable row in the catalog after migration"; this is the client-observable contract per the Day 5 wiring-test meta-lesson. New installs post-commit set the marker (or its absence) per the chosen field shape. Pre-Option-3 lifecycle markdown files in `tool-requests/` are NOT modified — historical record stays intact per the same discipline that kept SESSION-2026-04-25-03 Appendix D intact (correction in the next snapshot, not in-place).
 
 ---
+
+## [2026-04-29 Day 8] — EXTRACT invariant retired pre-public-push
+
+**Context:** Day 8 pre-public-push prep. The `core/prompts/*.py`
+prompt-fragment modules were governed by an EXTRACT invariant
+(per DECISIONS `[2026-04-21 05:50]`): each constant was a
+byte-for-byte verbatim copy of a section of an OpenClaw skill
+source file under `_legacy/`, with the byte-identity enforced by
+`tests/test_prompts.py` drift-detection tests and tracked by
+`core/prompts/SKILL_FRAGMENT_SYNC_LOG.md`. The invariant was
+load-bearing during the v3 build period when synced-against-
+private-source mattered. Pre-public-push, the invariant's costs
+(operator-private workflow content baked into worked examples,
+brand-specific tool IDs, anti-bot-circumvention descriptions,
+"Lewie won't check pending/" informal narrative) outweighed its
+benefits at the public-release boundary.
+
+**Options considered:**
+- Keep invariant; sanitize inputs (paraphrase OpenClaw sources
+  before re-extracting) — adds re-sync overhead permanently;
+  doesn't actually address the underlying drift-against-private-
+  source semantic
+- Sanitize-and-relax — keep verbatim claim formally, allow
+  per-fragment substitutions for public-release; preserves the
+  drift-detection scaffolding at cost of meaningfulness
+- **Retire invariant entirely (chosen)** — fragments become
+  Concierge-canonical; worked examples rewritten to generic
+  scenarios; SHA-256 / mtime / drift-check infrastructure goes
+  away; SKILL_FRAGMENT_SYNC_LOG.md converts to historical note
+
+**Decision:** Retire the EXTRACT invariant entirely. Prompt-
+fragment Python modules in `core/prompts/` are no longer byte-
+identical to OpenClaw sources; they are public-clean originals
+authored for the Concierge audience. Worked examples were
+sanitized to generic scenarios (survey-CSV processing, generic
+campaign-delivery, generic notification step) while preserving
+fleet-narrative names (Alfred, Scout, Dispatch, Radar, Bridge per
+the OpenClaw narrative) and Class-2 operator paths
+(`~/.satiety-pipeline/`, `~/.openclaw/logs/`,
+`~/.agent-skills/shared/TOOL-MANIFEST.md`) per Day 8 Task 0
+Class-2 calibration.
+
+**Reasoning:** Concierge transitions from a private extract
+maintaining drift-detection-against-OpenClaw to a standalone
+public artifact. Drift-against-private-source is no longer a
+meaningful signal for the public audience, who don't have the
+OpenClaw sources to drift against. Verbatim-fidelity
+buys nothing for the public audience and accumulates operator-
+context exposure. The invariant's mechanism (per-fragment SHA-256,
+re-sync log, byte-identity tests) was right for the build period
+but wrong-shaped for the release boundary.
+
+The most operationally-sensitive item in the sanitization scope
+was `core/prompts/soul_delta.py:127-128`'s ElevenLabs anti-bot-
+measures workaround paragraph, which described circumventing
+third-party service protections. That paragraph was replaced
+wholesale with a generic teaching point ("DevTools for research
+is legitimate. DevTools to circumvent rate limits or anti-
+automation measures of services you don't own is wasted effort
+and likely violates the service's terms of use."). All other
+sanitization was generic-scenario substitution.
+
+**Reversibility:** Low cost; re-coupling Concierge prompts to
+OpenClaw sources is theoretically possible but unlikely to be
+desired. Historical extraction lineage stays documented in each
+fragment's docstring and in the now-historical
+`core/prompts/SKILL_FRAGMENT_SYNC_LOG.md` for narrative
+continuity. Constant naming convention (verbose
+`__FROM_{SOURCE}_*` suffixes) preserved as historical artifact —
+a future contributor seeing
+`TOOL_AWARENESS_PROTOCOL__FROM_TOOL_AWARENESS_MD` can read the
+docstring to understand the naming origin.
+
+**Decided by:** Lewie (2026-04-29 pre-public-push review).
+Arrived via two-step calibration: initial framing was
+sanitize-and-relax (per Task 0 Finding 3.1 surfaced options);
+Lewie's "why would I want to keep any of this kind of stuff in a
+thing I am releasing on Git?" reframe cut deeper to full
+retirement.
+
+**Affects:** `core/prompts/tool_awareness.py`,
+`core/prompts/tool_recommendation.py`,
+`core/prompts/tool_discovery.py`,
+`core/prompts/tool_lifecycle.py`,
+`core/prompts/soul_delta.py` (worked-example sanitization +
+docstring cleanup);
+`core/prompts/SKILL_FRAGMENT_SYNC_LOG.md` (converted to historical
+note);
+`core/recommend/prompt.py::CONCIERGE_ADAPTER_PREAMBLE` (reframed
+from "verbatim extract" to "OpenClaw-flavored backdrop");
+`core/recommend/prompt.py` module docstring (drift-claim updated);
+`core/lifecycle_policy.py` docstring (cleanup; cross-check with
+X7-A retained as independent mechanism);
+`adapters/claude_code/meta_tools/gap_preamble.py` docstring
+(Class-1 distinction now historical);
+`tests/test_prompts.py` (deleted — byte-identity drift-check no
+longer load-bearing);
+`tests/test_lifecycle_policy.py` source-cross-check (preserved —
+prose/numeric drift between X7-A and lifecycle_policy is
+independent of EXTRACT invariant).
+
+The fleet-narrative names and Class-2 operator paths are
+intentionally preserved per Day 8 Task 0 calibration; the v3 build-
+era extraction lineage is documented in each fragment's docstring;
+the EXTRACT-era constant naming convention stays as historical
+artifact.
+
+---

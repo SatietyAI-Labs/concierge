@@ -1,85 +1,29 @@
-"""Prompt fragment extracted from the tool-awareness skill.
+"""Prompt fragment for tool-awareness (X3).
 
-Source
-------
-Path (repo-relative, via symlink):
-    _legacy/agent-skills/shared/tool-awareness.md
-Absolute source at extract time:
-    /home/satiety/.agent-skills/shared/tool-awareness.md
-Source SHA-256:
-    7d1d2f040c727d9514806516929be625cde15cc28e134ea3489cd4991d933b6e
-Source mtime:
-    2026-03-24 11:21:31 -0700
-Source bytes:
-    9619
-
-Extract
--------
-Extracted:
-    2026-04-21 15:43 PDT (SESSION-2026-04-21-02, item X3)
-Section extracted:
-    Full document body below the YAML frontmatter (source lines 6-193).
-    The Anthropic skill-runtime metadata (`name:` / `description:`
-    fields in the `---` front block, lines 1-4) is intentionally
-    excluded — Concierge composes this content into an Opus 4.7
-    system prompt, not into a skill loader, so the frontmatter is
-    not part of the prompt.
-Fidelity:
-    VERBATIM. No paraphrase, no reflow, no normalization of the
-    OpenClaw-specific references described below.
+Originally extracted verbatim from an OpenClaw skill source
+(`_legacy/agent-skills/shared/tool-awareness.md`) on 2026-04-21
+during the v3 build period; sanitized for public release per
+DECISIONS `[2026-04-29 Day 8]` (EXTRACT invariant retired). The
+constant below is Concierge-canonical, not byte-identical to any
+external source. See `core/prompts/SKILL_FRAGMENT_SYNC_LOG.md` for
+historical context.
 
 Consumer
 --------
-Composed into POST /recommend's Opus 4.7 system prompt by the
-forthcoming `core.recommend` module (item N6). Expected concatenation
-order is X3 (this fragment) → X4 (tool-recommendation) → X6
-(tool-discovery) → X7 (tool-lifecycle, prompt portion) → X8 (SOUL
-delta); the consumer is free to re-order, wrap, or interleave with
-task/catalog/memory context.
+Composed into POST /recommend's Opus 4.7 system prompt by
+`core.recommend.prompt::compose_recommendation_prompt`.
+Concatenation order is X3 (this fragment) → X4 (tool-recommendation)
+→ X6 (tool-discovery) → X7 (tool-lifecycle, prompt portion) → X8
+(SOUL delta), wrapped by the Concierge-authored adapter preamble
+that frames the OpenClaw-flavored worked examples as illustrative
+backdrop.
 
-OpenClaw coupling (CLAUDE.md ground rule 6)
--------------------------------------------
-The source content carries substantial OpenClaw-specific material
-that is preserved verbatim in this fragment:
-
-- Fleet naming: "5 agents (Alfred, Scout, Dispatch, Radar, Bridge) on
-  one WSL2 box"
-- Pipeline paths: `~/.satiety-pipeline/`, `~/.agent-skills/shared/
-  TOOL-MANIFEST.md`, `~/.openclaw/logs/tool-wishlist.md`
-- Specific MCP tool IDs: MailerLite `ml_*` suite, ElevenLabs TTS
-- Transport specifics: port 18789
-- Worked examples naming MailerLite / Scout / Alfred by name
-
-Responsibility for handling this coupling rests with the consumer
-(N6 compose step). Viable consumer strategies, not decided here:
-
-- Trust Opus 4.7 to generalize from the worked examples to the
-  calling adapter's fleet / paths / transports
-- Pre-process this constant at compose time: substitute or redact
-  adapter-specific strings (e.g., template placeholders for
-  `{{pipeline_root}}`, `{{fleet_description}}`)
-- Append an adapter-context preamble that overrides specific
-  references before presenting this fragment to Opus
-
-Per DECISIONS [2026-04-21 05:50] mitigation language, a specific
-fragment whose OpenClaw coupling degrades cross-adapter performance
-can be promoted to Python logic via targeted `/effort max` re-review.
-
-Drift model
------------
-Manual re-paste per DECISIONS [2026-04-21 05:50] mitigation #4. If
-the source file changes after hackathon week:
-
-1. Re-extract the body (lines past YAML frontmatter) verbatim into
-   the constant below.
-2. Update the Source SHA-256 / mtime / bytes lines in this header.
-3. Add a §Sync history row to `core/prompts/SKILL_FRAGMENT_SYNC_LOG.md`.
-4. Re-run `pytest tests/test_prompts.py` to confirm signal-phrase
-   assertions still hold.
-
-Phase 2 deferred target: build-time regeneration via
-`make sync-prompts` (DECISIONS [2026-04-21 05:50] §"Phase 2
-structural improvement path").
+Worked examples reference fleet names (Alfred, Scout, Dispatch,
+Radar, Bridge) and operator paths (`~/.satiety-pipeline/`,
+`~/.agent-skills/shared/TOOL-MANIFEST.md`, `~/.openclaw/logs/`)
+per Class-2 calibration; specific operator-private workflow content
+(specific tool IDs, port numbers, branded service references) was
+generalized to canonical patterns.
 """
 
 TOOL_AWARENESS_PROTOCOL__FROM_TOOL_AWARENESS_MD = """\
@@ -91,7 +35,7 @@ You are one agent in a multi-agent fleet, each with different tool subsets. Your
 
 ## Your Context
 
-- **Fleet:** 5 agents (Alfred, Scout, Dispatch, Radar, Bridge) on one WSL2 box
+- **Fleet:** Multiple agents (Alfred, Scout, Dispatch, Radar, Bridge) sharing a workspace, each with different tool subsets
 - **Communication:** Agents do not talk directly — they read/write to `~/.satiety-pipeline/`
 - **Tool Manifest:** `~/.agent-skills/shared/TOOL-MANIFEST.md` — your source of truth
 - **Wishlist Log:** `~/.openclaw/logs/tool-wishlist.md` — where you record capability gaps
@@ -111,15 +55,15 @@ Break the requested task into discrete steps. For each step, identify:
 
 Example:
 ```
-Task: "Create a weekly email campaign for the Pro subscribers and generate voiceover for the intro"
+Task: "Process the survey responses CSV, draft a summary report, and email it to the team distribution list"
 
 Steps:
-1. Check existing subscriber groups → Requires: MailerLite tools (ALFRED ONLY — ml_list_groups)
-2. Draft email content from brand voice → Requires: text generation (ACTIVE on all agents)
-3. Create campaign in MailerLite → Requires: MailerLite tools (ALFRED ONLY — ml_create_campaign)
-4. Generate voiceover audio → Requires: ElevenLabs TTS (ALFRED ONLY — 24 tools active)
-5. Schedule the campaign → Requires: MailerLite tools (ALFRED ONLY — ml_schedule_campaign)
-6. Design HTML email template → Requires: MailerLite dashboard (MANUAL — API only sets plain text)
+1. Read and parse the CSV file → Requires: structured-data tools (ACTIVE on all agents)
+2. Compute summary statistics → Requires: data-analysis tools (ACTIVE on all agents)
+3. Draft summary report from results → Requires: text generation (ACTIVE on all agents)
+4. Look up team distribution list → Requires: list-management tool (ALFRED ONLY — contact-list capability)
+5. Send the report email → Requires: campaign-delivery tool (ALFRED ONLY — email-send capability)
+6. Format the email with charts and visualizations → Requires: rich-content email template (MANUAL — API handles plain text only; charts need template UI)
 ```
 
 ### Step 2: Manifest Check
@@ -139,42 +83,38 @@ Cross-reference each step's requirements against the manifest:
 Before executing anything, present the operator with a clear capability assessment:
 
 ```
-TASK: Create weekly email campaign + voiceover intro
+TASK: Process survey CSV + email summary report
 
 READY TO EXECUTE:
-- Step 1: Check subscriber groups ✅ (ml_list_groups active)
-- Step 2: Draft email content ✅ (text generation active)
-- Step 3: Create campaign ✅ (ml_create_campaign active)
-- Step 4: Generate voiceover ✅ (ElevenLabs TTS active — 24 tools)
-- Step 5: Schedule campaign ✅ (ml_schedule_campaign active)
+- Step 1: Read and parse CSV ✅ (structured-data tools active)
+- Step 2: Compute summary statistics ✅ (data-analysis tools active)
+- Step 3: Draft summary report ✅ (text generation active)
+- Step 4: Look up distribution list ✅ (list-management capability active)
+- Step 5: Send report email ✅ (campaign-delivery capability active)
 
 REQUIRES MANUAL STEP:
-- Step 6: HTML email design — MailerLite API only handles plain text content
-  → Must be done in MailerLite dashboard: https://dashboard.mailerlite.com
+- Step 6: Email charts and visualizations — API only handles plain text content
+  → Charts need the email service's template UI dashboard
   → I can prep the text content and structure; you design the visual layout
 
-KEY DATA:
-- Pro Subscribers group ID: 180787422651483855
-- Pro Weekly Newsletter automation ID: 181409024921568935
-
 RECOMMENDATION: I can execute Steps 1-5 now. Step 6 needs you in the dashboard.
-Confirm before I proceed — especially the campaign schedule timing.
+Confirm before I proceed — especially distribution list and send timing.
 ```
 
 If you're a worker agent and the task requires Alfred's tools:
 ```
-TASK: Send a MailerLite campaign about this week's content
+TASK: Send a campaign about this week's content
 
 THIS AGENT (Scout) CANNOT EXECUTE:
-- MailerLite tools are only available on Alfred (port 18789)
+- Campaign-delivery tools are only available on Alfred
 - I can draft the email content and save it to ~/.satiety-pipeline/drafts/
-- Alfred or Lewie would need to create and schedule the actual campaign
+- Alfred or the operator would need to create and schedule the actual campaign
 
 WHAT I CAN DO:
 - Draft the email body following brand voice guidelines
 - Save to pipeline for review
 
-RECOMMENDATION: I'll draft the content. Route the MailerLite execution to Alfred.
+RECOMMENDATION: I'll draft the content. Route the campaign execution to Alfred.
 ```
 
 ### Step 4: Execute What You Can
@@ -263,7 +203,7 @@ Only the operator adds entries to the manifest. You suggest; they decide.
 ## Anti-Patterns (Do NOT Do These)
 
 - **Don't silently fail.** If you can't do something, say so explicitly.
-- **Don't improvise with wrong tools.** Using Firefox DevTools to try to interact with the MailerLite dashboard when you have 36 dedicated MailerLite API tools is wasted effort.
+- **Don't improvise with wrong tools.** Using Firefox DevTools to try to interact with a SaaS dashboard when you have dedicated API tools for that service is wasted effort.
 - **Don't assume the operator knows what you need.** They may not know which specific MCP tool is missing. Be explicit — name the tool, the server, the config.
 - **Don't skip the wishlist log.** Even if the operator solves the problem in real-time, the log captures patterns over time.
 - **Don't over-plan simple tasks.** A memory search doesn't need a 6-step capability assessment.

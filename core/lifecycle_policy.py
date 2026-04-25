@@ -34,25 +34,13 @@ Governing decision: DECISIONS `[2026-04-21 05:50]` §"Affects" line,
 where row #7 is flagged as a partial hybrid; classification §C.5.3
 elaborates.
 
-Source
-------
-Path (repo-relative, via symlink):
-    _legacy/openclaw-workspace/skills/tool-lifecycle/SKILL.md
-Absolute source at extract time:
-    /home/satiety/.openclaw/workspace/skills/tool-lifecycle/SKILL.md
-Source SHA-256:
-    79128223564dcb63bc4c50763eefc6545e6151c7ccfb56a34d6a5adf895299d4
-Source mtime:
-    2026-04-13 21:09:25 -0700
-Source bytes:
-    7158
+Source lineage (historical)
+---------------------------
+Originally derived from an OpenClaw skill source
+(`_legacy/openclaw-workspace/skills/tool-lifecycle/SKILL.md`) on
+2026-04-21 during the v3 build period, with each value re-authored
+into Python from the prose. Sections re-authored:
 
-Extract
--------
-Extracted:
-    2026-04-21 16:50 PDT (SESSION-2026-04-21-02, item X7-B)
-Sections extracted (non-contiguous, each re-authored as a Python
-value):
     - `## Memory tagging convention` / "Storing a tool-selection
       memory" — tag literal, content field list, status values list
     - `## Memory tagging convention` / "Updating memory entries" —
@@ -64,20 +52,22 @@ value):
     - `## Weekly review` / "What to check" — one numeric threshold
       (stale-pending)
 
-Drift model
------------
-Manual re-author per DECISIONS `[2026-04-21 05:50]` mitigation #4.
-The source-cross-check test (`tests/test_lifecycle.py`) asserts that
-specific literal phrases still appear in the source file — e.g.,
-"Used 5+ times in the last 30 days", "Not used in 90+ days", "older
-than 7 days", each of the six status-value names. If the source prose
+Cross-check with X7-A
+---------------------
+The numeric thresholds and status vocabulary appear in two places:
+this module (canonical numeric form) and the X7-A prompt fragment
+at `core/prompts/tool_lifecycle.py` (prose form). The source-cross-
+check test in `tests/test_lifecycle_policy.py` asserts that the
+literal threshold phrases ("Used 5+ times in the last 30 days",
+"Not used in 90+ days", "older than 7 days", each of the status-
+value names) appear in the prompt fragment. If the prompt fragment
 is updated to change any threshold or rename a status value, the
-cross-check fails and forces a joint re-sync of both this module and
-the prompt fragment (X7-A `core/prompts/tool_lifecycle.py`) — since
-the prose-form thresholds there reference the same numbers.
+cross-check fails and forces a joint re-sync of both files. This
+mechanism is independent of the EXTRACT invariant (retired
+2026-04-29) and continues to apply.
 
-See `core/prompts/SKILL_FRAGMENT_SYNC_LOG.md` for the companion
-extract record and sync history.
+See `core/prompts/SKILL_FRAGMENT_SYNC_LOG.md` for the historical
+sync-log context.
 """
 
 TOOL_SELECTION_MEMORY_TAG: str = "tool-selection"

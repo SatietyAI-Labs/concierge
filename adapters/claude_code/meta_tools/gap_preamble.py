@@ -1,43 +1,32 @@
 """Claude-Code-framed adapter preamble for the concierge_recommend
-gap-report. **Not a Class-1 prompt-fragment extract.**
+gap-report.
 
-## Why this file is not tracked in SKILL_FRAGMENT_SYNC_LOG.md
+This module is **adapter-authored**, not extracted. It is the
+Claude-Code-single-agent-framed condensed mirror of the X8 SOUL-
+delta behavioral rules (`core/prompts/soul_delta.py`). It deliberately
 
-A Class-1 `prompt-fragment` (per DECISIONS `[2026-04-21 05:50]`) is a
-verbatim byte-for-byte copy of a source skill file, with OpenClaw
-coupling preserved, composed into an Opus system prompt. The
-five-member set (X3 / X4 / X6 / X7-A / X8) closed at the X8 extract
-on 2026-04-22 — future Class-1 work is re-sync activity on those
-five fragments, not net-new extractions.
-
-This module is different in kind. It is **adapter-authored**, not
-extracted: it deliberately
-
-1. substitutes OpenClaw fleet framing with Claude Code single-agent
-   framing (see the substitution table in the N12 architectural
-   pause), so the wording fits the actual consumer context,
+1. substitutes multi-agent fleet framing with Claude Code single-
+   agent framing, so the wording fits the actual consumer context,
 2. condenses X8's six sections into four points oriented around
    the Claude Code meta-tool surface (`concierge_list_active`,
    `concierge_request_tool`, `concierge_recommend`),
 3. adds Concierge-adapter-specific meta-tool names that do not
    exist in the source.
 
-The Class-1 verbatim-invariant therefore does not apply here.
-Adding this module to the sync-log's Current-prompt-fragments table
-would wrongly imply that the Class-1 re-sync protocol (byte-for-byte
-drift-check against source) governs it — it does not.
+(During the v3 build period this module was explicitly outside the
+EXTRACT-invariant scope — see DECISIONS `[2026-04-21 05:50]` and
+its retirement at `[2026-04-29 Day 8]`. Both the EXTRACT invariant
+and the Class-1 / non-Class-1 distinction are now historical.)
 
-## What drift detection does apply
+## Drift cross-check with X8
 
 A source-cross-check test (see
 `tests/test_meta_tools_gap_preamble.py::test_source_cross_check_against_x8`)
 asserts that X8's anchor phrases (`## Capability Honesty`,
 `## Planning Discipline`, `## Workaround Transparency`, etc.) still
-appear in the X8 source fragment. If a future re-sync of X8
+appear in the X8 source fragment. If a future edit of X8
 re-authors those anchor wordings, this test fails and flags that
-the preamble may need a joint update. The check is the same pattern
-as the python-constants source-cross-check (X7-B) — anchor-phrase
-presence, not byte-for-byte parity.
+the preamble may need a joint update.
 
 ## Consumer
 

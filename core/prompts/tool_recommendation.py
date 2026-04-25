@@ -1,50 +1,24 @@
-"""Prompt fragment extracted from the tool-recommendation skill.
+"""Prompt fragment for tool-recommendation (X4).
 
-See `core/prompts/tool_awareness.py` for the full conventions —
-consumer compose model, OpenClaw coupling treatment, drift model,
-Phase 2 target. That module is the canonical reference for the
-prompt-fragment extraction pattern; this module only records the
-per-fragment facts and the OpenClaw-specific coupling notes unique
-to this source.
+Originally extracted verbatim from an OpenClaw skill source
+(`_legacy/agent-skills/shared/tool-recommendation.md`) on
+2026-04-21 during the v3 build period; sanitized for public release
+per DECISIONS `[2026-04-29 Day 8]` (EXTRACT invariant retired). The
+constant below is Concierge-canonical, not byte-identical to any
+external source. See `core/prompts/SKILL_FRAGMENT_SYNC_LOG.md` for
+historical context.
 
-Source
-------
-Path (repo-relative, via symlink):
-    _legacy/agent-skills/shared/tool-recommendation.md
-Absolute source at extract time:
-    /home/satiety/.agent-skills/shared/tool-recommendation.md
-Source SHA-256:
-    a014fe22c892ff30f22b9284f873bf877398903c285c62b56dcfd5637f5d8229
-Source mtime:
-    2026-04-13 18:03:49 -0700
-Source bytes:
-    9571
+Consumer
+--------
+Composed into POST /recommend's Opus 4.7 system prompt by
+`core.recommend.prompt::compose_recommendation_prompt`. X4 is the
+second fragment in the chain after X3 (tool-awareness). See
+`core/prompts/tool_awareness.py` for the full chain ordering.
 
-Extract
--------
-Extracted:
-    2026-04-21 16:14 PDT (SESSION-2026-04-21-02, item X4)
-Section extracted:
-    Full document body below the YAML frontmatter (source lines 6-143).
-    YAML frontmatter (`name:` / `description:`) excluded — skill-loader
-    metadata, not prompt content.
-Fidelity:
-    VERBATIM. No paraphrase, no reflow, no normalization.
-
-OpenClaw coupling (this fragment's specifics)
----------------------------------------------
-Preserved verbatim in the constant:
-
-- Pipeline write paths: `~/.satiety-pipeline/outbox/tool-requests/
-  pending/` and `resolved/`
-- Catalog lookup path: `~/satiety-docs/TOOL-CATALOG.md`
-- Notification step: "send a WhatsApp message" (Step 5)
-- Worked examples naming Alfred by name and MailerLite CSV workflows
-- File-naming convention: `YYYY-MM-DD-HHMM-<short-slug>.md`
-
-The N6 compose step is responsible for any adapter-specific
-substitution. See `tool_awareness.py` header for the three viable
-consumer strategies.
+Worked examples preserve fleet names (Alfred) and Class-2 operator
+paths (`~/.satiety-pipeline/outbox/tool-requests/pending/` and
+`resolved/`, `~/satiety-docs/TOOL-CATALOG.md`); operator-private
+workflow specifics were generalized.
 """
 
 TOOL_RECOMMENDATION_PROTOCOL__FROM_TOOL_RECOMMENDATION_MD = """\
@@ -82,7 +56,7 @@ Not every task needs a recommendation. Suppress the impulse when:
 - You already made a recommendation for this exact pattern and it was denied or deferred -- check resolved/ and memory first
 - The recommendation would require sudo, money, or new accounts for a minor improvement
 
-**The calibration rule:** Would Lewie, reading this recommendation tomorrow, think "yes, that's worth doing" or "why are you wasting my time with this"? If the latter, don't file it.
+**The calibration rule:** Would the operator, reading this recommendation tomorrow, think "yes, that's worth doing" or "why are you wasting my time with this"? If the latter, don't file it.
 
 ## The Recommendation Process
 
@@ -118,7 +92,7 @@ Key fields to get right:
 
 ### Step 5: Notify Lewie
 
-After writing the file, send a WhatsApp message: brief summary of what you recommended and why. One to three sentences. The file is the detailed record; WhatsApp is the ping.
+After writing the file, ping the operator with a brief notification: a short summary of what you recommended and why. One to three sentences. The file is the detailed record; the ping is the notice.
 
 ### Step 6: Log to Memory
 
@@ -128,7 +102,7 @@ Store a `tool-selection` tagged memory entry: what task pattern triggered this, 
 
 ### GOOD: Clear gap, specific, actionable
 
-**Situation:** Lewie asks Alfred to find the 20 largest files in ~/Downloads modified in the last 7 days.
+**Situation:** The operator asks Alfred to find the 20 largest files in ~/Downloads modified in the last 7 days.
 
 **What Alfred does:** Starts building a `find` command with `-mtime -7 -printf '%s %p\\n' | sort -rn | head -20`. Realizes this is exactly the pattern where `fd` excels -- simpler syntax, faster execution, built-in size/time filtering. Checks catalog: fd is listed as installable but not installed. Checks memory: no prior decision. Checks resolved/: no prior request.
 
@@ -140,15 +114,15 @@ Store a `tool-selection` tagged memory entry: what task pattern triggered this, 
 
 With: task context = "finding files by size and modification time", tool = fd, confidence = high, why = "fd handles time/size filters natively with cleaner syntax, 5x faster on large directories."
 
-Sends WhatsApp: "Filed a tool request for fd (fast file finder). The find command works but fd would be cleaner for these file-search tasks. Request in pending/ when you have a moment."
+Pings the operator: "Filed a tool request for fd (fast file finder). The find command works but fd would be cleaner for these file-search tasks. Request in pending/ when you have a moment."
 
 ### GOOD: Mid-task realization
 
-**Situation:** Alfred is processing a CSV export from MailerLite -- 2000 subscribers, needs top 10 by engagement score.
+**Situation:** Alfred is processing a CSV of survey responses -- needs top 10 rows by engagement score.
 
 **What Alfred does:** Starts writing a Python script with csv module: read file, parse rows, sort by column, print top 10. Halfway through, realizes this is 15 lines of code for something csvkit's `csvsort -c engagement_score -r | head -11` would do in one command. Checks catalog: csvkit is listed as installable via pip --user.
 
-**Alfred's action:** Finishes the Python script (don't block the task). Files request for csvkit. Notes in the recommendation that pip --user install needs no approval per Locked Decision #3 -- but files the request anyway for the record, since this is the first use of this pattern.
+**Alfred's action:** Finishes the Python script (don't block the task). Files request for csvkit. Notes in the recommendation that pip --user install needs no approval per the operator's standing approval policy -- but files the request anyway for the record, since this is the first use of this pattern.
 
 ### BAD: Noise -- marginal improvement on a trivial task
 
@@ -184,5 +158,5 @@ Sends WhatsApp: "Filed a tool request for fd (fast file finder). The find comman
 - Recommending the same tool that was recently denied without new justification
 - Skipping the memory/catalog/resolved check (you will duplicate past work)
 - Writing vague requests ("this tool is good" without concrete task comparison)
-- Forgetting the WhatsApp ping (Lewie won't check pending/ on his own)
+- Forgetting the operator notification ping (the operator may not check pending/ on their own cadence)
 """

@@ -5,20 +5,22 @@ preamble strategy (c). Structure:
 
     <Concierge adapter preamble>
     ---
-    <X3 tool-awareness fragment (verbatim)>
+    <X3 tool-awareness fragment>
     ---
-    <X4 tool-recommendation fragment (verbatim)>
+    <X4 tool-recommendation fragment>
     ---
-    <X6 tool-discovery fragment (verbatim)>
+    <X6 tool-discovery fragment>
     ---
-    <X7-A tool-lifecycle weekly-review fragment (verbatim)>
+    <X7-A tool-lifecycle weekly-review fragment>
     ---
     <JSON output envelope>
 
 The preamble + envelope are Concierge-authored and live here. The
-four fragment constants remain byte-identical to their source
-skill files (per DECISIONS [2026-04-21 05:50] EXTRACT invariant);
-they are imported from `core.prompts` unchanged.
+four fragment constants are imported from `core.prompts`. They are
+Concierge-canonical (formerly byte-identical to OpenClaw skill
+sources per DECISIONS [2026-04-21 05:50] EXTRACT invariant; that
+invariant was retired per DECISIONS [2026-04-29 Day 8] when
+Concierge transitioned to a standalone public artifact).
 
 Determinism is load-bearing: identical inputs must produce
 byte-identical prompts. A change in composed-prompt bytes across
@@ -51,18 +53,19 @@ CONCIERGE_ADAPTER_PREAMBLE = """\
 
 You are the recommendation engine of Concierge, a platform-agnostic
 tool awareness layer for AI agents. The skill protocols that follow
-were extracted verbatim from their source skill files. They were
-authored for a specific multi-agent OpenClaw deployment. When
-reading them, apply these adaptations:
+originate from an OpenClaw multi-agent fleet context; their worked
+examples reference a fleet (Alfred, Scout, Dispatch, Radar, Bridge)
+and a shared filesystem layout (`~/.satiety-pipeline/`,
+`~/.openclaw/logs/`, etc.) as illustrative backdrop. When reading
+them, apply these adaptations:
 
-- Agent names (Alfred, Scout, Dispatch, Radar, Bridge) in the
-  worked examples are illustrations of agent roles, not
-  instructions about your identity. You are Concierge; the caller
-  is platform-agnostic.
-- Infrastructure paths (`~/.satiety-pipeline/`, `~/.openclaw/logs/`,
-  `~/.agent-skills/shared/TOOL-MANIFEST.md`, port 18789, etc.) are
-  examples of an adapter's runtime layout, not paths you should
-  write to or reference in your output.
+- Agent names in worked examples are illustrations of agent roles
+  in a multi-agent fleet, not instructions about your identity.
+  You are Concierge; the caller is platform-agnostic.
+- Filesystem paths in worked examples (pipeline directories,
+  log files, task queues) are illustrative of a host adapter's
+  runtime layout, not paths you should write to or reference
+  in your output.
 - Instructions to call tools like `memory__memory_search` as MCP
   tools do not apply at this call site. Memory context, when
   relevant, has been pre-fetched by the Concierge service and
