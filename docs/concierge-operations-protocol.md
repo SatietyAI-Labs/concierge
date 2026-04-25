@@ -202,6 +202,28 @@ Sessions should reference DECISIONS.md whenever:
 - About to make a choice that contradicts a prior decision (read the
   prior decision's reasoning, then either align or log the reversal)
 
+### Decision-edit pattern
+
+In-place edits are acceptable for entries written in the current
+session or current day. Corrections to entries from prior days land
+in the next session's snapshot via the standard correction-note
+pattern (per `SESSION-2026-04-26-01.md` Appendix D, where Day 4's
+appendix stayed intact and the correction appeared in the next
+snapshot).
+
+Rationale: an entry hours old hasn't been read or cited by anyone
+except the session that wrote it; correcting it in place avoids
+churn for no auditability gain. An entry days old has been read,
+cited, and referenced — corrections must be visible to the audit
+trail, which means the next snapshot, not an in-place edit that
+erases history.
+
+Worked example: `SESSION-2026-04-27-01.md` Decision B's two
+post-hoc corrections — both made in-place within hours of the
+entry being written, both explicitly authorized at the time.
+Codified here so future sessions don't need re-authorization for
+the same pattern.
+
 ---
 
 ## The two-workspace flow
@@ -330,6 +352,73 @@ session, baselined `tool_usage_events` to 0 rows, and ran the same
 apples-to-apples prompt. Technical signal: identical (0→4 rows).
 Validation argument: now clean. The lesson generalized into this
 section.
+
+---
+
+## Wiring-test discipline
+
+Wiring tests are the load-bearing tests that exercise an
+operator-observable contract end-to-end, not the bytes/calls
+flowing through a layer mid-stack. Mock-based unit tests retain
+their value for orchestration logic (was X called Y times with Z
+args?); they are insufficient for any contract that touches
+OS-level reality.
+
+The default rule, not aspiration: **if the contract is operator-
+observable, the wiring test must exercise it against reality, not
+mocks.**
+
+### Why it matters
+
+Mock-based unit tests assert wire shape (subprocess.run argv,
+sink.publish payload, network bytes); reality has more semantics
+than the wire shape captures. CLI argument parsing, JSON
+deserialization, filesystem rename + shebang baking, persistent
+state commit semantics — none of these are visible to a mock that
+only records call shape. Bugs at this layer ship past the unit-
+test layer because the unit-test layer is correct about the wire
+shape and silent about everything else.
+
+See `SESSION-2026-04-27-01.md` Appendix C for the four-data-point
+narrative across Days 5-6 of the build (telemetry-commit rollback,
+SSE wire format JSON-vs-Python-repr, venv flag-form CLI rejection,
+venv atomic-rename shebang incompatibility — all four rooted in
+the same mock-vs-reality gap).
+
+### Practice
+
+Apply the rule by contract type:
+
+- **CLI invocation** (argparse, argv parsing, exit codes) → wiring
+  test runs the CLI for real
+- **Filesystem operation** (rename, exec, shebang interpretation,
+  atomic semantics) → wiring test exercises the actual filesystem
+- **Network protocol** (SSE wire format, JSON parsing, HTTP
+  semantics) → wiring test runs a real client against a real
+  server and parses with the real parser
+- **Persistent state operation** (DB commit, transaction
+  lifecycle, migration application) → wiring test reads from a
+  fresh session/transport boundary and asserts the consumer-visible
+  state changed
+
+Wiring tests typically cost more than mocked unit tests (real
+subprocesses, real filesystem, real network round-trips). Mark
+them appropriately (`@pytest.mark.slow`, `@pytest.mark.live_smoke`)
+and run them deliberately — but write them. The unit-test layer
+plus a load-bearing wiring test is the standard pattern; either
+layer alone ships bugs.
+
+### Worked example
+
+`SESSION-2026-04-27-01.md` Appendix C captures the four-data-point
+narrative. Load-bearing wiring tests cited inline there:
+`tests/test_recommend_endpoint_persistence.py` (Day 5 Task 0
+telemetry-commit fix), `TestStreamingWireFormat` in
+`tests/test_ui_events_endpoint.py` (Day 5 Task 1 SSE JSON wire
+format), and
+`tests/test_venv_bootstrap.py::TestRealVenvBootstrap` (Day 6 Step
+5 venv creation + shim invocation, which itself caught two further
+contract-vs-reality drifts that no unit-test layer could see).
 
 ---
 
