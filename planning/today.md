@@ -7,7 +7,7 @@ migration backfill committed as `daf5f42`; Task 1 narration fidelity
 Appendix C; Task 3 shim flake corrected attribution + fix committed as
 `3aa4393`). Suite at **clean baseline** for the first time since Day 5
 (783 passing, 0 failures, 1 skipped, 3 deselected). Authoritative plan
-remains `docs/close-the-gap-plan-2026-04-23.md`. 48h shakedown clock
+remains `planning/close-the-gap-plan-2026-04-23.md`. 48h shakedown clock
 running clean against fixed-telemetry + fixed-wire-format since
 2026-04-24 ~20:30 PDT; Day 7's changes touched test infrastructure +
 one Alembic migration + one wiring change in `_maybe_install_on_approve`,
@@ -107,7 +107,7 @@ Paste this verbatim into a fresh Claude Code session to kick off Day 8:
 > Read in order, then confirm understanding before acting:
 >
 > 1. `CLAUDE.md` (project root — v3 content superseding prior versions)
-> 2. `docs/concierge-operations-protocol.md` ← especially the two newly-ratified sections from Day 7: "Decision-edit pattern" subsection of "The decision log" + "Wiring-test discipline" top-level section. Plus the existing "Live verify discipline" section ratified Day 5
+> 2. `planning/concierge-operations-protocol.md` ← especially the two newly-ratified sections from Day 7: "Decision-edit pattern" subsection of "The decision log" + "Wiring-test discipline" top-level section. Plus the existing "Live verify discipline" section ratified Day 5
 > 3. `planning/sessions/SESSION-2026-04-28-01.md` ← Day 7 close-out covering five tasks; Appendix A (suite delta + clean-baseline confirmation); Appendix B (live narration 3-scenario transcripts); Appendix C (venv corruption event + operational discipline notes); Appendix D (shim flake corrected attribution); Appendix E (discipline carry-forward + ratifications applied prospectively)
 > 4. `planning/sessions/SESSION-2026-04-27-01.md` ← Day 6 close-out (still authoritative for prior context: Option 3 implementation, Decision B post-hoc correction note, Appendix C four-data-point wiring-test narrative)
 > 5. `planning/today.md` ← this file
@@ -121,7 +121,7 @@ Paste this verbatim into a fresh Claude Code session to kick off Day 8:
 >
 > Discipline carry-forward (durable constraints from Days 2-7, not just lessons):
 > - **Test-fails-first** — for any new test landing on a fix, write the failing test against the pre-fix commit, confirm it fails for the right reason, then ship the fix
-> - **Wiring tests assert client-observable contracts** — not "did the bytes/calls flow" but "did the consumer-visible state change as the client expects it." Default rule, not aspiration: if the contract is operator-observable, the wiring test must exercise it against reality, not mocks. (Now ratified in `docs/concierge-operations-protocol.md` "Wiring-test discipline" section.)
+> - **Wiring tests assert client-observable contracts** — not "did the bytes/calls flow" but "did the consumer-visible state change as the client expects it." Default rule, not aspiration: if the contract is operator-observable, the wiring test must exercise it against reality, not mocks. (Now ratified in `planning/concierge-operations-protocol.md` "Wiring-test discipline" section.)
 > - **Live shakedowns are fresh-session-only** for user-experience claims; build session is technical-signal-only (codified in ops-protocol)
 > - **Single-block execution preferred** when the day's tasks are tight bug-fix + test cycles; surface defaults, infer authorization from absence of vetoes
 > - **Surface-then-execute** for architectural decisions: surface the proposed approach (with concerns + cost estimate); user confirms or calibrates; only then execute. Day 7 surface-phase caught all six forks before code touched

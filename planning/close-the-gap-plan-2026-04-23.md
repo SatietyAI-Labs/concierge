@@ -16,10 +16,10 @@ This document is the authoritative sequencing for the close-the-gap work. All si
 Read in order before acting on the project:
 
 1. `docs/CLAUDE-v3.md`
-2. `docs/concierge-operations-protocol.md`
-3. `docs/concierge-blueprint-v2.md` — especially §Five Core Capabilities and §Platform-Agnostic Architecture
-4. `docs/handoff-2026-04-23-scope-pivot.md` — context for why the verification pause happened
-5. This document (`docs/close-the-gap-plan-2026-04-23.md`)
+2. `planning/concierge-operations-protocol.md`
+3. `planning/concierge-blueprint-v2.md` — especially §Five Core Capabilities and §Platform-Agnostic Architecture
+4. `planning/handoff-2026-04-23-scope-pivot.md` — context for why the verification pause happened
+5. This document (`planning/close-the-gap-plan-2026-04-23.md`)
 6. The most recent SESSION snapshot in `planning/sessions/`
 7. `planning/audits/AUDIT-2026-04-23-blueprint-coverage.md` — the full evidentiary basis for this plan
 
@@ -348,10 +348,10 @@ Paste this into a fresh Claude Code session to kick off Fix Day 1:
 > Read in order, then confirm understanding before acting:
 >
 > 1. `docs/CLAUDE-v3.md`
-> 2. `docs/concierge-operations-protocol.md`
-> 3. `docs/concierge-blueprint-v2.md` (especially §Five Core Capabilities and §Platform-Agnostic Architecture)
-> 4. `docs/handoff-2026-04-23-scope-pivot.md`
-> 5. `docs/close-the-gap-plan-2026-04-23.md` ← this is the authoritative plan superseding Day 4 onward of plan-v3
+> 2. `planning/concierge-operations-protocol.md`
+> 3. `planning/concierge-blueprint-v2.md` (especially §Five Core Capabilities and §Platform-Agnostic Architecture)
+> 4. `planning/handoff-2026-04-23-scope-pivot.md`
+> 5. `planning/close-the-gap-plan-2026-04-23.md` ← this is the authoritative plan superseding Day 4 onward of plan-v3
 > 6. Most recent SESSION snapshot in `planning/sessions/`
 > 7. `planning/audits/AUDIT-2026-04-23-blueprint-coverage.md`
 >

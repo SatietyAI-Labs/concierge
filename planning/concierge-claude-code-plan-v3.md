@@ -3,7 +3,7 @@
 
 This document is written for Claude Code to follow end-to-end. It supersedes
 the v1 and v2 execution plans by integrating the operations protocol from
-`docs/concierge-operations-protocol.md` at every phase boundary.
+`planning/concierge-operations-protocol.md` at every phase boundary.
 
 Read CLAUDE.md, the operations protocol, and the v2 blueprint in full before
 starting Phase A.
@@ -38,10 +38,10 @@ real operator UI.
 
 OpenClaw adapter is **out of scope** for hackathon week. Phase 2 work.
 
-The v2 blueprint document `docs/concierge-blueprint-v2.md` has the full
+The v2 blueprint document `planning/concierge-blueprint-v2.md` has the full
 architecture map and the honest "what's lifted vs. what's new" table.
 
-The operations protocol document `docs/concierge-operations-protocol.md`
+The operations protocol document `planning/concierge-operations-protocol.md`
 governs how sessions, handoffs, and decisions work. Reference it
 constantly.
 

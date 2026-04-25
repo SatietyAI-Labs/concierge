@@ -1,6 +1,6 @@
 # Concierge — Phase A (Codification) Inventory
 
-*Deliverable of Phase A per `docs/concierge-claude-code-plan-v3.md`.*
+*Deliverable of Phase A per `planning/concierge-claude-code-plan-v3.md`.*
 *Session:* `SESSION-2026-04-20-01`
 *Generated:* 2026-04-20
 

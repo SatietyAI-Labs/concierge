@@ -1,6 +1,6 @@
 # Concierge — Phase F (Build Plan)
 
-*Deliverable of Phase F per `docs/concierge-claude-code-plan-v3.md` §F.*
+*Deliverable of Phase F per `planning/concierge-claude-code-plan-v3.md` §F.*
 *Session:* `SESSION-2026-04-21-01` (single live session covering
 Phases C → D → E → F).
 *Generated:* 2026-04-21.
@@ -798,7 +798,7 @@ acceptance absent explicit pushback at Phase F signoff.
 
 ## F.9 Phase F checkpoint
 
-Per `docs/concierge-claude-code-plan-v3.md` §Phase F checkpoint:
+Per `planning/concierge-claude-code-plan-v3.md` §Phase F checkpoint:
 
 - [x] `planning/build-plan.md` exists
 - [x] `planning/executive-summary.md` exists (written alongside this)

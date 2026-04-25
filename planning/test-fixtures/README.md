@@ -6,7 +6,7 @@ during the 48h operational-shakedown gate (Days 5-6) to detect
 regression (did something break?) and reality-shift (did Opus 4.7's
 recommendation behavior change under the same prompt?).
 
-Per `docs/concierge-operations-protocol.md` §Test-fixture management,
+Per `planning/concierge-operations-protocol.md` §Test-fixture management,
 the same fixtures are used for every test, every soak probe, every
 troubleshooting scenario, every day of the week. Same input → known
 output. Drift in the output is a signal.

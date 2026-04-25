@@ -1,6 +1,6 @@
 # Concierge — Phase D (Dependency Graph)
 
-*Deliverable of Phase D per `docs/concierge-claude-code-plan-v3.md`.*
+*Deliverable of Phase D per `planning/concierge-claude-code-plan-v3.md`.*
 *Session:* `SESSION-2026-04-21-02` (continuation from Phase C).
 *Generated:* 2026-04-21.
 *Effort:* `xhigh`.

@@ -1,6 +1,6 @@
 # Concierge — Phase B (Architecture Mapping)
 
-*Deliverable of Phase B per `docs/concierge-claude-code-plan-v3.md`.*
+*Deliverable of Phase B per `planning/concierge-claude-code-plan-v3.md`.*
 *Session:* `SESSION-2026-04-20-01` (Phase A and Phase B rolled together).
 *Generated:* 2026-04-20.
 *Effort:* `xhigh`.
@@ -544,7 +544,7 @@ to change for the hackathon. Phase 2's OpenClaw adapter can reconsider.
 
 ## B.5 Phase B checkpoint
 
-Per `docs/concierge-claude-code-plan-v3.md` §B checkpoint:
+Per `planning/concierge-claude-code-plan-v3.md` §B checkpoint:
 
 - [x] `planning/architecture-map.md` exists
 - [x] Every existing component mapped to one or more blueprint components

@@ -1,6 +1,6 @@
 # Concierge — Phase C (Classification)
 
-*Deliverable of Phase C per `docs/concierge-claude-code-plan-v3.md`.*
+*Deliverable of Phase C per `planning/concierge-claude-code-plan-v3.md`.*
 *Session:* `SESSION-2026-04-21-02` (morning alignment was Session 01).
 *Generated:* 2026-04-21.
 *Effort:* `xhigh` (adjusted from `max` per 2026-04-21 04:45 decision —
@@ -17,7 +17,7 @@ in §C.4. Phase C's checkpoint is §C.9; summary-for-chat is §C.8.
 
 ## C.1 Classification options (restated)
 
-Per `docs/concierge-claude-code-plan-v3.md` §C.1:
+Per `planning/concierge-claude-code-plan-v3.md` §C.1:
 
 - **LIFT** — use as-is, point at it from new structure; zero
   modification to the original file
@@ -903,8 +903,8 @@ pattern stands). Classification.md is finalized pending sign-off.
 
 ## C.9 Phase C checkpoint
 
-Per `docs/concierge-operations-protocol.md` §Phase C and
-`docs/concierge-claude-code-plan-v3.md` §Phase C checkpoint:
+Per `planning/concierge-operations-protocol.md` §Phase C and
+`planning/concierge-claude-code-plan-v3.md` §Phase C checkpoint:
 
 - [x] `planning/classification.md` exists
 - [x] Every existing component has exactly one classification (24

@@ -1,6 +1,6 @@
 """Wiring tests for Decision C+D install_method_provenance backfill.
 
-Per ratified wiring-test discipline (`docs/concierge-operations-protocol.md`
+Per ratified wiring-test discipline (`planning/concierge-operations-protocol.md`
 "Wiring-test discipline" section), four coverage points:
 
   1. Multiple `pip-user` rows in seed catalog tagged

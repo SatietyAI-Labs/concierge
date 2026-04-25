@@ -1,6 +1,6 @@
 # Concierge — Phase E (Gap Analysis)
 
-*Deliverable of Phase E per `docs/concierge-claude-code-plan-v3.md`.*
+*Deliverable of Phase E per `planning/concierge-claude-code-plan-v3.md`.*
 *Session:* `SESSION-2026-04-21-02` (continuation from Phase D).
 *Generated:* 2026-04-21.
 *Effort:* `xhigh`.
