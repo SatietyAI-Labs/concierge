@@ -278,6 +278,61 @@ A small but high-leverage practice. On Day 1 morning, create a
 
 ---
 
+## Live verify discipline
+
+Live shakedowns — the manual end-to-end runs that exercise a fix in a
+real Claude Code session against running uvicorn — must originate from
+a **fresh Claude Code session** that has not been exposed to the build
+conversation that produced the fix. The build session's technical
+signal works (DB rows land, counters increment, scanner counts shift),
+but the validation argument is contaminated: the build session's
+context already encodes the bug, the fix, and the expected behavior.
+A fresh session strips the confound — the agent reasons solely from
+the user's prompt and production-side state (catalog, memory, MCP
+resources).
+
+### Why it matters
+
+The two evidence classes a live shakedown produces are not symmetric:
+
+- **Technical signal** (rows landed, counters incremented, scheduler
+  counts shifted) — unaffected by which session triggered the call. As
+  honest from a build session as from a fresh session.
+- **User-experience claim** ("the agent invoked Concierge correctly
+  and narrated the consultation") — only honest from a fresh session.
+  Build-session narration could equally explain "the fix landed" or
+  "the agent inferred the expected output from build context."
+
+If you only need the technical signal (e.g. confirming a row writes
+end-to-end), the build session is fine — but state explicitly that
+the verify is technical-signal-only and the user-experience claim
+requires a separate fresh-session pass.
+
+### Practice
+
+- Before triggering a live-verify shakedown, confirm the target Claude
+  Code session is fresh (a new session opened post-fix-commit, with no
+  conversation history about the bug or fix)
+- If you reuse a session by mistake, treat the result as
+  technical-signal-only and re-run from a fresh session before
+  declaring the user-experience validation complete
+- Capture the fresh-session transcript in the SESSION snapshot's
+  Appendix B (per the snapshot template) so the audit trail shows the
+  validation came from a clean source
+
+### Worked example
+
+`SESSION-2026-04-26-01.md` Appendix B + Appendix E — the Day 5 Task 0
+telemetry-commit fix's first live verify ran in the build session by
+mistake. Recommend call fired, rows landed, but the validation
+argument was contaminated. We restarted with a fresh Claude Code
+session, baselined `tool_usage_events` to 0 rows, and ran the same
+apples-to-apples prompt. Technical signal: identical (0→4 rows).
+Validation argument: now clean. The lesson generalized into this
+section.
+
+---
+
 ## The daily rhythm
 
 A repeating shape that creates predictability for the AI sessions and your
