@@ -2803,3 +2803,95 @@ Shim-process-lifetime UUID is the right grain: one session = one continuous MCP 
 **Affects:** `adapters/claude_code/session.py::SHIM_SESSION_ID`; `adapters/claude_code/meta_tools/recommend.py::_build_request_body` (reads at call time, monkeypatchable); `core/telemetry.py::UsageEventSink` 4-arg signature; `core/recommend/schemas.py::RecommendRequest.session_id`; `core/recommend/service.py` (threads through to emit sink); `core/lifecycle_store/schema.py::StatusChange.session_id`; `core/lifecycle_store/service.py::update_status` + `_maybe_install_on_approve` (pass-through). Loader emit site remains deferred (BackingServerRegistry.register() doesn't emit today); when it lands it will read SHIM_SESSION_ID trivially.
 
 ---
+
+## [2026-04-27 Day 6] — Concierge-managed venv shim location: ~/.concierge/bin/ (not ~/.local/bin/)
+
+**Context:** Day 6 Option 3 (Concierge-managed venv to sidestep PEP-668) installs Python tools into `~/.concierge/tools-venv/`. Installed binaries land at `~/.concierge/tools-venv/bin/<tool>`, not on the operator's PATH. Concierge needs to expose installed tools as invokable commands; the choice of *where* the wrapper shims live is operator-visibility-affecting.
+
+**Options considered:**
+- `~/.local/bin/` — often on PATH already, no first-run instruction needed; but collides with pre-Option-3 `pip install --user` artifacts (which Decision D leaves in place). Operator debugging "which binary is which?" gets ambiguous answers.
+- `~/.concierge/bin/` — unambiguous Concierge-owned directory; clean operator inspection ("what's in `~/.concierge/bin/` is mine; what's outside isn't"); requires one-time PATH addition by the operator.
+- Edit operator's shell rc directly — most invasive; touches operator config with surprising side effects; rejected.
+- Add `~/.concierge/tools-venv/bin/` to PATH directly (no shims) — exposes the venv's `pip`, `python3`, etc. to operator's shell namespace; pollutes the command surface; rejected.
+
+**Decision:** `~/.concierge/bin/`. First-run helper emits a clear PATH-addition instruction targeting the operator's detected shell. Shell detection is intentionally narrow: bash → `~/.bashrc`, zsh → `~/.zshrc`, anything else → `~/.profile` with a one-line note ("if your shell doesn't read `~/.profile`, add this line to your shell's startup file"). Fish, nushell, PowerShell, and other non-POSIX shells are NOT auto-detected — the fallback message tells the operator to handle it themselves rather than silently picking the wrong rc file. Runtime: every successful `install_pip_user` checks whether `~/.concierge/bin/` is on PATH; if not, the install result includes a one-line warning ("note: ~/.concierge/bin/ not on PATH; installed tool '<name>' won't be invokable until you add it. Run: ..."). The operator can dismiss the first-run instruction; the per-install warning makes silent invisibility impossible.
+
+**Reasoning:** The Vision's "Concierge owns the install boundary; neither LLM nor operator has to think about install" framing is best served by a directory that's *unambiguously* Concierge's. Decision D's choice to leave pre-Option-3 `pip install --user` artifacts at `~/.local/` untouched is intentionally non-disruptive — but exactly because of that, new Concierge-managed installs need a clean home for the operator's mental model to stay simple. Mixing post-Option-3 shims with pre-Option-3 user-site binaries at `~/.local/bin/` creates ambiguity that surfaces only at debug time, which is exactly when ambiguity costs the most.
+
+The one-time PATH cost is low and visible: emitted once at first install with a copy-pasteable instruction. The runtime warning closes the dismissed-instruction failure mode; every subsequent install nudges until PATH is fixed. PATH-visibility check is `shutil.which(<shim_filename>) is not None` — cheap and reliable.
+
+Shell-detection scope is bash/zsh/fallback by design: those two cover the vast majority of operator shells; anything outside that set falls back to `~/.profile` with an honest "your shell may not read this — handle it yourself" note rather than silently doing the wrong thing for fish/nushell/PowerShell. **A future contributor MUST NOT expand the shell-detection helper without a real-world signal that justifies the additional surface area** — keep the helper simple and honest about its limits.
+
+**Reversibility:** Easy. Shim location is a single constant (e.g. `CONCIERGE_BIN_DIR = Path.home() / ".concierge" / "bin"`) in one module. Changing to `~/.local/bin/` is a one-line edit + a one-time cleanup script for existing `~/.concierge/bin/` shims. The runtime PATH-check stays useful regardless of location. Shell-detection scope is similarly contained — adding fish support later is a single branch in the helper.
+
+**Decided by:** Lewie (2026-04-27 Day 6 session open — chose `~/.concierge/bin/` over `~/.local/bin/` explicitly, citing "hard-to-debug failure modes" from artifact collision; accepted one-time PATH cost in exchange for unambiguous operator inspection; capped shell detection at bash/zsh/fallback to keep the helper simple).
+
+**Affects:** New constant `CONCIERGE_BIN_DIR` in `core/install/` (likely a new `core/install/venv.py` module or extension of `methods.py`); shim-script generator writing to this directory; `install_pip_user` post-install PATH check + warning emission; first-run UX message that includes the shell-detected PATH-addition instruction (bash/zsh/fallback only). Tests under `tests/test_install.py` + new `tests/test_venv_bootstrap.py` exercise directory creation, shim writing, and the PATH-warning emission as a client-observable assertion. The bash/zsh/fallback scope is itself a regression-guarded contract — a test asserts that an unrecognized shell name maps to the `~/.profile` fallback with the explanatory note, not to a guess.
+
+---
+
+## [2026-04-27 Day 6] — Concierge-managed venv creator: stdlib `python3 -m venv` with explicit `--system-site-packages=False`
+
+**Context:** Day 6 Option 3 requires creating a venv at `~/.concierge/tools-venv/`. Two creation methods are available: stdlib `python3 -m venv` (always present on Python 3.4+, slower) or `uv venv` (faster, matches Concierge's dev workflow but requires `uv` installed on operator's machine).
+
+**Options considered:**
+- stdlib `python3 -m venv` — universal, no extra dependency, ~1-3s for venv creation
+- `uv venv` — faster (~100ms), matches dev workflow; but `uv` is not on every operator's machine (especially the non-dev no-code-agent persona named in CLAUDE.md §Vision)
+- try-uv-then-fallback-to-stdlib — branching complexity for marginal one-time benefit; rejected
+
+**Decision:** Stdlib `python3 -m venv` invoked via `subprocess.run([sys.executable, "-m", "venv", "--system-site-packages=False", str(venv_path_tmp)], check=False)`. The `--system-site-packages=False` flag is passed explicitly even though it's the stdlib default — the isolation invariant is greppable in the code.
+
+**Reasoning:** First-run venv creation is one-time work. The ~1-3s stdlib cost vs uv's ~100ms is a one-shot, not a recurring tax. Universality wins. CLAUDE.md §Vision's both-personas-show-up framing (dev operators AND non-dev no-code-agent operators) makes assuming `uv` on PATH wrong for half the persona set.
+
+The `--system-site-packages=False` flag is explicit because future readers shouldn't have to know stdlib's default to understand the invariant. Isolation is the *whole point* of Option 3 — the operator may have system-installed torch/numpy/sentence-transformers that conflict with the pins Concierge tools need; the venv must NOT see those. The Day 5 torch failures triage (`SESSION-2026-04-26-01.md` §Appendix C) is a live example of why version drift between two co-resident venvs matters; Option 3's tools-venv must be a clean third venv that imports nothing from system or from the operator's own venvs. Explicit flag documents this for any future reader.
+
+The Concierge runtime venv at `/home/satiety/.venvs/concierge-hackathon/` is itself stdlib-created (per `scripts/concierge-shim` lines 36-39 which document the symlink-to-/usr/bin/python3 behavior); the new tools-venv uses the same family for consistency.
+
+**Note on Python-version inheritance:** The tools-venv inherits Concierge's Python version at creation time (3.12 currently, via `sys.executable`'s interpreter). Subsequent Concierge Python upgrades do NOT automatically rebuild the tools-venv — the venv stays pinned to whatever Python it was created with until explicitly recreated. **This is intentional**: venv stability across runtime upgrades is the goal — a Concierge upgrade from 3.12 to 3.13 shouldn't silently invalidate every tool the operator has installed. But it cuts the other way too: if a future tool requires a Python version newer than what the venv was created with, the venv must be explicitly recreated (delete `~/.concierge/tools-venv/` and let `_ensure_concierge_venv` rebuild it on next install). Future readers extending the bootstrap helper to handle automatic version-upgrade rebuilds must weigh stability vs convenience and add the trigger criterion explicitly.
+
+**Reversibility:** Easy. Bootstrap helper has a single `subprocess.run` call to swap. Switching to `uv venv` (or a try-uv-fallback pattern) later is one function rewrite. Downstream code uses the venv path, not the creation method — no rippling change.
+
+**Decided by:** Lewie (2026-04-27 Day 6 session open — chose stdlib over uv explicitly, citing portability for non-dev personas; flagged `--system-site-packages=False` as worth making explicit even though it's the default; flagged Python-version-inheritance behavior as intentional and worth documenting).
+
+**Affects:** New `_ensure_concierge_venv` helper in `core/install/` (likely new `core/install/venv.py`). Helper invokes `subprocess.run([sys.executable, "-m", "venv", "--system-site-packages=False", str(venv_path_tmp)], check=False)` then renames `<path>.tmp` → `<path>` atomically. `tests/test_venv_bootstrap.py` mocks `subprocess.run` and asserts the call shape carries the explicit `--system-site-packages=False` flag — so a future "cleanup" that drops it as redundant fails the test. Python-version pinning is implicit (no rebuild logic exists); future "auto-rebuild on Python upgrade" work would need its own DECISIONS entry.
+
+---
+
+## [2026-04-27 Day 6] — Option 3 scope (Python tools only) + migration approach (one-shot commit-time backfill of pre-Option-3 user-site artifacts)
+
+**Context:** Day 6 Option 3 (Concierge-managed venv to sidestep PEP-668) changes the canonical install method for Python tools. Two ambiguities need pinning down before code lands: (1) does Option 3 affect non-Python install methods (`npm_global`, `npx_mcp`, `single_binary`)? (2) what happens to tools previously installed via the pre-Option-3 `pip install --user` path that already live at `~/.local/`? Closely-linked decisions because scope choice constrains migration choice.
+
+**Options considered (scope):**
+- Python tools only — affects `install_pip_user` only; npm / npx_mcp / single_binary unchanged
+- All install methods get Concierge-managed equivalents — npm into a Concierge-managed nodeenv, npx_mcp via some Concierge proxy, binaries into a Concierge-owned directory; broad scope, none of the other methods have PEP-668 motivation
+- Skip Option 3 entirely, use `--break-system-packages` — rejected per the Day 6 PEP-668 decision that selected Option 3
+
+**Options considered (migration):**
+- Leave pre-Option-3 `--user` artifacts in place; mark them in catalog/install records via a one-shot commit-time backfill — non-disruptive, catalog state consistent immediately
+- Lazy backfill on first Option 3 install — non-disruptive but partially-updated catalog state until every operator triggers an install; auditability suffers
+- Force re-install of all currently-`pip_user` tools into the new venv — clean state but disruptive; risks breaking operator's working setup mid-day; soak interruption
+- Migration helper that detects + moves `--user` installs into the venv — adds non-trivial logic for a one-time migration the operator can do manually
+
+**Decision (scope):** Option 3 affects `install_pip_user` only. `install_npm_global`, `install_npx_mcp`, `install_single_binary` are unchanged — PEP-668 is Python-distribution-marker-specific and doesn't apply to npm or downloaded binaries.
+
+**Decision (migration):** Leave existing pre-Option-3 `pip install --user` artifacts at `~/.local/` untouched on disk. **One-shot commit-time backfill** tags every existing `Tool` row whose recorded install method canonicalizes to `pip_user` with an `install_method_provenance: "pre-option-3-user-site"` marker (exact field name decided at code-write time per the wiring-test discipline). The backfill runs as part of the Option 3 commit's migration (Alembic data migration or equivalent one-shot script), not lazily on first install. New installs (post-Option-3 commit) go into `~/.concierge/tools-venv/` via the new dispatcher path and carry `install_method_provenance: "option-3-venv"` (or omit the marker, with absence-of-marker semantically meaning post-Option-3 — exact field shape decided at code-write time). Operator can manually re-install via Concierge if they want venv-managed versions of pre-existing tools; no forced migration, no automatic cleanup of `~/.local/` artifacts.
+
+**Reasoning (scope):** `install_npm_global` writes to the user's npm prefix (typically `~/.npm-global/`), which is npm's user-site equivalent and isn't affected by PEP-668. `install_npx_mcp` doesn't even install — it does a registry-existence check via `npm view <pkg> name`, with the actual run-on-demand happening via `npx -y <pkg>` per backing-server registration; no install boundary to touch. `install_single_binary` downloads to a caller-specified `~/<dest>` via `curl + chmod`; no Python distribution involved. Expanding Option 3 to wrap these would add complexity without solving any actual problem. Per CLAUDE.md §Vision's "do PEP-668 properly even if that takes the whole day" framing, scope discipline matters — Day 6's deliverable is Python tool isolation, not a global-install-boundary refactor.
+
+**Reasoning (migration):** Forced migration mid-day risks breaking the operator's working setup just as the 48h shakedown is running. The non-disruptive default keeps the soak clean. Mixed catalog state is the cost; the `install_method_provenance` marker pays it back via auditability — operator inspecting "is this tool pre-Option-3 or post-Option-3?" gets a single-field answer.
+
+**Commit-time backfill chosen over lazy-on-first-install** for the same discipline as Fix Day 2's lifecycle_state backfill (DECISIONS `[2026-04-25 Fix Day 2]` — "Backfill mapping executed without pre-review — recorded for audit"): a single explicit migration produces a catalog state that is consistent immediately, not partially-updated based on operator behavior. Lazy backfill leaves a window where some pre-Option-3 rows have the marker (because the operator triggered an install on them) and others don't (because the operator hasn't touched them) — auditability suffers and the marker's semantic ("this row predates Option 3") becomes ambiguous. Commit-time backfill: every pre-existing row gets tagged in the same migration that introduces the field; the field's invariant ("rows without marker are post-Option-3") holds from the first moment Option 3 is live.
+
+The migration-helper option (auto-move `--user` artifacts into the venv) is rejected because the work-to-value ratio is bad: a one-time migration the operator can do via three explicit re-installs (or just leave alone) doesn't justify a permanent code path.
+
+**Reversibility (scope):** Easy. Adding venv-wrapped install methods for `npm_global` / `npx_mcp` / `single_binary` later is additive — separate dispatcher branches per method are already the pattern in `install_by_method`. The decision is "don't do it now," not "don't do it ever."
+
+**Reversibility (migration):** Easy. Re-running install on a pre-Option-3-tagged tool routes through the new dispatcher path and lands the venv version; the old `--user` version remains on disk but is no longer canonical. A future cleanup script can sweep `~/.local/` for tools that have post-Option-3 catalog rows. Backfill itself is reversible (drop the column or null the field) but conceptually the marker is permanent — historical record of which install path a row came from.
+
+**Decided by:** Lewie (2026-04-27 Day 6 session open — confirmed Python-tools-only scope; chose leave-in-place over force-migrate; chose one-shot commit-time backfill over lazy-on-first-install citing Fix Day 2 backfill discipline and the "catalog state consistent immediately" invariant).
+
+**Affects (scope):** `core/install/methods.py::install_pip_user` only — `install_npm_global` / `install_npx_mcp` / `install_single_binary` unchanged. `core/install/service.py::install_by_method` dispatcher unchanged structurally; the change is internal to `install_pip_user`'s implementation. `tests/test_install.py` cases for the three unchanged methods stay as-is.
+
+**Affects (migration):** Catalog row format gains an `install_method_provenance` field (exact name TBD at code-write time). One-shot migration script (Alembic data migration or equivalent) runs as part of the Option 3 commit and tags every existing `Tool` row whose canonical install method is `pip_user` with `"pre-option-3-user-site"`. **The wiring test for the backfill asserts every existing pre-Option-3 row gets the marker** — not just "the migration ran" but "the marker appears on every applicable row in the catalog after migration"; this is the client-observable contract per the Day 5 wiring-test meta-lesson. New installs post-commit set the marker (or its absence) per the chosen field shape. Pre-Option-3 lifecycle markdown files in `tool-requests/` are NOT modified — historical record stays intact per the same discipline that kept SESSION-2026-04-25-03 Appendix D intact (correction in the next snapshot, not in-place).
+
+---
