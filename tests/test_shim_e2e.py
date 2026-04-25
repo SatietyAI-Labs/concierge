@@ -38,9 +38,19 @@ class ShimHarness:
         self.proc.stdin.write(line.encode("utf-8"))
         self.proc.stdin.flush()
 
-    def recv_line(self, timeout: float = 3.0) -> str:
+    def recv_line(self, timeout: float = 10.0) -> str:
         """Block until one newline-terminated line arrives on stdout
         or timeout expires.
+
+        Default 10.0s sized for shim startup time. The shim's import
+        chain (full Concierge module graph + meta-tools registration
+        + resources registration + backing-server routing install)
+        runs ~3.0-3.5s on this machine before the first stdin read;
+        load-dependent variance pushed the prior 3.0s default over
+        the threshold. 10s gives ~3x current startup time as
+        headroom. Tests that succeed never wait close to the
+        timeout (response arrives in <100ms once shim is up); the
+        higher default only matters for the failure-detection path.
         """
         assert self.proc.stdout is not None
         deadline = time.monotonic() + timeout
@@ -59,8 +69,14 @@ class ShimHarness:
         self._stdout_buffer = rest
         return line
 
-    def recv_json(self, timeout: float = 3.0) -> dict:
-        return json.loads(self.recv_line(timeout=timeout))
+    def recv_json(self, timeout: Optional[float] = None) -> dict:
+        """Thin JSON-decoding wrapper over `recv_line`. `timeout=None`
+        propagates `recv_line`'s default — single source of truth so
+        the two defaults can't drift apart.
+        """
+        if timeout is not None:
+            return json.loads(self.recv_line(timeout=timeout))
+        return json.loads(self.recv_line())
 
     def close_stdin(self) -> None:
         if self.proc.stdin is not None and not self.proc.stdin.closed:
