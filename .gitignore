@@ -60,3 +60,10 @@ logs/
 # temporary experiments and large reference material Lewie drops
 # in for in-session use; never intended as durable artifacts).
 planning/scratch/
+
+# Operator-local legacy navigation aids — symlinks pointing to
+# external workspaces that exist only on the operator's machine.
+# Dangling on any clone; gitignored to keep the public repo clean
+# while preserving local operator workflow. Per repo-structure-audit
+# 2026-04-29 (Day 8) Surface 1.
+_legacy/
