@@ -361,31 +361,40 @@ class TestProtocolVersionEnvOverride:
 
 
 class TestWrapperScriptInvocation:
-    """Verify `scripts/concierge-shim` invoked as an executable —
-    the way Claude Code's MCP spawn invokes it — picks up the
-    correct Python interpreter with all dependencies importable.
+    """Verify the `concierge-shim` console-script entry point invoked
+    as an executable — the way Claude Code's MCP spawn invokes it —
+    picks up the correct Python interpreter with all dependencies
+    importable.
 
-    Regression guard: the original wrapper had
-    `#!/usr/bin/env python3`, which resolved via PATH. Claude Code's
-    MCP spawn supplies an env that typically does not include the
-    project venv's bin directory, so `/usr/bin/env` found the system
-    `python3` — which lacks pydantic and every other Concierge dep.
-    Every existing e2e test bypassed this path by spawning via
+    Regression guard: a `#!/usr/bin/env python3` shebang would
+    resolve via PATH. Claude Code's MCP spawn supplies an env that
+    typically does not include the project venv's bin directory, so
+    `/usr/bin/env` would find the system `python3` — which lacks
+    pydantic and every other Concierge dep. The pip-generated
+    `[project.scripts]` bin uses an absolute shebang to the venv
+    interpreter at install time, sidestepping PATH resolution. Every
+    existing e2e test bypasses this path by spawning via
     `sys.executable` (the pytest runner's interpreter, which IS the
-    venv python). This test exercises the wrapper the way Claude
-    Code does.
+    venv python). This test exercises the bin the way Claude Code
+    does.
     """
 
     def test_wrapper_spawns_without_venv_activation(self):
-        """Invoke the wrapper with a PATH that does NOT include the
-        venv bin dir. Before the shebang fix this produced
-        ModuleNotFoundError on pydantic. After the fix, the
-        absolute-path shebang invokes the venv Python directly and
-        all imports succeed.
+        """Invoke the entry-point bin with a PATH that does NOT
+        include the venv bin dir. Without the absolute-shebang
+        guarantee this would produce ModuleNotFoundError on pydantic;
+        with the pip-generated bin's absolute shebang the venv Python
+        is invoked directly and all imports succeed.
         """
-        wrapper = REPO_ROOT / "scripts" / "concierge-shim"
-        assert wrapper.exists(), f"wrapper not found at {wrapper}"
-        assert os.access(wrapper, os.X_OK), f"wrapper not executable"
+        # The pip-generated bin lands next to the venv's python
+        # interpreter that pytest is running under.
+        wrapper = Path(sys.executable).parent / "concierge-shim"
+        assert wrapper.exists(), (
+            f"concierge-shim entry point not found at {wrapper}. "
+            f"Run `uv sync --extra dev` (or `pip install -e \".[dev]\"`) "
+            f"to generate it from the [project.scripts] entry in pyproject.toml."
+        )
+        assert os.access(wrapper, os.X_OK), f"entry point not executable: {wrapper}"
 
         # Scrub PATH to system paths only — this simulates the env
         # Claude Code's MCP spawn gives us (no venv activation). HOME

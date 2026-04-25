@@ -11,8 +11,8 @@ does not warrant one):
 
     CONCIERGE_URL       Backing service base URL. Default:
                         http://127.0.0.1:8000 (single-process
-                        assumption, same as scripts/concierge-shim
-                        docstring).
+                        assumption, same as the `concierge-shim`
+                        entry-point docstring).
 
 Base URL is captured at first-call time; a subsequent env change
 does NOT take effect until the shim restarts. This is intentional —

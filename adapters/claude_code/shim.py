@@ -172,7 +172,10 @@ async def _run_with_cleanup() -> int:
 
 
 def main() -> int:
-    """CLI entrypoint. `scripts/concierge-shim` calls this.
+    """CLI entrypoint. Registered as the `concierge-shim` console
+    script via `[project.scripts]` in pyproject.toml; pip/uv
+    generates `<venv>/bin/concierge-shim` on editable install,
+    pointing at this function.
 
     Configures logging first (stderr-only, never stdout), composes
     the dispatcher with N11 meta-tools, then hands off to the async

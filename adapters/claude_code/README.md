@@ -35,11 +35,18 @@ Build items queued:
 ## Entrypoint
 
 ```
-scripts/concierge-shim
+concierge-shim   (registered as a [project.scripts] console-script entry point)
 ```
 
-Wrapper script that execs `python3 -m adapters.claude_code.shim`.
-Claude Code MCP config points at this wrapper path.
+Defined in `pyproject.toml` as
+`concierge-shim = "adapters.claude_code.shim:main"`. Editable install
+(`uv sync --extra dev` or `pip install -e ".[dev]"`) generates
+`<venv>/bin/concierge-shim` with an absolute-path shebang to the
+venv's Python interpreter — so Claude Code's MCP spawn (which does
+not activate the venv) hits the right interpreter without any PATH
+manipulation. Claude Code MCP config points at the absolute path
+of that bin, e.g.
+`/mnt/c/Users/satie/Projects/ClaudeCodeCLI/Concierge/.venv/bin/concierge-shim`.
 
 ## Environment
 
@@ -61,7 +68,8 @@ that's correct, but it's "verified in isolation," not "verified
 against real Claude Code MCP client." Before soak begins:
 
 1. Wire the shim into Claude Code's MCP config (a local
-   `.mcp.json` referencing `scripts/concierge-shim`).
+   `.mcp.json` or `~/.claude.json` entry referencing the absolute
+   path of the venv-bin `concierge-shim`).
 2. Launch a Claude Code session; confirm the `initialize` handshake
    completes (no stderr gibberish, no hang).
 3. Confirm `tools/list` surfaces the N11 meta-tools once they land.

@@ -151,8 +151,10 @@ class TestSubprocessCallShape:
     def test_uses_sys_executable_not_string_python3(self, tmp_path):
         """Helper invokes the runtime venv's interpreter via
         sys.executable, not a PATH-resolved "python3" string. Same
-        rationale as scripts/concierge-shim's absolute-shebang fix —
-        avoid "which python3 is on PATH right now?" surprises.
+        rationale as the pip-generated `concierge-shim` bin's
+        absolute-path shebang — avoid "which python3 is on PATH
+        right now?" surprises that would otherwise resolve to system
+        python and trip ModuleNotFoundError on Concierge dependencies.
         """
         with patch("core.install.venv.subprocess.run") as mock_run:
             mock_run.side_effect = _make_subprocess_run_creating_venv()

@@ -29,6 +29,9 @@ dev = [
     "httpx>=0.26",
 ]
 
+[project.scripts]
+concierge-shim = "adapters.claude_code.shim:main"
+
 [tool.setuptools.packages.find]
 include = ["core*", "ui*", "adapters*"]
 

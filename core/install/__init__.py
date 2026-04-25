@@ -28,7 +28,8 @@ paths per the SOUL-delta `## Requesting Capabilities` rule:
 
 - `install_npm_global` → `~/.npm-global` via `npm install -g`
   (requires the npm prefix to be set in the user's environment;
-  `scripts/concierge-shim`'s parent shell typically has this).
+  the shell that spawned the `concierge-shim` entry point typically
+  has this).
 - `install_pip_user` → `~/.local/` via `pip install --user`.
 - `install_single_binary` → `~/bin/` (or caller-supplied dest; the
   dispatcher defaults to `~/bin/<slug>`).
