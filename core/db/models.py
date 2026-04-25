@@ -92,6 +92,9 @@ class Tool(Base):
     )
     category: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     install_method: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    install_method_provenance: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True, index=True
+    )
     is_in_manifest: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     lifecycle_state: Mapped[str] = mapped_column(

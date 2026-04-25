@@ -72,6 +72,8 @@ from core.lifecycle_store.writer import (
     update_status_line,
     write_new_request,
 )
+from core.db.models import Tool
+from core.install.provenance import PROVENANCE_BY_RESULT_METHOD
 from core.install.schemas import InstallResult
 from core.install.service import install_by_method, normalize_install_method
 from core.events import EventBroker
@@ -552,6 +554,27 @@ class LifecycleService:
                     "tool_slug=%s error=%s: %s",
                     filename, tool_slug, type(exc).__name__, exc,
                 )
+
+            # Decision C+D wire-in: set Tool.install_method_provenance
+            # per the runtime translation map. Non-fatal — a missing
+            # Tool row or DB error logs and proceeds; provenance is
+            # informational, not a transactional requirement.
+            provenance = PROVENANCE_BY_RESULT_METHOD.get(result.method)
+            if provenance is not None:
+                try:
+                    tool_row = (
+                        self.session.query(Tool)
+                        .filter(Tool.slug == tool_slug)
+                        .first()
+                    )
+                    if tool_row is not None:
+                        tool_row.install_method_provenance = provenance
+                except Exception as exc:
+                    logger.warning(
+                        "lifecycle.provenance_update_failed filename=%s "
+                        "tool_slug=%s error=%s: %s",
+                        filename, tool_slug, type(exc).__name__, exc,
+                    )
 
         return self.update_status(
             filename=filename,
