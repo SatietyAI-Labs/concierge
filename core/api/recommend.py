@@ -123,9 +123,22 @@ def get_recommendation_service(
 def recommend(
     req: RecommendRequest,
     service: RecommendationService = Depends(get_recommendation_service),
+    db: Session = Depends(get_db),
 ) -> RecommendResponse:
     try:
-        return service.recommend(req)
+        response = service.recommend(req)
+        # `make_db_sink` adds + flushes per-rec `ToolUsageEvent` rows
+        # but explicitly does not commit (see `core/telemetry.py`
+        # docstring — "caller owns the transaction"). Without the
+        # commit here, `get_db`'s `finally`-close rolls back the
+        # implicit transaction and the flushed telemetry rows are
+        # discarded — the Fix Day 5 bug captured in Appendix D of
+        # `SESSION-2026-04-25-03.md`. The install path commits via
+        # the lifecycle-store update_status downstream; the recommend
+        # path has no downstream commit, so it owns the boundary
+        # itself.
+        db.commit()
+        return response
     except RecommendationParseError as exc:
         # Service has already logged ERROR with
         # `recommend.parse_failed`; the HTTP boundary adds a
