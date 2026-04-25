@@ -11,6 +11,16 @@ Read these documents in this order before doing anything else:
 3. `docs/concierge-blueprint-v2.md` — what we're building and why
 4. `docs/concierge-claude-code-plan-v3.md` — phases and execution plan
 
+## Vision
+
+Concierge is a harness-agnostic, model-agnostic tool-awareness substrate. It sits between any LLM and any harness — Claude Code, OpenClaw, Codex, Manus, future things. The harness is the runtime environment; the LLM is the model doing the thinking; Concierge is the substrate underneath that any LLM-in-any-harness can consult via MCP. Concierge runs on the operator's machine, not the LLM's. The operator is whoever runs Concierge — could be a developer on a dev machine, could be a non-dev using a no-code agent. Both personas show up; Concierge should "just work" for both.
+
+Concierge is the third voice in the room. It isn't a passive recommender the LLM consults silently. It's an active participant in the operator-LLM dialogue. When the operator and the agent are working through a task, the agent pauses, consults Concierge, and comes back with "here's what I'd reach for, here's an alternative you might not have thought of, here's why" — and that becomes part of the conversation. The narration-as-push design landed in Days 4-5 (per `planning/sessions/SESSION-2026-04-25-03.md` and `planning/sessions/SESSION-2026-04-26-01.md`) is what makes this work in practice: the agent surfaces the consultation visibly, names alternatives, explains trade-offs. The operator hears Concierge through the agent, not as a separate UI surface they have to context-switch to.
+
+Concierge is identity-aware substrate for multi-tier-agent fleets. In a fleet with multiple agents — workers reporting to a primary agent reporting to the operator — every agent at every tier consults Concierge as the same shared substrate. Tool requests route based on the requester's position in the hierarchy: worker requests escalate to the primary agent who has autonomous-action authority for non-money-non-sudo decisions; primary agent requests escalate to the operator. The single-agent case (one operator, one Claude Code session) is the degenerate form of the same pattern — one tier, no escalation chain, but the same identity-aware substrate underneath. Concierge is identity-aware enough to route correctly; the substrate itself is uniform.
+
+*This Vision section is the v3-build-era authoritative framing. The blueprint at `docs/concierge-blueprint-v2.md` is the architectural specification; the Day 1-5 SESSION snapshots in `planning/sessions/` are the build narrative. An earlier reference doc at `_legacy/toolconcierge/TOOL-CONCIERGE-OVERVIEW.md` captures a narrower MCP-centric framing from before the v3 scope expansion; it remains in `_legacy/` for historical reference but is superseded by this Vision and by the v3 build artifacts.*
+
 ## What this project is
 Concierge is a platform-agnostic tool awareness layer for AI agents. It gives
 agents tool agency: knowing what they don't have, asking for it, preferring
