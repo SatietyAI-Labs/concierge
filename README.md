@@ -34,6 +34,24 @@ uv sync
 
 This creates `.venv/` at the repo root with Concierge installed editably and a `concierge-shim` console script at `.venv/bin/concierge-shim`.
 
+### Optional: operator dashboard
+
+Concierge ships with a browser dashboard surfacing the tool catalog, live health/stats, and the operator's pending-request inbox. The dashboard is an HTMX + Pico.css-rendered Jinja2 layer that wraps the same core service the MCP shim talks to.
+
+```bash
+uv run uvicorn ui.app:create_app --factory --reload --port 8000
+```
+
+Open `http://localhost:8000` to view the dashboard. The `uv run` prefix is required in WSL and any environment where the uv-managed venv isn't on your shell's PATH.
+
+For headless deployments (no dashboard), launch only the core API:
+
+```bash
+uv run uvicorn core.app:create_app --factory --reload --port 8000
+```
+
+Both apps are factory-only — the `--factory` flag is mandatory.
+
 ### Register with Claude Code
 
 ```bash
