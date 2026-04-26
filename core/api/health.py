@@ -51,15 +51,45 @@ def _catalog_counts(db: Session) -> dict[str, int]:
     }
 
 
-def _requests_counts_by_folder(db: Session) -> dict[str, int]:
-    rows = (
-        db.query(RequestRow.folder, func.count(RequestRow.id)).group_by(RequestRow.folder).all()
+def _requests_counts(db: Session) -> dict[str, int]:
+    """Pending/resolved/archived counts for the dashboard health bar.
+
+    `pending` mirrors the inbox query (`folder='pending' AND
+    status='pending'`) so operators see the same number on the bar
+    and in the inbox card list. The conjunctive filter — rather than
+    the looser `status='pending'` alone — locks the alignment claim
+    under both drift directions: forward (folder=pending,
+    status≠pending) and reverse (status=pending, folder≠pending).
+
+    `resolved` and `archived` remain folder-based so folder/status
+    drift surfaces as a /health diagnostic signal: cron-reconciliation
+    lag will show up as resolved/archived rows whose status hasn't
+    caught up. Mixed semantic is deliberate, not oversight. See
+    DECISIONS `[2026-05-02 Day 11]` D1.
+    """
+    folder_rows = (
+        db.query(RequestRow.folder, func.count(RequestRow.id))
+        .group_by(RequestRow.folder)
+        .all()
     )
-    counts = {"pending": 0, "resolved": 0, "archived": 0}
-    for folder, n in rows:
-        counts[folder] = n
-    counts["total"] = sum(counts.values())
-    return counts
+    folder_counts = {"resolved": 0, "archived": 0}
+    for folder, n in folder_rows:
+        if folder in folder_counts:
+            folder_counts[folder] = n
+    pending_count = (
+        db.query(func.count(RequestRow.id))
+        .filter(RequestRow.folder == "pending")
+        .filter(RequestRow.status == "pending")
+        .scalar()
+        or 0
+    )
+    total = db.query(func.count(RequestRow.id)).scalar() or 0
+    return {
+        "pending": pending_count,
+        "resolved": folder_counts["resolved"],
+        "archived": folder_counts["archived"],
+        "total": total,
+    }
 
 
 @router.get("/health")
@@ -93,9 +123,9 @@ def health(
         catalog = {}
         warnings.append(f"catalog_counts_unavailable: {exc}")
     try:
-        requests_by_folder = _requests_counts_by_folder(db)
+        requests_counts = _requests_counts(db)
     except Exception as exc:  # pragma: no cover
-        requests_by_folder = {}
+        requests_counts = {}
         warnings.append(f"requests_counts_unavailable: {exc}")
 
     # Fix Day 4 Task 5 — scanner summary field. `None` when no scan
@@ -123,7 +153,7 @@ def health(
             "lifecycle": lifecycle_snap,
         },
         "catalog": catalog,
-        "requests": requests_by_folder,
+        "requests": requests_counts,
         "scanner": scanner_field,
     }
     if warnings:

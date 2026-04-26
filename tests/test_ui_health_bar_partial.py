@@ -117,3 +117,44 @@ class TestHealthBarPartial:
         body = client.get("/partials/health-bar").text
         assert "Top-3 most-recommended" in body
         assert "No recommendations yet" in body
+
+    def test_pending_tile_renders_status_count_in_drift_case(
+        self, db_session
+    ):
+        """Day 11 Task 1.3 / Fork D1: the rendered partial's
+        Pending requests tile must show the inbox-aligned count
+        in the canonical drift case (folder=pending rows whose
+        status has moved on without cron reconciliation).
+
+        Three rows in folder=pending, only one with status=pending.
+        Tile must render '1' inside the .health-value slot, not '3'.
+        Locks the operator-observable claim — same number on the
+        bar as on the inbox card list."""
+        from core.db.models import Request as RequestRow
+
+        db_session.add_all([
+            RequestRow(
+                filename="2026-04-26-0001-csvkit.md",
+                status="pending", folder="pending",
+                tool_name="csvkit", raw_markdown="# csvkit",
+            ),
+            RequestRow(
+                filename="2026-04-26-0002-ripgrep.md",
+                status="failed", folder="pending",
+                tool_name="ripgrep", raw_markdown="# ripgrep",
+            ),
+            RequestRow(
+                filename="2026-04-26-0003-ocrmypdf.md",
+                status="installed", folder="pending",
+                tool_name="ocrmypdf", raw_markdown="# ocrmypdf",
+            ),
+        ])
+        db_session.commit()
+
+        client = _ui_client(db_session)
+        body = client.get("/partials/health-bar").text
+        assert "Pending requests" in body
+        # Inbox-aligned count: 1 (only the status=pending row)
+        assert '<span class="health-value">1</span>' in body
+        # Folder-only would render 3 — assert that's not what shows
+        assert '<span class="health-value">3</span>' not in body

@@ -139,6 +139,160 @@ class TestHealthOperationalPulse:
         assert "health_warnings" not in body
 
 
+# ---- /health pending-count semantic (Day 11 Task 1.3 / Fork D1) -----
+
+
+class TestHealthRequestsPendingCount:
+    """The Health/Stats `Pending requests` tile must show the same
+    number the operator sees in the inbox card list. Day 10 surfaced
+    a real-world drift case (id=6 csvkit failed since 2026-04-23 +
+    id=7 ocrmypdf installed after approve action — both stuck in
+    folder=pending until cron reconciles) where the bar showed
+    `Pending requests: 1` while the inbox showed `No pending tool
+    requests`. Day 11 Fork D1: align the bar to the inbox by
+    filtering on Request.status == 'pending' instead of
+    folder='pending'.
+
+    `resolved` and `archived` keys remain folder-based so that
+    folder/status drift surfaces as a /health diagnostic signal —
+    deliberate mixed semantic, not oversight. See DECISIONS
+    `[2026-05-02 Day 11]`.
+    """
+
+    def test_pending_count_uses_status_not_folder(self, db_session):
+        """Drift fixture: three rows in folder=pending, only one
+        with status=pending. /health pending must return 1, not 3."""
+        from core.app import create_app
+        from core.db.models import Request as RequestRow
+        from core.db.session import get_db
+
+        db_session.add_all([
+            RequestRow(
+                filename="2026-04-26-0001-csvkit.md",
+                status="pending",
+                folder="pending",
+                tool_name="csvkit",
+                raw_markdown="# csvkit",
+            ),
+            RequestRow(
+                filename="2026-04-26-0002-ripgrep.md",
+                status="failed",  # drift: folder=pending but status=failed
+                folder="pending",
+                tool_name="ripgrep",
+                raw_markdown="# ripgrep",
+            ),
+            RequestRow(
+                filename="2026-04-26-0003-ocrmypdf.md",
+                status="installed",  # drift: cron hasn't moved it yet
+                folder="pending",
+                tool_name="ocrmypdf",
+                raw_markdown="# ocrmypdf",
+            ),
+        ])
+        db_session.commit()
+
+        app = create_app()
+        app.dependency_overrides[get_db] = lambda: (yield db_session)
+        client = TestClient(app)
+        body = client.get("/health").json()
+
+        assert body["requests"]["pending"] == 1, (
+            "Pending count must filter by status, not folder, to match "
+            "the inbox semantic. Folder-based count would return 3."
+        )
+
+    def test_pending_count_matches_inbox_query_under_both_drift_directions(
+        self, db_session
+    ):
+        """Belt-and-suspenders: /health pending must equal the count
+        list_pending_rows would return under BOTH drift directions
+        — forward (folder=pending, status≠pending) and reverse
+        (status=pending, folder≠pending). Locks the alignment claim
+        regardless of which drift the cron-reconciliation lag exhibits.
+
+        Filter shape mirrors list_pending_rows (folder='pending' AND
+        status='pending') so the two queries are structurally identical;
+        future refactors of either side that preserve this invariant
+        keep the bar/inbox alignment intact."""
+        from core.app import create_app
+        from core.db.models import Request as RequestRow
+        from core.db.session import get_db
+        from core.lifecycle_store.store import list_pending_rows
+
+        db_session.add_all([
+            # Pending in both — counts in both queries
+            RequestRow(
+                filename="a.md", status="pending", folder="pending",
+                tool_name="a", raw_markdown="# a",
+            ),
+            # Forward drift — folder=pending but status moved on (cron
+            # reconciliation hasn't moved the file yet). Excluded from
+            # both queries.
+            RequestRow(
+                filename="b.md", status="failed", folder="pending",
+                tool_name="b", raw_markdown="# b",
+            ),
+            RequestRow(
+                filename="c.md", status="approved", folder="pending",
+                tool_name="c", raw_markdown="# c",
+            ),
+            # Reverse drift — status=pending but folder moved on (the
+            # symmetric drift bug class; harden against it now while
+            # we're touching the filter shape). Excluded from both
+            # queries iff the bar's filter mirrors the inbox.
+            RequestRow(
+                filename="d.md", status="pending", folder="resolved",
+                tool_name="d", raw_markdown="# d",
+            ),
+        ])
+        db_session.commit()
+
+        app = create_app()
+        app.dependency_overrides[get_db] = lambda: (yield db_session)
+        client = TestClient(app)
+
+        health_pending = client.get("/health").json()["requests"]["pending"]
+        inbox_count = len(list_pending_rows(db_session))
+        assert health_pending == inbox_count == 1, (
+            f"health.pending={health_pending} vs inbox={inbox_count}; "
+            f"both should be 1 (only row 'a.md' satisfies folder=pending "
+            f"AND status=pending)."
+        )
+
+    def test_resolved_and_archived_remain_folder_based(self, db_session):
+        """Diagnostic signal preserved: resolved/archived counts
+        reflect on-disk folder state, regardless of row status. This
+        is what makes folder/status drift visible in /health."""
+        from core.app import create_app
+        from core.db.models import Request as RequestRow
+        from core.db.session import get_db
+
+        db_session.add_all([
+            RequestRow(
+                filename="r1.md", status="approved", folder="resolved",
+                tool_name="r1", raw_markdown="# r1",
+            ),
+            RequestRow(
+                filename="r2.md", status="failed", folder="resolved",
+                tool_name="r2", raw_markdown="# r2",
+            ),
+            RequestRow(
+                filename="a1.md", status="approved", folder="archived",
+                tool_name="a1", raw_markdown="# a1",
+            ),
+        ])
+        db_session.commit()
+
+        app = create_app()
+        app.dependency_overrides[get_db] = lambda: (yield db_session)
+        client = TestClient(app)
+        body = client.get("/health").json()
+
+        assert body["requests"]["resolved"] == 2
+        assert body["requests"]["archived"] == 1
+        assert body["requests"]["total"] == 3
+
+
 # ---- /tools ----------------------------------------------------------
 
 
