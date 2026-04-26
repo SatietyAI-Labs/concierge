@@ -158,6 +158,3 @@ def create_app() -> FastAPI:
     app.include_router(scanner_api.router)
 
     return app
-
-
-app = create_app()

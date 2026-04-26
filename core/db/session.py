@@ -54,9 +54,9 @@ def ensure_schema_current() -> None:
     """Run `alembic upgrade head` at FastAPI startup.
 
     Alembic owns schema as of 2026-04-24 (Fix Day 1 bootstrap).
-    Running it programmatically means `uvicorn core.app:app` on a
-    fresh clone produces a ready DB with no prior CLI step.
-    Idempotent — no-op when already at head.
+    Running it programmatically means `uvicorn core.app:create_app
+    --factory` on a fresh clone produces a ready DB with no prior
+    CLI step. Idempotent — no-op when already at head.
     """
     import logging
 

@@ -255,6 +255,7 @@ def live_uvicorn_server(tmp_path, monkeypatch):
     # `@lru_cache`d at module level. Earlier tests in this run may
     # have populated those caches against the prior env. Clear them
     # so the new env vars apply to this server's lifespan.
+    from core.app import create_app as create_core_app
     from core.config import get_settings
     from core.db.session import get_engine, get_session_factory
 
@@ -266,7 +267,8 @@ def live_uvicorn_server(tmp_path, monkeypatch):
     base_url = f"http://127.0.0.1:{port}"
 
     config = uvicorn.Config(
-        "core.app:app",
+        create_core_app,
+        factory=True,
         host="127.0.0.1",
         port=port,
         log_level="error",
