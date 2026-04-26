@@ -1,0 +1,38 @@
+{# Designed empty state — fires when filtered count == 0 AND total
+   catalog count > 0. Different from catalog-empty: Concierge HAS
+   tools, but the operator's filter excluded all of them. Action
+   for the operator is to clear or refine the filter. Per Day 10
+   alignment task-deliverable expansion. #}
+<section id="tool-registry" class="tool-registry tool-registry--empty-filter">
+    <header class="tool-registry-header">
+        <h2>Tool Registry</h2>
+        <form class="tool-registry-filters"
+              hx-get="/partials/tool-registry"
+              hx-target="#tool-registry"
+              hx-swap="outerHTML"
+              hx-trigger="submit, change">
+            <input type="search"
+                   name="name_q"
+                   placeholder="Search by name or slug…"
+                   value="{{ filters.name_q or '' }}">
+            <select name="tool_type">
+                <option value="" {% if not filters.tool_type %}selected{% endif %}>All types</option>
+                <option value="mcp" {% if filters.tool_type == 'mcp' %}selected{% endif %}>MCP</option>
+                <option value="cli" {% if filters.tool_type == 'cli' %}selected{% endif %}>CLI</option>
+                <option value="http" {% if filters.tool_type == 'http' %}selected{% endif %}>HTTP</option>
+                <option value="skill" {% if filters.tool_type == 'skill' %}selected{% endif %}>Skill</option>
+            </select>
+            <input type="text"
+                   name="category"
+                   placeholder="Category"
+                   value="{{ filters.category or '' }}">
+        </form>
+    </header>
+    <article class="empty-state empty-state--filter">
+        <p>
+            <strong>No tools match your search.</strong>
+            Clear the filter or refine your search to see catalogued
+            tools.
+        </p>
+    </article>
+</section>

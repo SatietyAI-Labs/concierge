@@ -1,0 +1,58 @@
+{# Tool Registry partial — cards-in-pack-groups layout per Day 10
+   alignment Item 10. Filter form at top wires HTMX to refresh
+   only the registry partial on submit/change. #}
+<section id="tool-registry" class="tool-registry">
+    <header class="tool-registry-header">
+        <h2>Tool Registry</h2>
+        <form class="tool-registry-filters"
+              hx-get="/partials/tool-registry"
+              hx-target="#tool-registry"
+              hx-swap="outerHTML"
+              hx-trigger="submit, change">
+            <input type="search"
+                   name="name_q"
+                   placeholder="Search by name or slug…"
+                   value="{{ filters.name_q or '' }}">
+            <select name="tool_type">
+                <option value="" {% if not filters.tool_type %}selected{% endif %}>All types</option>
+                <option value="mcp" {% if filters.tool_type == 'mcp' %}selected{% endif %}>MCP</option>
+                <option value="cli" {% if filters.tool_type == 'cli' %}selected{% endif %}>CLI</option>
+                <option value="http" {% if filters.tool_type == 'http' %}selected{% endif %}>HTTP</option>
+                <option value="skill" {% if filters.tool_type == 'skill' %}selected{% endif %}>Skill</option>
+            </select>
+            <input type="text"
+                   name="category"
+                   placeholder="Category"
+                   value="{{ filters.category or '' }}">
+        </form>
+    </header>
+
+    {% for pack in packs %}
+        <section class="pack-group" data-pack-slug="{{ pack.slug or 'unpacked' }}">
+            <h3>
+                {{ pack.name }}
+                {% if pack.slug %}<span class="dim">({{ pack.slug }})</span>{% endif %}
+            </h3>
+            <ul class="tool-cards">
+                {% for tool in pack.tools %}
+                    <li class="tool-card" data-slug="{{ tool.slug }}">
+                        <header>
+                            <strong>{{ tool.name }}</strong>
+                            <span class="badge badge-{{ tool.lifecycle_state }}">{{ tool.lifecycle_state }}</span>
+                        </header>
+                        <dl>
+                            <dt>Type</dt><dd>{{ tool.tool_type or '—' }}</dd>
+                            {% if tool.install_method %}
+                                <dt>Install</dt><dd>{{ tool.install_method }}</dd>
+                            {% endif %}
+                            <dt>Slug</dt><dd>{{ tool.slug }}</dd>
+                            {% if tool.category %}
+                                <dt>Category</dt><dd>{{ tool.category }}</dd>
+                            {% endif %}
+                        </dl>
+                    </li>
+                {% endfor %}
+            </ul>
+        </section>
+    {% endfor %}
+</section>

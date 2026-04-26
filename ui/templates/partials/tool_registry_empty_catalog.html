@@ -1,0 +1,18 @@
+{# Designed empty state — fires when total catalog count == 0.
+   Different from filter-empty: this means Concierge has no tools
+   at all, not "your filter excluded everything." Per Day 10
+   alignment Real Check 1. #}
+<section id="tool-registry" class="tool-registry tool-registry--empty-catalog">
+    <header class="tool-registry-header">
+        <h2>Tool Registry</h2>
+    </header>
+    <article class="empty-state empty-state--catalog">
+        <p>
+            <strong>No tools catalogued yet.</strong>
+            Tools will appear here as Concierge discovers and approves
+            them. The agent will surface tool requests when it hits a
+            capability gap; you'll see those in the Pending Requests
+            inbox.
+        </p>
+    </article>
+</section>
