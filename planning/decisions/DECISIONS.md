@@ -3012,3 +3012,69 @@ the EXTRACT-era constant naming convention stays as historical
 artifact.
 
 ---
+
+## [2026-04-30 Day 9] — LICENSE + public-release packaging metadata
+
+**Context:** Day 9 README day involved adding the public-facing release scaffolding: README rewrite, LICENSE, ABOUT.md, CLAUDE.md prune. Several related decisions on the LICENSE / packaging metadata side warrant durable record. Bundled per the Day 7 ratified decision-edit pattern: related decisions land as one entry, not multiple. The five decisions covered here are LICENSE choice, attribution format, pyproject license-field form, authors-field shape, and the email convention.
+
+**Options considered:**
+
+*LICENSE choice:*
+- MIT vs Apache 2.0 vs other OSI licenses
+
+*Attribution format:*
+- Corporate-only: `Copyright (c) 2026 SatietyLLC`
+- Individual-only: `Copyright (c) 2026 Lewis Sloan`
+- Parenthetical-entity: `Copyright (c) 2026 Lewis Sloan (SatietyAI)`
+
+*pyproject license-field form:*
+- PEP 621 traditional: `license = { text = "MIT" }` (no setuptools bump needed)
+- PEP 639 modern: `license = "MIT"` (SPDX expression as string) + `license-files = ["LICENSE"]` (requires setuptools 77+)
+
+*Authors-field email:*
+- `satietyllc@gmail.com` (inferred from operator git config + auto-memory userEmail)
+- `hello@satietyai.io` (brand-aligned public contact)
+
+*Authors-field name format:*
+- Just `Lewis Sloan`
+- `Lewis Sloan (SatietyAI)` (entity attribution duplicated from LICENSE)
+
+**Decision:**
+
+- **LICENSE = MIT.** Standard SPDX template, no custom clauses. Pre-decided per Day 8 close-out (most recognized, simplest, broadest adoption surface; "open-source on GitHub for builder credibility" goal).
+- **Attribution string:** `Copyright (c) 2026 Lewis Sloan (SatietyAI)`. Copyright vests in the natural-person legal name with brand attribution noted parenthetically.
+- **pyproject license field:** PEP 639 form. `license = "MIT"` + `license-files = ["LICENSE"]`. `setuptools` build-system requires bumped 68 → 77 to enable PEP 639 support.
+- **Authors-field shape:** `[{ name = "Lewis Sloan", email = "hello@satietyai.io" }]`. Just-name (entity context lives in copyright notice, not duplicated in metadata); brand-aligned public email.
+- **Email convention:** `hello@satietyai.io` is the **only** authorized public-facing email for Concierge artifacts. `satietyllc@gmail.com` is the operator's local git config email and must NEVER be used in any public artifact (pyproject, README, LICENSE, blog content, package metadata, social posts, etc.).
+
+**Reasoning:**
+
+LICENSE = MIT was pre-decided per Day 8 close-out; widest adoption surface for the public-release goal.
+
+Parenthetical-entity attribution is the cleanest legal reading (copyright most cleanly vests in a natural person) and preserves public-facing brand identity. SatietyLLC is the legal entity; SatietyAI is the DBA / brand used in public-facing artifacts. The Lewis/Lewie naming convention extends this same private-vs-public-identity split: Lewis (legal name) public-facing; Lewie (operational handle) internal-only.
+
+PEP 639 license form is the modern standard. SPDX expression as plain string is unambiguous and self-documenting; the setuptools bump from 68 to 77 is a one-character change with no breaking impact (uv resolves the build-system requires at build time and picks current setuptools — verified: 130 packages re-resolved in 121ms post-edit, rebuild + editable reinstall clean). Public-release artifact warrants the modern form.
+
+Authors brand-aligned email surfaced during Day 9 Task 2 as a correction event: the inferred satietyllc@gmail.com value (sourced from auto-memory userEmail + git config) was operator-private and not authorized for public exposure. The brand-aligned hello@satietyai.io is the appropriate public contact. The correction prevented operator-private-address leakage to PyPI metadata indexing, GitHub search caches, archive.org, and other long-tail public records.
+
+The email convention is codified as a permanent rule, not a one-time correction. Memory file `feedback_public_contact_info_confirmation.md` saved with the broader rule: never infer personal contact info (email, phone, address, handle, real-name attribution) from local config for public artifacts; always confirm with operator before drafting. Future sessions read this memory and apply the rule prospectively. Threshold for "ask vs proceed": *would this value, once committed to a public repo, be visible to anyone on the internet forever?* — if yes, ask.
+
+**Reversibility:**
+
+- LICENSE and attribution string: hard to reverse. Legal artifact in public repo with versioned history; practically permanent once first public release ships.
+- pyproject license-field form: easy. Switching PEP 639 ↔ PEP 621 traditional is a single edit; setuptools constraint reversible.
+- Authors-field email: easy to update for future versions; historical commits keep whatever was committed at the time. Day 9 commit `60a6c96` has the correct address.
+- Email convention rule: durable working rule via feedback memory. Future sessions inherit prospectively; no per-session re-derivation needed.
+
+**Decided by:** Lewie (Day 8 close-out pre-decided LICENSE/attribution; Day 9 Task 2 surfaced and confirmed PEP 639 form + email correction during the metadata edit).
+
+**Affects:**
+- `LICENSE` (commit `0caee12`) — standard SPDX MIT template; attribution `Copyright (c) 2026 Lewis Sloan (SatietyAI)`.
+- `pyproject.toml` (commit `60a6c96`) — `license = "MIT"` + `license-files = ["LICENSE"]` under `[project]`; `authors = [{ name = "Lewis Sloan", email = "hello@satietyai.io" }]`; `[project.urls]` `Homepage = "https://satietyai.io"`; `[build-system]` `requires` bumped to `setuptools>=77`.
+- `README.md` (commit `36cd171`) — License footer pointing at `LICENSE`.
+- `ABOUT.md` (commit `87b4c61`) — Contact block with `hello@satietyai.io` + `https://satietyai.io`.
+- Memory: `feedback_public_contact_info_confirmation.md` (in operator's auto-memory directory, indexed in `MEMORY.md`) codifying the never-infer-personal-contact rule for future sessions.
+- Future commits: Day 12 push-prep adds `Repository` URL to `[project.urls]` once GitHub URL is known; future README clone-command edit replaces `<repo-url>` placeholder with actual URL.
+- Convention impact: SatietyAI brand for public-facing attribution; SatietyLLC stays internal/legal. Lewis (legal name) public-facing; Lewie (operational handle) internal-only — the Lewis/Lewie convention is a candidate-pattern awaiting second data point per Day 9 SESSION snapshot.
+
+---
