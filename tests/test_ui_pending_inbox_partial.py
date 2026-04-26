@@ -186,6 +186,57 @@ class TestPendingInboxActions:
         assert resp.status_code == 404
 
 
+# ---- hx-indicator / hx-disabled-elt UX feedback (Day 11 Task 1.2) --
+
+
+class TestPendingInboxInFlightFeedback:
+    """In-flight UX feedback on Approve/Deny/Defer actions.
+
+    Day 10 live-verify surfaced an 8s no-feedback gap between operator
+    click and card removal. Day 11 Task 1.2 lands hx-indicator (spinner
+    fade-in) + hx-disabled-elt (button disable) on the action form.
+    These tests lock the markup + CSS contracts so the demo recording
+    in Task 3.1 won't regress to the no-feedback gap."""
+
+    def test_action_form_carries_hx_indicator_attribute(self, inbox_harness):
+        client, svc, _root = inbox_harness
+        svc.create_request(NewRequestDraft(tool_name="ripgrep"))
+        body = client.get("/partials/pending-inbox").text
+        # `find` extended selector scopes resolution to this form's
+        # descendants — each card's spinner is independent of others.
+        assert 'hx-indicator="find .inbox-spinner"' in body
+
+    def test_action_form_carries_hx_disabled_elt_attribute(
+        self, inbox_harness
+    ):
+        client, svc, _root = inbox_harness
+        svc.create_request(NewRequestDraft(tool_name="fd"))
+        body = client.get("/partials/pending-inbox").text
+        # Disables the three submit buttons on this card during in-flight;
+        # other cards' buttons stay clickable.
+        assert 'hx-disabled-elt="find button"' in body
+
+    def test_spinner_element_rendered_in_action_buttons(self, inbox_harness):
+        client, svc, _root = inbox_harness
+        svc.create_request(NewRequestDraft(tool_name="bat"))
+        body = client.get("/partials/pending-inbox").text
+        # CSS-only spinner (no asset, no JS); htmx-indicator is the
+        # standard HTMX class for opacity-fade-in elements.
+        assert 'class="inbox-spinner htmx-indicator"' in body
+
+    def test_concierge_css_carries_spinner_styles(self, inbox_harness):
+        client, _svc, _root = inbox_harness
+        resp = client.get("/static/css/concierge.css")
+        assert resp.status_code == 200
+        body = resp.text
+        # Marker strings for each CSS contract: spinner keyframe,
+        # opacity transition rule, htmx-request show rule.
+        assert "@keyframes inbox-spin" in body
+        assert ".inbox-spinner" in body
+        assert ".htmx-indicator" in body
+        assert ".htmx-request" in body
+
+
 # ---- SSE bridge wiring ---------------------------------------------
 
 

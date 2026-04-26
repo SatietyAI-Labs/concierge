@@ -29,7 +29,9 @@
                     <form class="inbox-action-form"
                           hx-post="/partials/requests/{{ r.filename }}/action"
                           hx-target="#pending-inbox"
-                          hx-swap="outerHTML">
+                          hx-swap="outerHTML"
+                          hx-indicator="find .inbox-spinner"
+                          hx-disabled-elt="find button">
                         <textarea name="comment"
                                   rows="2"
                                   placeholder="Optional comment (used as approval conditions / decision notes)…"></textarea>
@@ -37,6 +39,7 @@
                             <button type="submit" name="action" value="approve">Approve</button>
                             <button type="submit" name="action" value="deny">Deny</button>
                             <button type="submit" name="action" value="defer">Defer</button>
+                            <span class="inbox-spinner htmx-indicator" aria-hidden="true"></span>
                         </div>
                     </form>
                 </li>

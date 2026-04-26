@@ -211,6 +211,36 @@ main.container {
     margin: 0;
 }
 
+/* In-flight UX feedback (Day 11 Task 1.2): hx-indicator wires
+   the spinner fade-in; hx-disabled-elt fades the buttons via Pico
+   defaults. The spinner is a CSS-only border-spin so no asset
+   ships and no JS runs. */
+
+.inbox-spinner {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    align-self: center;
+    animation: inbox-spin 0.6s linear infinite;
+}
+
+.htmx-indicator {
+    opacity: 0;
+    transition: opacity 150ms ease-in;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+    opacity: 1;
+}
+
+@keyframes inbox-spin {
+    to { transform: rotate(360deg); }
+}
+
 
 /* ---- Badges ------------------------------------------------ */
 
