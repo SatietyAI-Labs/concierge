@@ -1,0 +1,277 @@
+/* Concierge dashboard styling — built atop Pico.css base.
+   Day 10 Task 4 polish: layout density, badges, card grids,
+   empty-state framing. Pico provides typography, form controls,
+   and color tokens; this stylesheet adds dashboard-specific
+   layout + the lifecycle-state badge palette. */
+
+
+/* ---- Layout container -------------------------------------- */
+
+main.container {
+    max-width: 1200px;
+    padding-block: 2rem;
+}
+
+.dashboard-header {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.dashboard-panel {
+    margin-bottom: 2.5rem;
+}
+
+
+/* ---- Health/Stats bar -------------------------------------- */
+
+.health-bar-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    padding: 1rem 1.25rem;
+    background-color: var(--pico-card-background-color);
+    border: 1px solid var(--pico-card-border-color);
+    border-radius: var(--pico-border-radius);
+}
+
+.health-tile {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 14ch;
+}
+
+.health-label {
+    font-size: 0.8rem;
+    color: var(--pico-muted-color);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.health-value {
+    font-weight: 600;
+    margin-top: 0.3rem;
+}
+
+.health-tile--top-tools {
+    flex: 2 1 22ch;
+}
+
+.top-tools-list {
+    margin: 0.25rem 0 0 0;
+    padding-left: 1.25rem;
+    font-weight: 500;
+}
+
+
+/* ---- Tool Registry ----------------------------------------- */
+
+.tool-registry-header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.tool-registry-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin: 0;
+}
+
+.tool-registry-filters input,
+.tool-registry-filters select {
+    margin: 0;
+    flex: 1 1 12ch;
+}
+
+.tool-registry-filters input[type="search"] {
+    flex: 2 1 18ch;
+}
+
+.pack-group {
+    margin-block: 1.5rem;
+}
+
+.pack-group h3 {
+    margin-bottom: 0.75rem;
+}
+
+.tool-cards {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1rem;
+}
+
+.tool-card {
+    padding: 1rem;
+    background-color: var(--pico-card-background-color);
+    border: 1px solid var(--pico-card-border-color);
+    border-radius: var(--pico-border-radius);
+}
+
+.tool-card header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.tool-card dl {
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+.tool-card dt {
+    color: var(--pico-muted-color);
+    margin-top: 0.4rem;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.tool-card dd {
+    margin: 0;
+}
+
+
+/* ---- Pending Inbox ----------------------------------------- */
+
+.pending-inbox-header {
+    margin-bottom: 1rem;
+}
+
+.inbox-cards {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.inbox-card {
+    padding: 1rem 1.25rem;
+    background-color: var(--pico-card-background-color);
+    border: 1px solid var(--pico-card-border-color);
+    border-radius: var(--pico-border-radius);
+}
+
+.inbox-card header {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.inbox-card dl {
+    margin: 0 0 0.75rem 0;
+    font-size: 0.9rem;
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.25rem 0.75rem;
+}
+
+.inbox-card dt {
+    color: var(--pico-muted-color);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.inbox-card dd {
+    margin: 0;
+}
+
+.inbox-action-form {
+    margin-top: 1rem;
+}
+
+.inbox-action-form textarea {
+    margin-bottom: 0.5rem;
+    min-height: 4rem;
+}
+
+.inbox-action-buttons {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.inbox-action-buttons button {
+    flex: 0 1 auto;
+    margin: 0;
+}
+
+
+/* ---- Badges ------------------------------------------------ */
+
+.badge {
+    display: inline-block;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Lifecycle state badges (Tool Registry cards) */
+.badge-discovered      { background-color: #e0e7ff; color: #3730a3; }
+.badge-pending         { background-color: #fef3c7; color: #92400e; }
+.badge-used            { background-color: #d1fae5; color: #065f46; }
+.badge-loaded-on-boot  { background-color: #cffafe; color: #155e75; }
+.badge-retired         { background-color: #f3f4f6; color: #4b5563; }
+
+/* Confidence badges (Pending Inbox cards) */
+.badge-confidence-high   { background-color: #d1fae5; color: #065f46; }
+.badge-confidence-medium { background-color: #fef3c7; color: #92400e; }
+.badge-confidence-low    { background-color: #fee2e2; color: #991b1b; }
+
+
+/* ---- Empty states + skeletons ------------------------------ */
+
+.empty-state {
+    padding: 2rem;
+    text-align: center;
+    color: var(--pico-muted-color);
+    background-color: var(--pico-card-background-color);
+    border: 1px dashed var(--pico-card-border-color);
+    border-radius: var(--pico-border-radius);
+}
+
+.empty-state strong {
+    display: block;
+    color: var(--pico-color);
+    margin-bottom: 0.5rem;
+    font-size: 1rem;
+}
+
+.dim {
+    color: var(--pico-muted-color);
+}
+
+.parse-error {
+    color: #dc2626;
+    font-family: var(--pico-font-family-monospace);
+    font-size: 0.85rem;
+}
+
+.health-bar-skeleton,
+.tool-registry-skeleton,
+.pending-inbox-skeleton {
+    padding: 1.5rem;
+    text-align: center;
+    color: var(--pico-muted-color);
+    background-color: var(--pico-card-background-color);
+    border: 1px solid var(--pico-card-border-color);
+    border-radius: var(--pico-border-radius);
+}

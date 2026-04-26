@@ -5,18 +5,45 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Concierge</title>
     <link rel="stylesheet" href="/static/vendor/pico.min.css">
+    <link rel="stylesheet" href="/static/css/concierge.css">
     <script src="/static/vendor/htmx.min.js" defer></script>
     <script src="/static/js/concierge.js" defer></script>
 </head>
 <body>
     <main class="container">
-        <header>
-            <h1>Concierge</h1>
-            <p>Platform-agnostic tool awareness layer for AI agents.</p>
+        <header class="dashboard-header">
+            <hgroup>
+                <h1>Concierge</h1>
+                <p>Platform-agnostic tool awareness layer for AI agents.</p>
+            </hgroup>
+            {# Health/Stats bar slot — HTMX fetches the partial at
+               page load and the partial then owns its 10s polling. #}
+            <div hx-get="/partials/health-bar"
+                 hx-trigger="load"
+                 hx-swap="outerHTML">
+                <div class="health-bar-skeleton">Loading dashboard health…</div>
+            </div>
         </header>
-        <article id="placeholder-marker">
-            <p>Dashboard scaffolding in place. Sections render in subsequent tasks.</p>
-        </article>
+
+        <section class="dashboard-panel" aria-label="Tool registry">
+            {# Tool Registry slot — partial owns its filter form +
+               three-way empty-state branching. #}
+            <div hx-get="/partials/tool-registry"
+                 hx-trigger="load"
+                 hx-swap="outerHTML">
+                <div class="tool-registry-skeleton">Loading tool registry…</div>
+            </div>
+        </section>
+
+        <section class="dashboard-panel" aria-label="Pending requests">
+            {# Pending Inbox slot — partial owns its action forms;
+               SSE-driven refresh wires through ui/static/js/concierge.js. #}
+            <div hx-get="/partials/pending-inbox"
+                 hx-trigger="load"
+                 hx-swap="outerHTML">
+                <div class="pending-inbox-skeleton">Loading pending requests…</div>
+            </div>
+        </section>
     </main>
 </body>
 </html>

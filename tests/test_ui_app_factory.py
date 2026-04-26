@@ -36,13 +36,45 @@ class TestUiAppFactory:
         resp = client.get("/")
         assert resp.status_code == 200
 
-    def test_get_index_renders_placeholder_marker(self) -> None:
+    def test_get_index_renders_dashboard_composition(self) -> None:
+        """Index page composes the three panels via HTMX
+        `hx-trigger="load"` slots — each slot fetches its partial at
+        page load and the partial then owns its own refresh
+        (polling, SSE, or filter form). Per Day 10 Task 4."""
         client = TestClient(create_ui_app())
         resp = client.get("/")
-        # Marker from ui/templates/index.html — Task 0 placeholder;
-        # Task 4 replaces the body but keeps the "Concierge" title.
         assert "Concierge" in resp.text
-        assert "placeholder-marker" in resp.text
+        # Three panel slots, each pointing at its partial endpoint
+        assert 'hx-get="/partials/health-bar"' in resp.text
+        assert 'hx-get="/partials/tool-registry"' in resp.text
+        assert 'hx-get="/partials/pending-inbox"' in resp.text
+        # Stylesheet wiring — Pico vendored asset + concierge.css
+        # for Task 4 layout polish
+        assert '/static/vendor/pico.min.css' in resp.text
+        assert '/static/css/concierge.css' in resp.text
+        # Script wiring — htmx core + the SSE bridge
+        assert '/static/vendor/htmx.min.js' in resp.text
+        assert '/static/js/concierge.js' in resp.text
+
+    def test_concierge_css_resolves_with_layout_markers(self) -> None:
+        """Spot-check the layout stylesheet — load it, confirm key
+        selectors render as expected (tool-card grid, badge palette,
+        empty-state framing). If Task 4 polish breaks, this fails
+        before live-verify."""
+        client = TestClient(create_ui_app())
+        resp = client.get("/static/css/concierge.css")
+        assert resp.status_code == 200
+        body = resp.text
+        # Layout containers
+        assert ".tool-cards" in body
+        assert ".inbox-cards" in body
+        assert ".health-bar-row" in body
+        # Lifecycle-state badge palette (Tool Registry cards)
+        assert ".badge-discovered" in body
+        assert ".badge-loaded-on-boot" in body
+        assert ".badge-retired" in body
+        # Empty-state framing (used by all empty-state partials)
+        assert ".empty-state" in body
 
     def test_static_vendor_htmx_resolves(self) -> None:
         client = TestClient(create_ui_app())
