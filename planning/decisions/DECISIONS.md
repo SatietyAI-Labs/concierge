@@ -3078,3 +3078,128 @@ The email convention is codified as a permanent rule, not a one-time correction.
 - Convention impact: SatietyAI brand for public-facing attribution; SatietyLLC stays internal/legal. Lewis (legal name) public-facing; Lewie (operational handle) internal-only — the Lewis/Lewie convention is a candidate-pattern awaiting second data point per Day 9 SESSION snapshot.
 
 ---
+
+## [2026-05-01 Day 10] — UI architecture + v0.1 design-surface decisions
+
+**Context:** Day 10 UI day landed the operator-facing dashboard at `ui/app.py` wrapping `core.create_app()` — three sections (Tool Registry with two designed empty states, Pending Requests Inbox with SSE-driven refresh, Health/Stats bar with reduced surface) on FastAPI + Jinja2 + HTMX + Pico.css vendored. Several related decisions on UI architecture + v0.1 design-surface choices warrant durable record. Bundled per the Day 7 ratified decision-edit pattern: related decisions land as one entry, not multiple. The decisions covered here span composition pattern, stack choice, layout, empty-state philosophy, dropped features, data-source pick, action-button mapping, and filter shape.
+
+**Options considered:**
+
+*App composition:*
+- Mount UI router into `core/app.py`'s `create_app()` directly (single app, blueprint-implied)
+- `ui/app.py` factory wraps `core.create_app()` (separation of concerns; headless deployments stay UI-free)
+- Static-files-only with heavy JS client (no server-rendered templates)
+
+*core/app.py module-level instantiation:*
+- Keep `app = create_app()` at module level (canonical `uvicorn core.app:app` form simpler)
+- Drop module-level instantiation; both apps factory-only with `--factory` flag
+
+*Stack:*
+- Jinja2 + HTMX + Pico.css (blueprint v2 default)
+- Plain JSON API + vanilla JS client
+- Build-system-required SPA (React/Vue)
+
+*Stack delivery:*
+- CDN for HTMX + Pico (smaller commit; runtime third-party network dep)
+- Vendored under `ui/static/vendor/` (offline-friendly + reproducible-build; ~135KB)
+
+*Layout:*
+- Single-page dashboard (header + stacked panels)
+- Multi-page navigation (separate routes for registry / inbox / health)
+
+*Empty-state philosophy:*
+- Seed data shipping with the package (avoids empty installs entirely)
+- Designed empty states (Tool Registry: catalog-empty distinct from filter-empty; Pending Inbox: single empty state)
+- Accidentally-empty rendering (no special handling)
+
+*Health/Stats bar token tracking:*
+- Tokens-saved counter (counterfactual baseline; speculative)
+- Token-weight tracker (actual context-cost; richer signal but more design surface)
+- No token tracking in v0.1 (drop entirely)
+
+*GET /stats/top-tools data source:*
+- `requests` table (rows per pending request file)
+- `tool_usage_events` table filtered on event_type
+- In-memory `RecommendCounters` (process-wide; not per-tool)
+
+*GET /stats/top-tools event-type filter:*
+- `recommended` only (cardinality from real data today)
+- `installed` only (one-off-per-tool; no ranking signal)
+- All event types weighted equal (semantically muddier)
+
+*Tool Registry name_q filter scope:*
+- `Tool.name` only (clean SQL; thinner UX)
+- `Tool.name OR Tool.slug` with `.distinct()` (operators see slug on cards; searching for what they see)
+- Full-text across name + description (FTS5; over-engineering for v0.1)
+
+*Approve/Deny/Defer comment field routing:*
+- Same field for all three actions (simpler)
+- `conditions` for approve / `notes` for deny+defer (matches StatusChange semantics)
+
+*SSE wire delivery:*
+- Vendor htmx-ext-sse + use `sse-connect` attributes
+- Vanilla EventSource shim that calls `htmx.ajax` on event (~10 lines, auditable)
+
+**Decision:**
+
+- **App composition:** `ui/app.py:create_app()` factory wraps `core.app.create_app()`. `core/` stays UI-free (no Jinja imports, no /ui routes, no static-files mount). Headless deployments instantiate `core.create_app()` directly; dashboard deployments instantiate `ui.create_app()`. **Both apps factory-only — no module-level `app = create_app()` instantiation in either.** `core/app.py:163`'s module-level `app` was dropped via standalone refactor commit `7ad9f7a` once the consistency surface emerged mid-Task-0. Canonical launch: `uvicorn core.app:create_app --factory` (headless) or `uvicorn ui.app:create_app --factory` (dashboard). Tests construct via `create_app()` direct call.
+- **Stack:** Jinja2 (server-rendered templates) + HTMX 2.0.10 + Pico.css 2.1.1, all **vendored** under `ui/static/vendor/`. `jinja2>=3.1` and `python-multipart>=0.0.9` (Form handler runtime requirement) added to main `[project] dependencies`. SHA256 hashes + source URLs + license notes (HTMX BSD-2, Pico MIT — both compatible with project MIT) recorded in `ui/static/vendor/README.md`.
+- **Layout:** Single-page dashboard. Header strip + two stacked content panels (Tool Registry, Pending Inbox). Each panel is an HTMX `hx-trigger="load"` slot at first paint; the partial endpoint owns its own data-fetch and refresh. Index handler stays decoupled from per-panel data needs.
+- **Empty-state philosophy:** Designed empty states for empty installs; no seed data ships with the package. Tool Registry has **two distinct** empty states: catalog-empty (zero total tools, fresh install) renders "No tools catalogued yet…" and omits the filter form; filter-empty (filtered count zero with non-empty catalog) renders "No tools match your search…" and includes the filter form pre-populated with current values for refine/clear. Pending Inbox has a single empty state ("No pending tool requests…") since there's no filter to land you in a filter-empty case.
+- **Tokens-saved feature dropped from v0.1.** No endpoint, no UI element, no placeholder. "Saved" requires a counterfactual baseline that isn't measurable without speculative assumptions; per-task / per-session / per-boot windows each produce a different-meaning number. Token-weight tracker (measuring actual context-cost of each tool/MCP/skill at load time) forward-carried as Phase 2 idea — different feature with different design surface.
+- **`GET /stats/top-tools` data source:** `tool_usage_events` table filtered on `event_type='recommended'`, hardcoded server-side. Picked over alternatives because it's the schema designed for this aggregation per the C7 scanner, and `recommended` is the only event type with meaningful per-tool population today (`installed` is one-off-per-tool with no ranking cardinality; `loaded`/`used` emit-wiring deferred per `core/telemetry.py:21-24`). When `used` event-wiring lands, filter cutover to `event_type='used'` is one line in `core/api/stats.py`; no schema or UI impact. Forward-carried.
+- **Tool Registry name_q filter:** server-side substring match, case-insensitive `ilike`, scoped to `Tool.name OR Tool.slug` with `.distinct()` to avoid double-matching when a row's name and slug both contain the query. Wildcards (`%`, `_`) and the escape character itself escaped pre-LIKE-pattern construction so operator input matches literally. Empty/whitespace-only input treated as no-filter via `if name_q and name_q.strip()`. Combinable with the existing 8 `/tools` filters via AND.
+- **SSE delivery:** vanilla EventSource shim in `ui/static/js/concierge.js` (~30 lines) opens once at page load, persists across HTMX swaps, calls `htmx.ajax` on `new_request` events. Chosen over vendoring htmx-ext-sse to avoid a second vendored asset; the shim is auditable and the `htmx.ajax` API is part of htmx core so no extension needed. 10s HTMX polling fallback handles non-event-driven counters (Health/Stats bar) where no SSE event exists yet.
+- **Approve/Deny/Defer comment routing:** form `comment` field maps to `StatusChange.conditions` for approve transitions (operator's approval conditions per the request schema) and to `StatusChange.notes` for deny/defer transitions (decision rationale). Both fields exist on `StatusChange`; the action-shape determines which one carries the comment. UI button labels (Approve/Deny/Defer) come from operator mental model; status values (`approved`/`denied`/`deferred`) are file-side past-tense vocabulary per `core.lifecycle_store.transitions`. Mapping lives in `ui/router.py:_ACTION_TO_STATUS`.
+
+**Reasoning:**
+
+App composition was the load-bearing architectural decision. Operator framing at alignment: "folks who don't want the UI shouldn't have to have the UI." Cleanest reading: `core/` is the headless-MCP-server surface (the agent-facing primary product); `ui/` is the operator-facing dashboard layer. Composition shape ratifies that separation in code. The factory-only refinement during Task 0 surfaced when both modules' patterns needed to align — split-pattern carries the cognitive load of "ui.app is factory-only because we decided that on Day 10; core.app is module-level because we never bothered to fix it" indefinitely. Cleaner pattern is both apps factory-only with consistent canonical-launch form.
+
+Stack choice carries forward the v2 blueprint default. Vendored over CDN because Concierge is operator-machine software (CLAUDE.md Vision: "runs on the operator's machine, not the LLM's"); a runtime CDN dep means "needs internet to render" surprise. ~135KB vendored is a one-time cost; CDN over years would surface as broken renders if the CDN URL changes upstream.
+
+Empty-state philosophy: empty installs are a real user state (fresh clones; new operators evaluating the project). Designed empty states tell the operator what's happening and what to do next. Two-empty-states for Tool Registry distinguishes "Concierge has nothing yet" from "your filter excluded everything" — different operator actions are appropriate (wait for agent to file requests vs. clear/refine the filter).
+
+Tokens-saved drop is correct: counterfactual measurement is unprincipled here (what would have been used? per-task vs per-session vs per-boot all different). Token-weight (actual context-cost per loaded tool) is a real richer signal worth Phase 2 design — but not v0.1 work.
+
+`tool_usage_events` data source: schema designed exactly for this aggregation per the C7 scanner. `recommended` filter is the only signal with cardinality today; alternative shapes don't ride alongside cleanly (`installed` is step-function bias one-off-per-tool; `requests` table is desire-to-use proxy that loses repeat-use signal post-install). Forward-carry filter cutover to `used` is a one-line change once wiring lands.
+
+Name OR slug filter: slug is what operators see on cards (rendered as part of every tool card body); searching for what they just saw needs to hit slug-side. Operator pushback: "I see ripgrep-3.0 on the card, I type ripgrep-3 in search, no results" is bad UX if slug isn't matched. `.distinct()` is cheap belt-and-suspenders.
+
+SSE delivery via vanilla shim: htmx-ext-sse is a few hundred lines that handle reconnect / multiple events / etc. — for v0.1 with one event type (`new_request`), the auditable ~30-line shim is cleaner. Future event types (scanner-run-complete, install-complete) layer on as additional addEventListener calls in the same file.
+
+Comment routing per action: matches the StatusChange schema's intent — `conditions` is the field for approve-time conditions (operator says "approved if X"); `notes` is decision rationale for deny/defer ("denied because Y" / "deferred until Z"). Same comment textarea binds to the right field per action shape.
+
+**Reversibility:**
+
+- App composition (factory-only across both apps): easy. Re-introducing module-level `app = create_app()` is a one-line edit in either module. Existing tests would not break (factory-only contract test would fail, signaling the change). Canonical launch commands documented in CLAUDE.md / README would need a parallel update.
+- Stack choice (Jinja2 + HTMX + Pico.css vendored): medium. Switching to a JSON-only API + vanilla JS or SPA framework is a substantial rework of templates + endpoints. Vendored-vs-CDN is a one-line change per asset.
+- Layout (single-page): easy. Multi-page navigation is a small re-org (separate routes per panel) without changing partial endpoints.
+- Empty-state philosophy: easy. Seed data could be added later via a fixture-loading entry point; the designed empty states would gracefully not-fire when the catalog has rows.
+- Tokens-saved drop: easy to add later if a measurable definition emerges; harder to remove once shipped (operators come to expect the metric).
+- `tool_usage_events` data source: easy. Filter cutover from `recommended` to `used` is a one-line change once wiring lands; alternative data sources are SQL changes only, no schema impact.
+- name_q filter scope: easy. Adding/removing fields from the OR is a one-line change to the SQLAlchemy filter.
+- SSE delivery: easy. Vendoring htmx-ext-sse and switching to `sse-connect` attributes is straightforward; the shim is small and disposable.
+- Comment routing: easy. Action-to-field mapping is a dict in `_ACTION_TO_STATUS`; remap as needed.
+
+**Decided by:** Lewie at Day 10 alignment session (Forks 1-3, secondary forks, two real-checks including operator pushback dropping tokens-saved entirely) + one mid-stream re-surface (factory-only consistency during Task 0 execution) + two named surface checkpoints during Tasks 1-2 execution (data source pick; name_q filter shape).
+
+**Affects:**
+- `pyproject.toml` (commits `7686e6f`, `92336c2`) — `jinja2>=3.1` and `python-multipart>=0.0.9` in main `[project] dependencies`
+- `core/app.py` (commit `7ad9f7a`) — module-level `app = create_app()` dropped; `stats` router included via `create_app()`
+- `core/api/stats.py` (commit `e37a4e7`) — new module; `GET /stats/top-tools` endpoint
+- `core/api/tools.py` (commit `aef135b`) — `name_q` filter param + `_escape_like` helper
+- `core/db/session.py` (commit `7ad9f7a`) — docstring update referencing `--factory` form
+- `tests/test_ui_events_endpoint.py` (commit `7ad9f7a`) — uvicorn config switched to factory mode
+- `ui/app.py` (commit `7686e6f`) — factory-only wrapper around `core.create_app()`
+- `ui/router.py` (commits `7686e6f`, `e37a4e7`, `aef135b`, `92336c2`) — UI router with index + 3 partial-render endpoints + 1 action POST + helpers
+- `ui/templates/index.html` (commits `7686e6f`, `92336c2`, `f338cbb`) — index with HTMX-load slots + script wiring
+- `ui/templates/partials/*.html` (commits `e37a4e7`, `aef135b`, `92336c2`) — 5 partials (health_bar, tool_registry, tool_registry_empty_catalog, tool_registry_empty_filter, pending_inbox)
+- `ui/static/vendor/{htmx.min.js, pico.min.css, README.md}` (commit `7686e6f`) — vendored frontend assets
+- `ui/static/css/concierge.css` (commit `f338cbb`) — layout polish
+- `ui/static/js/concierge.js` (commit `92336c2`) — vanilla EventSource shim
+- 6 new test files: `test_ui_app_factory.py`, `test_ui_health_bar_partial.py`, `test_stats_top_tools.py`, `test_tools_name_q_filter.py`, `test_ui_tool_registry_partial.py`, `test_ui_pending_inbox_partial.py`
+- DECISIONS: this entry; canonical-launch form changes from `uvicorn core.app:app` to `uvicorn core.app:create_app --factory` (or `ui.app:create_app --factory`)
+- Forward-carry: `/stats/top-tools` filter cutover to `event_type='used'` when used-event-wiring lands; token-weight tracker as Phase 2 design surface; `uv run` prefix needed for canonical launch in WSL (Day 11 README pass)
+
+---
