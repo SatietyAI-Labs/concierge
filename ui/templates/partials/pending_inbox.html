@@ -1,0 +1,54 @@
+{# Pending Requests Inbox partial — cards with Approve/Deny/Defer
+   action forms. SSE-driven refresh wires from ui/static/js/concierge.js
+   on `new_request` events; this partial is the swap target. #}
+<section id="pending-inbox" class="pending-inbox">
+    <header class="pending-inbox-header">
+        <h2>Pending Requests</h2>
+    </header>
+    {% if items %}
+        <ul id="inbox-cards" class="inbox-cards">
+            {% for r in items %}
+                <li class="inbox-card" data-filename="{{ r.filename }}">
+                    <header>
+                        <strong>{{ r.tool_name or r.filename }}</strong>
+                        {% if r.confidence %}
+                            <span class="badge badge-confidence-{{ r.confidence }}">{{ r.confidence }}</span>
+                        {% endif %}
+                        {% if r.is_discovered %}
+                            <span class="badge badge-discovered">discovered</span>
+                        {% endif %}
+                    </header>
+                    <dl>
+                        {% if r.tool_slug %}<dt>Slug</dt><dd>{{ r.tool_slug }}</dd>{% endif %}
+                        {% if r.category %}<dt>Category</dt><dd>{{ r.category }}</dd>{% endif %}
+                        {% if r.age_days is not none %}<dt>Age</dt><dd>{{ r.age_days }} days</dd>{% endif %}
+                        {% if not r.is_parseable and r.parse_error %}
+                            <dt>Parse error</dt><dd class="parse-error">{{ r.parse_error }}</dd>
+                        {% endif %}
+                    </dl>
+                    <form class="inbox-action-form"
+                          hx-post="/partials/requests/{{ r.filename }}/action"
+                          hx-target="#pending-inbox"
+                          hx-swap="outerHTML">
+                        <textarea name="comment"
+                                  rows="2"
+                                  placeholder="Optional comment (used as approval conditions / decision notes)…"></textarea>
+                        <div class="inbox-action-buttons">
+                            <button type="submit" name="action" value="approve">Approve</button>
+                            <button type="submit" name="action" value="deny">Deny</button>
+                            <button type="submit" name="action" value="defer">Defer</button>
+                        </div>
+                    </form>
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <article class="empty-state empty-state--pending-inbox">
+            <p>
+                <strong>No pending tool requests.</strong>
+                When the agent hits a capability gap, requests will
+                appear here for your review.
+            </p>
+        </article>
+    {% endif %}
+</section>

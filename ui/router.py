@@ -20,7 +20,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -30,6 +30,12 @@ from core.api.tools import list_tools as _core_list_tools
 from core.config import Settings, get_settings
 from core.db.models import Tool
 from core.db.session import get_db
+from core.lifecycle_store.schema import StatusChange
+from core.lifecycle_store.service import (
+    LifecycleService,
+    RequestNotFoundError,
+)
+from core.lifecycle_store.transitions import InvalidTransitionError
 
 
 def _none_if_blank(s: Optional[str]) -> Optional[str]:
@@ -180,3 +186,118 @@ def tool_registry_partial(
         "partials/tool_registry.html",
         {"packs": packs, "filters": filters},
     )
+
+
+# ---- Pending Requests Inbox + actions -------------------------------
+
+
+_ACTION_TO_STATUS = {
+    "approve": "approved",
+    "deny": "denied",
+    "defer": "deferred",
+}
+"""UI button label → file-side StatusChange.status value. The button
+labels (Approve/Deny/Defer) come from the operator's mental model;
+the StatusChange status field uses the past-tense file-side
+vocabulary per `core.lifecycle_store.transitions`. This mapping is
+the only place the two surfaces meet."""
+
+
+def _build_lifecycle_service(
+    request: Request, db: Session, settings: Settings
+) -> LifecycleService:
+    """Construct a LifecycleService matching core/api/requests.py's
+    `get_lifecycle_service` shape — same DI pattern, just inline
+    rather than via FastAPI Depends, because we need the service
+    inside the action-POST handler where Depends would re-resolve."""
+    return LifecycleService(
+        session=db,
+        lifecycle_root=settings.lifecycle_root,
+        event_broker=getattr(request.app.state, "event_broker", None),
+    )
+
+
+def _render_pending_inbox(
+    request: Request, db: Session, settings: Settings
+):
+    """Render the pending-inbox partial against fresh list_pending
+    data. Used by both the GET partial endpoint and the action POST
+    handler (which returns the refreshed inbox so resolved requests
+    fall out of view)."""
+    service = _build_lifecycle_service(request, db, settings)
+    items = service.list_pending(stale=False, limit=100, offset=0)
+    return templates.TemplateResponse(
+        request,
+        "partials/pending_inbox.html",
+        {"items": items},
+    )
+
+
+@router.get("/partials/pending-inbox")
+def pending_inbox_partial(
+    request: Request,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """Render the Pending Requests Inbox partial against current
+    `list_pending` data. SSE-driven refresh on `new_request` events
+    triggers this endpoint via `ui/static/js/concierge.js`; HTMX
+    polling fallback wires through the same endpoint when the SSE
+    stream isn't available."""
+    return _render_pending_inbox(request, db, settings)
+
+
+@router.post("/partials/requests/{filename}/action")
+def pending_inbox_action(
+    request: Request,
+    filename: str,
+    action: str = Form(...),
+    comment: str = Form(""),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """Handle Approve/Deny/Defer button submissions. Translates form
+    data to a StatusChange and calls the LifecycleService directly.
+    Returns the freshly-rendered inbox partial so the resolved
+    request disappears from the visible list.
+
+    Comment field maps to `conditions` for approve transitions
+    (operator's approval conditions per the request schema) and to
+    `notes` for deny/defer transitions (decision rationale). Both
+    fields exist on StatusChange; this picks the right one for the
+    action shape rather than passing the same field for everything.
+    """
+    if action not in _ACTION_TO_STATUS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"unknown action {action!r} (valid: {sorted(_ACTION_TO_STATUS)})",
+        )
+
+    target_status = _ACTION_TO_STATUS[action]
+    comment_clean = comment.strip() if comment else ""
+    if action == "approve":
+        change = StatusChange(
+            status=target_status,
+            conditions=comment_clean or None,
+        )
+    else:
+        change = StatusChange(
+            status=target_status,
+            notes=comment_clean or None,
+        )
+
+    service = _build_lifecycle_service(request, db, settings)
+    try:
+        service.update_status(filename=filename, change=change)
+    except RequestNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "request_not_found", "message": str(exc)},
+        )
+    except InvalidTransitionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "invalid_transition", "message": str(exc)},
+        )
+
+    return _render_pending_inbox(request, db, settings)
