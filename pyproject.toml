@@ -1,11 +1,16 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "concierge"
 version = "0.1.0"
 description = "Platform-agnostic tool awareness layer for AI agents"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Lewis Sloan", email = "hello@satietyai.io" },
+]
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.109",
@@ -31,6 +36,9 @@ dev = [
 
 [project.scripts]
 concierge-shim = "adapters.claude_code.shim:main"
+
+[project.urls]
+Homepage = "https://satietyai.io"
 
 [tool.setuptools.packages.find]
 include = ["core*", "ui*", "adapters*"]
