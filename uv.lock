@@ -347,6 +347,7 @@ dependencies = [
     { name = "apscheduler" },
     { name = "chromadb" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "sentence-transformers" },
@@ -357,7 +358,6 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-timeout" },
@@ -370,7 +370,7 @@ requires-dist = [
     { name = "apscheduler", specifier = ">=3.10" },
     { name = "chromadb", specifier = ">=0.5.0" },
     { name = "fastapi", specifier = ">=0.109" },
-    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.26" },
+    { name = "httpx", specifier = ">=0.26" },
     { name = "pydantic", specifier = ">=2.6" },
     { name = "pydantic-settings", specifier = ">=2.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
