@@ -1,0 +1,54 @@
+{# Health/Stats bar partial — rendered at page load + on a 10s HTMX
+   poll. Reduced surface per Day 10 alignment (tokens-saved dropped):
+   service status, what's loaded (catalog), pending requests, scanner
+   heartbeat, top-3 most-recommended tools. #}
+<header id="health-bar"
+        class="health-bar"
+        hx-get="/partials/health-bar"
+        hx-trigger="every 10s"
+        hx-swap="outerHTML">
+    <div class="health-bar-row" role="status">
+        <div class="health-tile">
+            <span class="health-label">Status</span>
+            <span class="health-value">{{ health.status }}</span>
+        </div>
+        <div class="health-tile">
+            <span class="health-label">Catalog</span>
+            <span class="health-value">
+                {{ health.catalog.tools_active }} active
+                / {{ health.catalog.tools }} total
+            </span>
+        </div>
+        <div class="health-tile">
+            <span class="health-label">Pending requests</span>
+            <span class="health-value">{{ health.requests.pending }}</span>
+        </div>
+        <div class="health-tile">
+            <span class="health-label">Scanner</span>
+            <span class="health-value">
+                {% if health.scanner %}
+                    last run {{ health.scanner.last_ran_at }}
+                {% else %}
+                    not yet run
+                {% endif %}
+            </span>
+        </div>
+        <div class="health-tile health-tile--top-tools">
+            <span class="health-label">Top-3 most-recommended</span>
+            <span class="health-value">
+                {% if top_tools %}
+                    <ol class="top-tools-list">
+                        {% for t in top_tools %}
+                            <li>
+                                <strong>{{ t.name }}</strong>
+                                <span class="dim">×{{ t.times_recommended }}</span>
+                            </li>
+                        {% endfor %}
+                    </ol>
+                {% else %}
+                    <span class="dim">No recommendations yet</span>
+                {% endif %}
+            </span>
+        </div>
+    </div>
+</header>

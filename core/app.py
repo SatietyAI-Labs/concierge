@@ -14,6 +14,7 @@ from core.api import (
     recommend,
     requests as requests_api,
     scanner as scanner_api,
+    stats,
     tools,
 )
 from core.config import get_settings
@@ -156,5 +157,6 @@ def create_app() -> FastAPI:
     app.include_router(requests_api.router)
     app.include_router(events_api.router)
     app.include_router(scanner_api.router)
+    app.include_router(stats.router)
 
     return app
