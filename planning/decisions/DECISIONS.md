@@ -3203,3 +3203,95 @@ Comment routing per action: matches the StatusChange schema's intent — `condit
 - Forward-carry: `/stats/top-tools` filter cutover to `event_type='used'` when used-event-wiring lands; token-weight tracker as Phase 2 design surface; `uv run` prefix needed for canonical launch in WSL (Day 11 README pass)
 
 ---
+
+## [2026-05-02 Day 11] — Public-release housekeeping + Health/Stats counter alignment + content package architecture
+
+**Context:** Day 11 launch artifacts day landed three task ladders: Day-10 forward-carry polish (hx-indicator on action buttons, Health/Stats counter alignment, README `uv run` prefix); public-release housekeeping (CHANGELOG, CONTRIBUTING, `.github/ISSUE_TEMPLATE/`); and a campaign content package (demo script + LinkedIn / YouTube / HN drafts + content seeds). Five related design decisions warrant durable record. Bundled per the Day 7 ratified decision-edit pattern: related decisions land as one entry, not multiple. The decisions span counter-semantic alignment, CHANGELOG voice, CONTRIBUTING shape, issue template structure, and content-package-architecture-as-durable-principle.
+
+**Options considered:**
+
+*Health/Stats `Pending requests` counter (Fork D resolution = D1):*
+- Keep `folder='pending'` filter (rows by folder only; preserves drift signal but causes Health-bar / inbox UX divergence)
+- `Request.status == 'pending'` only (literal today.md prescription; matches inbox in normal cases but not under reverse drift)
+- `folder='pending' AND status='pending'` conjunction (mirrors `list_pending_rows` exactly; locks alignment under both drift directions)
+- "All unresolved" semantic including deferred items (third semantic; richer signal but more design surface)
+
+*CHANGELOG voice and organization:*
+- Narrative changelog with prose context per entry
+- Terse Keep-a-Changelog with flat bullet list
+- Terse Keep-a-Changelog with h4 domain sub-headers
+- Terse Keep-a-Changelog with **bolded run-in domain headers** (Path A — h4-equivalent navigability without breaking Keep-a-Changelog convention that only `### Added/Changed/...` is at h3)
+
+*CHANGELOG domain count:*
+- 9 subgroups (excluding Operations protocol — treat ops-protocol as meta-deliverable separate from product)
+- 10 subgroups (including Operations protocol — working discipline is part of what shipped in 0.1.0)
+
+*CONTRIBUTING shape:*
+- Comprehensive walkthrough (clone / setup / contributing flow / coding standards / testing / PR process / etc.)
+- Richer-with-pointers compressed (Fork C2: ~2-3 paragraphs pointing at planning/ artifacts as load-bearing; mechanics in one paragraph)
+- One-paragraph stub with single ops-protocol pointer
+
+*CONTRIBUTING contact channel:*
+- GitHub Issues + email contact for non-issue matters (`hello@satietyai.io` mentioned in CONTRIBUTING)
+- GitHub Issues + PRs only (channel-pure; email lives only in ABOUT.md for non-contribution operator inquiries)
+
+*Issue template format:*
+- Legacy markdown templates (simpler; less structured submissions)
+- YAML form templates (`bug_report.yml` + `feature_request.yml`; structured fields, validations, GitHub renders as forms)
+
+*Issue template surface-then-execute education:*
+- CONTRIBUTING points at the discipline; templates stay neutral
+- Templates' field descriptions educate while collecting (e.g. feature-request "Alternatives considered" field description names surface-then-execute explicitly)
+
+*Content package storage and commit treatment:*
+- Drafts committed under `planning/scratch/` via gitignore exception (`!planning/scratch/day-11-launch-content/`)
+- Drafts moved to a non-scratch tracked location (`planning/launch-content/` or similar) and committed there
+- Drafts on disk only at `planning/scratch/day-11-launch-content/`, NOT committed; paths documented in SESSION close-out (same treatment as demo video masters)
+
+**Decision:**
+
+- **D1 — Health/Stats `Pending requests` counter aligned to inbox.** SQL filter is `folder='pending' AND status='pending'`, mirroring `list_pending_rows` exactly. Reverse-drift case (`status='pending'`, `folder≠'pending'`) hardened against alongside the canonical forward-drift case. `_requests_counts_by_folder` renamed to `_requests_counts`; pending derivation is the conjunctive filter; `resolved` and `archived` keys remain folder-based as cron-reconciliation diagnostic signal — deliberate mixed semantic, documented in the function's docstring. Day-10 Open-Question-1 third semantic ("all unresolved" including deferred items) deferred to Phase 2 surface; not v0.1 work.
+- **D2 — CHANGELOG voice and organization.** Terse Keep-a-Changelog 1.1.0 format. Single `## [Unreleased]` section since 0.1.0 is first release. **Bolded run-in domain headers** (Path A) rather than h4 sub-headers — preserves Keep-a-Changelog convention that only `### Added/Changed/...` lives at h3 while keeping domain navigability for the reader. **10 domain subgroups** including Operations protocol as a load-bearing v0.1 deliverable (the working discipline is part of what shipped in 0.1.0; omitting it would understate what 0.1.0 contains, especially given Concierge's whole framing that the discipline is the project's identity).
+- **D3 — CONTRIBUTING shape.** Richer-with-pointers compressed (Fork C2). Three short paragraphs under two h2 subheadings (`## Working discipline` + `## Contributing flow`). Pointers, not exposition: planning/decisions/DECISIONS.md, planning/sessions/, planning/today.md, planning/concierge-operations-protocol.md as load-bearing references. Surface-then-execute named as defining contribution shape. Wiring-test rule referenced through ops-protocol pointer rather than relitigated. **GitHub Issues + PRs only as contribution channels — no email contact field** in CONTRIBUTING (channel-pure; `hello@satietyai.io` lives in ABOUT.md for non-contribution operator inquiries; two-channel surfaces fragment contributor conversation).
+- **D4 — Issue template structure.** YAML form templates under `.github/ISSUE_TEMPLATE/` (not legacy markdown). `bug_report.yml` (8 fields, 6 required: description / reproduction / expected-vs-actual / python-version / OS checkboxes / harness checkboxes; concierge-version and logs optional). `feature_request.yml` (4 fields, 3 required: problem / proposed-solution / alternatives-considered; additional-context optional). **Surface-then-execute mirrored in feature-request "Alternatives considered" field description** so the project's contribution shape is visible in the form itself, not buried in CONTRIBUTING. **WSL2 distinct from native Windows** on OS checkboxes (meaningful bug-repro divergence). **No `config.yml`** for v0.1; blank issues stay allowed (easy to add later if Issue volume grows).
+- **D5 — Marketing-copy drafts pre-publication are working artifacts, not durable record.** Drafts live on disk under `planning/scratch/` (gitignored); they are NOT committed. Canonical published versions live on the destination platform (LinkedIn / YouTube / HN) after publication. Same treatment as demo video masters — paths documented in the relevant SESSION close-out, files live on disk for operator use, repo doesn't track them. **This is the durable rule for all future campaign content cycles, not a Day-11-specific carve-out.** Today.md prescriptions for content-drafts commits are deprecated as a pattern; future campaign-content cycles inherit this rule. (Day 11 surfaced this as a today.md internal inconsistency: the docs(launch) bundled commit prescription contradicted the `planning/scratch/` gitignore policy. The conflict was caught during Task 3 execution and resolved per alignment-session intent. The durable principle generalizes from the incident.)
+
+**Reasoning:**
+
+D1: the alignment claim ("counter matches inbox") is the durable artifact, not the filter shape. The conjunctive filter encodes the alignment claim more directly than the looser `status='pending'` alone — "use the same WHERE the inbox uses" — and is robust to future refactors of either side. Reverse-drift isn't hypothetical edge-casing; it's the symmetric drift bug class. One extra WHERE clause is free (same SQL plan, no perf, no maintenance burden). Mixed semantic for `resolved`/`archived` is deliberate: those keys are diagnostic signal for soak operators (cron-reconciliation lag visibility); the bar's UI surface uses only the `pending` key, so UI alignment isn't disturbed.
+
+D2: bolded run-in headers split the difference between flat-list (poor navigability across 9-10 distinct subsystems) and h4 sub-headers (breaks Keep-a-Changelog convention). 10 subgroups including Operations protocol because the working discipline genuinely shipped in 0.1.0 and is foregrounded in CLAUDE.md, ABOUT.md, README, and CONTRIBUTING — omitting from CHANGELOG would create a false floor on what 0.1.0 contains.
+
+D3: Concierge's contribution shape is the working discipline. CONTRIBUTING has to make that visible without reinventing the ops-protocol's content. Compressed pointer-shape gets a new contributor to "the discipline is load-bearing; here's where it lives" in <100 words, which is the essential surface. Channel-purity (Issues only, no email) prevents two-channel fragmentation that splits contributor conversation.
+
+D4: YAML form templates structure submissions enough that bug reports surface the right fields without operator-side post-triage; feature-requests' surface-then-execute education in the form itself reaches the contributor before they read CONTRIBUTING. WSL2-distinct-from-Windows-native because the bug-repro paths actually diverge on this platform pair (the Day-10 / Day-11 venv shim work surfaced exactly this divergence).
+
+D5: marketing-copy drafts have a clear lifecycle — pre-publication working artifact → publication → canonical version on platform. Once a LinkedIn post is live, the on-disk draft is not just superseded but actively misleading: pre-post tightening produces divergence between disk and platform. Treating drafts as durable record creates a maintenance burden for zero readership benefit. The demo-video-master precedent already established the right pattern at Day-11 alignment time; the docs(launch) bundled-commit prescription was a today.md authorship error not caught at sign-off. Generalizing the principle (rather than retrofitting just for Day 11) ensures every future campaign content cycle inherits the right behavior without re-litigating the decision.
+
+**Reversibility:**
+
+- D1 (counter conjunctive filter): easy. Reverting to either folder-only or status-only is a one-line SQLAlchemy filter change. Wiring tests would fail loudly under either reversion (4 new tests in `tests/test_smoke_endpoints.py::TestHealthRequestsPendingCount` + `tests/test_ui_health_bar_partial.py::test_pending_tile_renders_status_count_in_drift_case`).
+- D2 (CHANGELOG voice + 10 subgroups): easy. Format change is full-file rewrite at this size; subgroup count change is content-edit only.
+- D3 (CONTRIBUTING shape + channel-purity): easy. Adding email contact or expanding to comprehensive walkthrough is a content-edit; the file is 13 lines.
+- D4 (YAML issue templates): easy. Field-level changes are YAML edits; reverting to markdown templates is file-format swap.
+- D5 (drafts-not-committed durable principle): permanent in spirit (this is a rule, not a code change); reversible in implementation (a future operator could choose to commit drafts to a tracked directory). Reversing the principle would create the maintenance burden it exists to avoid; reversal should be a deliberate, logged decision not a casual choice.
+
+**Decided by:** Lewie at Day 11 alignment session (D1 Fork D1 ratified; D2 Path A bolded run-in headers + Path B operator+claude=10 subgroup count clarification; D3 Fork C2 + GitHub-Issues-only channel; D4 YAML form templates + WSL2-distinct + surface-then-execute education; D5 Option C drafts-not-committed) + two mid-stream re-surfaces during execution (D1 conjunctive-vs-status-only filter shape per surface-then-execute applied at task entry; D5 generalized from incident-specific to durable principle per Task 3 commit-vs-don't-commit fork resolution).
+
+**Affects:**
+- `core/api/health.py` (commit `c8fe991`) — `_requests_counts_by_folder` → `_requests_counts`; pending derivation conjunctive; mixed-semantic docstring
+- `tests/test_smoke_endpoints.py` (commit `c8fe991`) — `TestHealthRequestsPendingCount` class +3 wiring tests
+- `tests/test_ui_health_bar_partial.py` (commit `c8fe991`) — +1 partial-render wiring test
+- `ui/templates/partials/pending_inbox.html` (commit `ac2541d`) — `hx-indicator` + `hx-disabled-elt` on action form + spinner span (referenced under D1's broader Day-11-polish context)
+- `ui/static/css/concierge.css` (commit `ac2541d`) — spinner styles + htmx-indicator opacity transition
+- `tests/test_ui_pending_inbox_partial.py` (commit `ac2541d`) — `TestPendingInboxInFlightFeedback` class +4 wiring tests
+- `README.md` (commit `42cbbdb`) — `### Optional: operator dashboard` section + `uv run` prefix
+- `CHANGELOG.md` (commit `6205d4c`) — new file; Keep-a-Changelog 1.1.0; 10 bolded run-in subgroups; 39 entry-line bullets
+- `CONTRIBUTING.md` (commit `3882044`) — new file; richer-with-pointers compressed; ops-protocol as load-bearing reference; GitHub Issues channel only
+- `.github/ISSUE_TEMPLATE/bug_report.yml` (commit `acd8e78`) — new file; YAML form template
+- `.github/ISSUE_TEMPLATE/feature_request.yml` (commit `acd8e78`) — new file; YAML form template; surface-then-execute education in field description
+- `planning/scratch/day-11-launch-content/` — five drafts on disk (demo-script.md, linkedin.md, youtube.md, hn.md, content-seeds.md), NOT committed per D5 durable principle; paths documented in `planning/sessions/SESSION-2026-05-02-01.md` Appendix D
+- DECISIONS: this entry
+- Forward-carry: D5 inherits to all future campaign content cycles; today.md prescriptions for content-drafts commits deprecated as a pattern; D1 deferred-tracking-as-third-semantic to Phase 2 surface (token-weight tracker design surface area)
+
+---
