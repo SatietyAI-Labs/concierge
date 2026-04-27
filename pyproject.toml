@@ -41,6 +41,8 @@ concierge-shim = "adapters.claude_code.shim:main"
 
 [project.urls]
 Homepage = "https://satietyai.io"
+Repository = "https://github.com/SatietyAI-Labs/concierge"
+Issues = "https://github.com/SatietyAI-Labs/concierge/issues"
 
 [tool.setuptools.packages.find]
 include = ["core*", "ui*", "adapters*"]

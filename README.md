@@ -27,7 +27,7 @@ Concierge runs as an MCP server. Your AI agent — Claude Code, Claude Desktop, 
 Requires Python 3.11+ and [uv](https://github.com/astral-sh/uv) for environment management.
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/SatietyAI-Labs/concierge
 cd Concierge
 uv sync
 ```
