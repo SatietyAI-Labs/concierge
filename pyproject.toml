@@ -6,10 +6,21 @@ build-backend = "setuptools.build_meta"
 name = "concierge"
 version = "0.1.0"
 description = "Platform-agnostic tool awareness layer for AI agents"
+readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [
     { name = "Lewis Sloan", email = "hello@satietyai.io" },
+]
+keywords = ["mcp", "ai-agents", "tool-awareness", "claude-code", "tool-discovery"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
 ]
 requires-python = ">=3.11"
 dependencies = [

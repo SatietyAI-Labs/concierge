@@ -28,7 +28,7 @@ Requires Python 3.11+ and [uv](https://github.com/astral-sh/uv) for environment 
 
 ```bash
 git clone https://github.com/SatietyAI-Labs/concierge
-cd Concierge
+cd concierge
 uv sync
 ```
 
@@ -78,7 +78,7 @@ Add Concierge under `mcpServers`:
 {
   "mcpServers": {
     "concierge": {
-      "command": "/REPLACE/with/absolute/path/to/Concierge/.venv/bin/concierge-shim",
+      "command": "/REPLACE/with/absolute/path/to/concierge/.venv/bin/concierge-shim",
       "args": []
     }
   }
