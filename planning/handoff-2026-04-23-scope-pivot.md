@@ -189,7 +189,7 @@ Once that report lands, combine with the two prior verification reports and plan
 
 - Terminal A: uvicorn running on `127.0.0.1:8000`, warm at last check
 - This chat's Claude Code CLI session: running on Max plan (confirmed via `/login`)
-- API key (`ANTHROPIC_API_KEY`) in `~/.bashrc` — required for Concierge shim subprocess spawn
+- API key (`ANTHROPIC_API_KEY`) loaded from operator's shell environment — required for Concierge shim subprocess spawn
 
 ### Auth trap to avoid
 
