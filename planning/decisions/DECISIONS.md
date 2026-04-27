@@ -3295,3 +3295,74 @@ D5: marketing-copy drafts have a clear lifecycle — pre-publication working art
 - Forward-carry: D5 inherits to all future campaign content cycles; today.md prescriptions for content-drafts commits deprecated as a pattern; D1 deferred-tracking-as-third-semantic to Phase 2 surface (token-weight tracker design surface area)
 
 ---
+
+## [2026-05-03 Day 12] — Public-artifact credential-disclosure discipline + [project.urls] three-key shape + PyPI metadata load-bearing + v0.1 published milestone
+
+**Context:** Day 12 was framed as final-review + GitHub push day. Four-task ladder (A0 / A1 / A2 / A3) with A0 BLOCKING the push gate. The day surfaced four entries worth durable record: three architectural design rules (D1-D3) and one milestone marker (D4). Bundled per Day 7 ratified bundled-entry pattern. D5 candidate-pattern (three-explicit-pause-points-at-irreversible-moments) lives in SESSION snapshot Appendix D awaiting second-occurrence ratification, not in this DECISIONS entry.
+
+**Options considered:**
+
+*Public-artifact credential-disclosure discipline (A0.4 + sanitization commit `56db9f6`):*
+- Sanitize only the most-recent occurrence (`handoff-2026-04-23-scope-pivot.md:192`) per literal Fork 1 prescription, leaving four prior-day SESSION-snapshot occurrences untouched per ops-protocol decision-edit pattern (B-strict)
+- Sanitize all five occurrences atomically, reconciling decision-edit pattern's scope as protecting design-decision audit-trail integrity, not arbitrary content persistence (B-extended)
+- Sanitize the handoff doc + carry forward the four SESSION sanitizations to a Day 12 correction note (B-hybrid; rejected — produces more disclosure not less, since correction note draws fresh attention to credential-storage-location specifics)
+
+*[project.urls] shape (Day 11 Open Question 1; A1.2):*
+- Single-key Repository only (minimal)
+- Three-key Homepage / Repository / Issues (PyPA-canonical; preserves SatietyAI brand surface in Homepage; Issues keeps contribution channel discoverable from PyPI metadata)
+- Five-key including Documentation + Changelog (richer; redundant for v0.1 with no docs site)
+
+*pyproject.toml PyPI metadata as load-bearing (A2.3 addition 2):*
+- Defer classifiers/readme/keywords to post-launch (Claude Code's initial framing as "decide if v0.1-relevant or defer")
+- Fix-now as load-bearing PyPI public-launch readiness (operator pushed back on defer framing; classifiers populate facets + machine-readable license; readme populates package landing page; keywords populate search facets)
+
+*Python version classifiers shape (A2-Disposition.2 refinement):*
+- Umbrella-plus-specifics (`:: 3` umbrella + `:: 3.11/3.12/3.13` specifics)
+- Specifics-only (current PyPA shape; umbrella adds redundant facet in PyPI search left-nav)
+
+*Push execution shape (A3.2):*
+- Claude Code executes the full sequence (`git remote add` + `git push`)
+- Operator runs `git push`; Claude Code preps `git remote add` (local, reversible) and surfaces exact push command (channel-pure operator-ownership of the publish keystroke)
+- Per-step explicit-go shape
+
+**Decision:**
+
+- **D1 — Public-artifact credential-disclosure discipline (durable design rule).** Build-narrative path references are fine in public artifacts (per Day 8 brand-publicity calibration); credential-storage-location statements aren't. Different category. The principle: don't volunteer credential storage locations in public artifacts, generic dev practice or not. **Day 12 third-occurrence elevates Day 9's public-contact-info-confirmation rule scope** from inferrable-personal-contact-info to all-credential-disclosure-shape. Sanitize all five occurrences atomically (commit `56db9f6`); decision-edit-pattern reconciliation: ops-protocol's in-place-edit rule protects design-decision audit-trail integrity, not arbitrary content persistence; cosmetic redaction of storage-file-name preserves all load-bearing audit-trail elements (timeline, decisions, technical claims, reasoning); pattern's "corrections must be visible to the audit trail" is satisfied by commit diff + message. Going forward: future SESSION snapshots and other public artifacts apply the distinction at write time rather than relying on retroactive sanitization.
+
+- **D2 — `[project.urls]` three-key shape (durable design rule).** Three keys: Homepage = `https://satietyai.io`, Repository = `https://github.com/SatietyAI-Labs/concierge`, Issues = `https://github.com/SatietyAI-Labs/concierge/issues`. PyPA-canonical minimum. Homepage preserves SatietyAI brand surface in package metadata (consistent with ABOUT.md contact + Day 11 D3 channel-purity); Repository points at GitHub source-of-truth; Issues keeps contribution channel discoverable from PyPI. Documentation/Changelog/Source deferred until docs site or post-v0.1 metadata expansion warrants.
+
+- **D3 — pyproject.toml PyPI metadata as load-bearing (durable design rule).** Classifiers, readme, and keywords are not optional polish; they are load-bearing for public packages. Without classifiers, PyPI displays "UNKNOWN" license; without readme, PyPI shows no description page; without keywords, search facets are empty. Concierge ships these at v0.1 even though not yet PyPI-published — the metadata travels with the package and is PyPA-recommended. Specifics-only Python version classifiers (`:: 3.11/3.12/3.13`; no `:: 3` umbrella) per current PyPA shape.
+
+- **D4 — v0.1 published (milestone marker, distinct framing from D1/D2/D3).** Concierge published publicly at `https://github.com/SatietyAI-Labs/concierge` on 2026-05-03 logical-day. 967 git objects + 221 tracked files; the full commit chain through `fb8ff84` is the public surface. GitHub org SatietyAI-Labs (owned by SatietyJF account, hello@satietyai.io); branch protection on main (force-push + deletion blocked); Issues enabled with `bug_report.yml` + `feature_request.yml` rendering correctly as forms. **This entry records the publish moment for audit trail; it's not a design decision per se** — bundled here for "find when v0.1 published" discoverability alongside the design rules that shipped with it.
+
+**Reasoning:**
+
+D1: the principle is the durable artifact, not the specific incident. The public-contact-info-confirmation rule (Day 9) was the seed; Day 11 second-occurrence exercised it across LinkedIn/YouTube/HN/demo-script content drafts; Day 12 surfaced a different category (credential-storage-location statements) that the rule's scope didn't directly cover but the same generative principle (don't volunteer sensitive specificity in public artifacts) applies to. Codifying the broader scope makes it reach-forward-able for future categories (API endpoint URLs that name internal infrastructure; DB connection strings; ssh-key paths; any disclosure shape that names where-credentials-or-sensitive-resources-live). Sanitization application to all five occurrences (not just the most recent) is what makes the rule load-bearing — partial-application leaves visible asymmetry signaling selectivity rather than principled application.
+
+D2: three-key shape is PyPA-canonical minimum with maximum signal. Single-key loses Homepage brand surface; five-key adds redundant entries (Documentation has no target until docs site exists; Changelog redundant with Repository for a v0.1 GitHub repo). The decision encodes the brand-surface vs source-of-truth distinction — useful for any future public package the operator ships under SatietyAI.
+
+D3: PyPA metadata is consumed by tools the operator doesn't control (PyPI, pip, IDE indexes, package security scanners). Classifiers tell those tools license + Python versions + stability tier. readme tells PyPI landing page what to display. keywords tells search facets what to populate. Treating these as "polish" or "deferred" gives downstream tools nothing to work with; metadata surface is empty when it's the most accessible read of the package's nature. Cost of including: mechanical (15-20 lines of TOML). Cost of omitting: invisible-by-default-package-presence on PyPI. Always include for public packages.
+
+D4: milestone markers belong in DECISIONS for audit-trail visibility — future contributors / future SESSION authors should be able to find "when did v0.1 publish" in the same artifact they search for design decisions. Bundled-as-record-of-shipping per the milestone-marker framing; distinct from D1/D2/D3 which are forward-applying constraints.
+
+**Reversibility:**
+
+- D1 (public-artifact credential-disclosure discipline): permanent in spirit; rule is forward-applying. Reversible per individual case (a future operator could decide to disclose a specific credential-storage location in a specific public artifact for some reason); reversal of the rule itself would require explicit logged decision.
+- D2 ([project.urls] three-key shape): easy. Adding/removing keys is one-line TOML change.
+- D3 (PyPI metadata load-bearing): permanent in spirit; rule is forward-applying convention. Implementation reversal (removing classifiers/readme/keywords) is mechanical but would create the discoverability gap the rule exists to avoid.
+- D4 (v0.1 published): permanent. Once published, public. Reversal would require repo deletion (operator-side; outside Concierge's scope to invite); a different decision entirely (un-publishing).
+
+**Decided by:** Lewie at Day 12 alignment session (D1 Fork 1 Option B-extended ratified after mid-stream re-surface caught four additional SESSION-snapshot occurrences; D2 A1.2 Option A ratified at Task A1 entry; D3 A2.3 addition 2 ratified at Task A2 entry with specifics-only Python version classifiers refinement at A2-Disposition.2; D4 Task A3 push completion confirmed after fresh-clone verification four-checks-clean) + Claude Opus 4.7 (1M context) per surface-then-execute discipline applied at four task entries.
+
+**Affects:**
+- `planning/handoff-2026-04-23-scope-pivot.md` (line 192; commit `56db9f6` per D1)
+- `planning/sessions/SESSION-2026-04-22-02.md` (lines 177, 232; commit `56db9f6` per D1)
+- `planning/sessions/SESSION-2026-04-22-03.md` (lines 83, 116; commit `56db9f6` per D1)
+- `pyproject.toml` (commit `c4e3be0` per D2: `[project.urls]` Repository + Issues additive; commit `fb8ff84` per D3: readme + keywords + classifiers additive)
+- `README.md` (commit `c4e3be0` per Task A1: `<repo-url>` literal replaced; commit `fb8ff84` per Task A2: capitalization fixes lines 31 + 81)
+- `planning/scratch/day-11-launch-content/{linkedin,youtube,hn}.md` (on-disk-not-tracked per Day 11 D5; 9 occurrences updated as part of A1)
+- GitHub remote: `https://github.com/SatietyAI-Labs/concierge` (D4 publication; 967 git objects / 221 tracked files / branch protection on main / Issues enabled)
+- DECISIONS: this entry
+- Forward-carry: D1 inherits to all future public-artifact authoring; D2 inherits to any future public package metadata; D3 inherits to any future public package metadata; D4 carries no forward obligation (milestone marker)
+
+---
