@@ -48,6 +48,7 @@ dev = [
 
 [project.scripts]
 concierge-shim = "adapters.claude_code.shim:main"
+concierge = "concierge_cli.main:main"
 
 [project.urls]
 Homepage = "https://satietyai.io"
@@ -55,7 +56,7 @@ Repository = "https://github.com/SatietyAI-Labs/concierge"
 Issues = "https://github.com/SatietyAI-Labs/concierge/issues"
 
 [tool.setuptools.packages.find]
-include = ["core*", "ui*", "adapters*"]
+include = ["core*", "ui*", "adapters*", "concierge_cli*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
