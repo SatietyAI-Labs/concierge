@@ -67,3 +67,11 @@ planning/scratch/
 # while preserving local operator workflow. Per repo-structure-audit
 # 2026-04-29 (Day 8) Surface 1.
 _legacy/
+
+# Upgrade-process artifacts whose primary install path resides in
+# this repo (per upgrade master-plan §II.5) but whose lifecycle and
+# version control belong to ~/satietyai-upgrade/, not here. The
+# physical file must exist at this path for the upgrade's rerun
+# discipline to work; tracking it in this repo would mix
+# upgrade-workspace artifacts with Concierge production code.
+scripts/export_agent_memory.py
