@@ -226,6 +226,32 @@ class TestFactoryAndDependency:
         client = make_memory_client(s)
         assert client.memory_dir == tmp_path / "custom"
 
+    def test_make_memory_client_default_read_stores_is_empty(self, tmp_path: Path):
+        """Stage 1A item 2 — `memory_read_stores` defaults to []; the
+        factory passes that through verbatim. Single-store behavior
+        is the default; opt-in to multi-store is explicit.
+        """
+        from core.config import Settings
+
+        s = Settings(memory_dir=tmp_path / "custom")
+        client = make_memory_client(s)
+        assert client.read_stores == []
+
+    def test_make_memory_client_plumbs_read_stores(self, tmp_path: Path):
+        """Stage 1A item 2 — non-empty `memory_read_stores` in Settings
+        round-trips into `MemoryClient.read_stores`.
+        """
+        from core.config import Settings
+
+        r1 = tmp_path / "read-1"
+        r2 = tmp_path / "read-2"
+        s = Settings(
+            memory_dir=tmp_path / "primary",
+            memory_read_stores=[r1, r2],
+        )
+        client = make_memory_client(s)
+        assert client.read_stores == [r1, r2]
+
     def test_get_memory_client_returns_singleton(self):
         get_memory_client.cache_clear()
         a = get_memory_client()

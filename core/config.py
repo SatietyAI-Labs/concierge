@@ -2,7 +2,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,6 +25,24 @@ class Settings(BaseSettings):
 
     memory_dir: Path = Path.home() / ".concierge-memory"
     memory_embedding_model: str = "all-MiniLM-L6-v2"
+
+    # Multi-store read configuration (Stage 1A item 2; Gate 4.5 wires
+    # this to four live store paths per [2026-05-13] D14 / D-V1.1
+    # §III.3 Gate 4.5). Writes (memory.store, memory.identity_set)
+    # always scope to `memory_dir`; only `memory.search` / `memory.list`
+    # / `memory.stats` aggregate across these additional paths.
+    #
+    # Env var format: JSON list. Example (Gate 4.5):
+    #   CONCIERGE_MEMORY_READ_STORES='["~/.moltbot-memory-v2", "~/.agent-memory/content-prep", "~/.agent-memory/intelligence", "~/.agent-memory/engagement"]'
+    #
+    # The validator expands `~` on each entry so operators can use the
+    # tilde form in env-file edits without pre-expansion.
+    memory_read_stores: list[Path] = Field(default_factory=list)
+
+    @field_validator("memory_read_stores", mode="after")
+    @classmethod
+    def _expand_read_store_paths(cls, v: list[Path]) -> list[Path]:
+        return [p.expanduser() for p in v]
 
     # Root dir under which the three Claude skills-layout subdirs
     # (`public`, `user`, `examples`) live. Default is the Anthropic-
