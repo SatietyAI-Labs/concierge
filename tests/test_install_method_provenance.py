@@ -402,7 +402,7 @@ class TestInstallWiringSetsPostOption3Provenance:
         assert prettier.install_method_provenance == "npm-global", (
             f"expected 'npm-global', got "
             f"{prettier.install_method_provenance!r}. Check "
-            f"PROVENANCE_BY_RESULT_METHOD covers all four canonical "
+            f"PROVENANCE_BY_RESULT_METHOD covers all five canonical "
             f"InstallResult.method values."
         )
 
@@ -410,8 +410,8 @@ class TestInstallWiringSetsPostOption3Provenance:
 # ---- Map-coverage sanity check -------------------------------------------
 
 
-class TestProvenanceMapCoversAllFourMethods:
-    """Sanity: PROVENANCE_BY_RESULT_METHOD must cover all four
+class TestProvenanceMapCoversAllFiveMethods:
+    """Sanity: PROVENANCE_BY_RESULT_METHOD must cover all five
     InstallResult.method canonical values. A regression dropping a
     method from the map would silently leave that method's installs
     unprovenance'd.
@@ -422,6 +422,7 @@ class TestProvenanceMapCoversAllFourMethods:
             METHOD_NPM_GLOBAL,
             METHOD_NPX_MCP,
             METHOD_PIP_USER,
+            METHOD_PIPX,
             METHOD_SINGLE_BINARY,
         )
 
@@ -430,16 +431,19 @@ class TestProvenanceMapCoversAllFourMethods:
             METHOD_NPM_GLOBAL,
             METHOD_NPX_MCP,
             METHOD_SINGLE_BINARY,
+            METHOD_PIPX,
         }
 
     def test_pip_user_uniquely_maps_to_post_option_3_marker(self):
         """The pip-user row's provenance value distinguishes
         post-Option-3 ('option-3-venv') from pre-Option-3
-        ('pre-option-3-user-site' set by backfill). The other three
+        ('pre-option-3-user-site' set by backfill). The other four
         methods' provenance values are method-name-equivalent because
-        Option 3 doesn't affect them.
+        Option 3 doesn't affect them — pipx in particular has its own
+        per-package venv mechanism, distinct from Option 3.
         """
         assert PROVENANCE_BY_RESULT_METHOD["pip_user"] == "option-3-venv"
         assert PROVENANCE_BY_RESULT_METHOD["npm_global"] == "npm-global"
         assert PROVENANCE_BY_RESULT_METHOD["npx_mcp"] == "npx-mcp"
         assert PROVENANCE_BY_RESULT_METHOD["single_binary"] == "single-binary"
+        assert PROVENANCE_BY_RESULT_METHOD["pipx"] == "pipx"

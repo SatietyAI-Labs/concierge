@@ -35,11 +35,13 @@ DEFAULT_NPM_TIMEOUT = 60.0
 DEFAULT_PIP_TIMEOUT = 60.0
 DEFAULT_BINARY_TIMEOUT = 120.0
 DEFAULT_NPX_MCP_TIMEOUT = 45.0
+DEFAULT_PIPX_TIMEOUT = 120.0
 
 METHOD_NPM_GLOBAL = "npm_global"
 METHOD_PIP_USER = "pip_user"
 METHOD_SINGLE_BINARY = "single_binary"
 METHOD_NPX_MCP = "npx_mcp"
+METHOD_PIPX = "pipx"
 
 
 def install_npm_global(package: str, *, timeout_seconds: float = DEFAULT_NPM_TIMEOUT) -> InstallResult:
@@ -67,6 +69,14 @@ def install_pip_user(package: str, *, timeout_seconds: float = DEFAULT_PIP_TIMEO
     with existing catalog rows and the `normalize_install_method`
     dispatcher; the *behavior* changed (pip-via-venv instead of
     `pip --user`), the canonical method key did not.
+
+    **Method choice guidance:** for binary-shipping CLI tools (csvkit,
+    httpie, etc.), prefer `install_pipx` — pipx creates a per-package
+    venv with automatic binary placement at `~/.local/bin/`, and the
+    per-package isolation eliminates cross-package dependency conflicts
+    that would otherwise surface in the shared tools-venv.
+    `install_pip_user` remains the right choice for library-style
+    packages that share the tools-venv with other tools.
 
     On `ConciergeVenvError` (venv bootstrap failure — e.g. stdlib
     venv missing, disk full, partial venv state), the function
@@ -141,6 +151,35 @@ def install_pip_user(package: str, *, timeout_seconds: float = DEFAULT_PIP_TIMEO
         stderr=merged_stderr,
         elapsed_ms=result.elapsed_ms,
     )
+
+
+def install_pipx(package: str, *, timeout_seconds: float = DEFAULT_PIPX_TIMEOUT) -> InstallResult:
+    """Install a Python CLI tool via `pipx install <package>`.
+
+    pipx sidesteps PEP-668 by creating an isolated per-package venv
+    under `~/.local/pipx/venvs/<package>/`, then invoking *that
+    venv's* pip — not system Python's pip — so the
+    `externally-managed-environment` block never triggers. Binaries
+    land at `~/.local/bin/<binary>` automatically; no Concierge-side
+    shim generation needed (contrast `install_pip_user`).
+
+    Complementary to `install_pip_user`, not a replacement: per-package
+    isolation is the right shape for binary-shipping CLI tools
+    (csvkit, httpie, etc.) where cross-package dependency conflicts
+    in a shared venv would be a real risk. Library-style installs
+    that need to share a venv with other tools stay with
+    `install_pip_user`.
+
+    pipx-not-installed handling: relies on `_run`'s typed-failure
+    path. If the operator's environment lacks pipx, the call returns
+    `InstallResult(success=False, returncode=-1,
+    stderr="command not found: pipx")` — same shape as any other
+    handler whose tool is missing. No pipx self-bootstrap is
+    attempted; that would be scope creep and the operator's audit
+    trail benefits from a clean typed failure.
+    """
+    cmd = ["pipx", "install", package]
+    return _run(METHOD_PIPX, cmd, timeout_seconds)
 
 
 def install_npx_mcp(

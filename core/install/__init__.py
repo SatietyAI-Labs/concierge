@@ -41,6 +41,7 @@ from core.install.methods import (
     install_npm_global,
     install_npx_mcp,
     install_pip_user,
+    install_pipx,
     install_single_binary,
 )
 from core.install.schemas import InstallResult
@@ -53,6 +54,7 @@ __all__ = [
     "install_npm_global",
     "install_npx_mcp",
     "install_pip_user",
+    "install_pipx",
     "install_single_binary",
     "normalize_install_method",
 ]
