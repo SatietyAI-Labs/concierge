@@ -22,10 +22,12 @@ from core.install.methods import (
     METHOD_NPM_GLOBAL,
     METHOD_NPX_MCP,
     METHOD_PIP_USER,
+    METHOD_PIPX,
     METHOD_SINGLE_BINARY,
     install_npm_global,
     install_npx_mcp,
     install_pip_user,
+    install_pipx,
     install_single_binary,
 )
 from core.install.schemas import InstallResult
@@ -62,6 +64,14 @@ def normalize_install_method(install_method: Optional[str]) -> Optional[str]:
         return METHOD_NPM_GLOBAL
     if s in {"npm", "npm-global", "npm_global", "npm global"}:
         return METHOD_NPM_GLOBAL
+
+    # pipx signals — check BEFORE pip_user so "pipx ..." strings
+    # (which contain "pip" as a substring via "pipx") route to the
+    # pipx handler instead of the pip-user one. The substring check
+    # alone covers every meaningful pipx string ("pipx", "pipx install",
+    # "pipx-install", etc. all contain the "pipx" substring).
+    if "pipx" in s:
+        return METHOD_PIPX
 
     # pip_user signals
     if "pip" in s and ("--user" in s or "user" in s):
@@ -126,6 +136,10 @@ def install_by_method(
     if method_key == METHOD_PIP_USER:
         kwargs = {"timeout_seconds": timeout_seconds} if timeout_seconds is not None else {}
         return install_pip_user(tool_name, **kwargs)
+
+    if method_key == METHOD_PIPX:
+        kwargs = {"timeout_seconds": timeout_seconds} if timeout_seconds is not None else {}
+        return install_pipx(tool_name, **kwargs)
 
     if method_key == METHOD_SINGLE_BINARY:
         if binary_url is None or binary_dest is None:

@@ -20,6 +20,7 @@ from core.install import (
     install_npm_global,
     install_npx_mcp,
     install_pip_user,
+    install_pipx,
     install_single_binary,
     normalize_install_method,
 )
@@ -27,6 +28,7 @@ from core.install.methods import (
     METHOD_NPM_GLOBAL,
     METHOD_NPX_MCP,
     METHOD_PIP_USER,
+    METHOD_PIPX,
     METHOD_SINGLE_BINARY,
 )
 
@@ -264,6 +266,78 @@ class TestInstallPipUser:
         assert "disk full" in result.stderr
 
 
+class TestInstallPipx:
+    """install_pipx wraps `pipx install <package>`. pipx itself
+    creates the per-package venv and places binaries on PATH; the
+    handler is a thin subprocess wrapper, no shim or venv machinery
+    on the Concierge side. Pattern matches TestInstallNpmGlobal /
+    TestInstallNpxMcp.
+    """
+
+    def test_success_returns_install_result_with_method_key(self):
+        with patch("core.install.methods.subprocess.run") as mock_run:
+            mock_run.return_value = _mock_completed(
+                0, "installed package csvkit 1.3.0\n", ""
+            )
+            result = install_pipx("csvkit")
+
+        assert isinstance(result, InstallResult)
+        assert result.method == METHOD_PIPX
+        assert result.success is True
+        assert result.returncode == 0
+        assert "csvkit 1.3.0" in result.stdout
+        assert result.elapsed_ms >= 0
+
+    def test_command_has_no_sudo_and_uses_pipx_install(self):
+        with patch("core.install.methods.subprocess.run") as mock_run:
+            mock_run.return_value = _mock_completed(0)
+            result = install_pipx("csvkit")
+
+        assert "sudo" not in result.command
+        assert "pipx" in result.command
+        assert "install" in result.command
+        assert "csvkit" in result.command
+
+        called_args = mock_run.call_args[0][0]
+        assert called_args == ["pipx", "install", "csvkit"]
+        assert "sudo" not in called_args
+
+    def test_non_zero_returncode_is_failure(self):
+        with patch("core.install.methods.subprocess.run") as mock_run:
+            mock_run.return_value = _mock_completed(
+                1, "", "pipx ERROR: package not found"
+            )
+            result = install_pipx("not-a-real-package-name-xyz")
+
+        assert result.success is False
+        assert result.returncode == 1
+        assert "pipx ERROR" in result.stderr
+
+    def test_pipx_not_installed_collapses_to_command_not_found(self):
+        """If pipx itself is missing from PATH, the typed-failure
+        path in `_run` produces a clean InstallResult with
+        returncode=-1 and a "command not found: pipx" stderr.
+        Operator's recovery is install-pipx-outside-of-Concierge;
+        the handler intentionally does NOT self-bootstrap pipx.
+        """
+        with patch("core.install.methods.subprocess.run") as mock_run:
+            mock_run.side_effect = FileNotFoundError(
+                "No such file or directory: 'pipx'"
+            )
+            result = install_pipx("csvkit")
+
+        assert result.success is False
+        assert result.returncode == -1
+        assert "command not found: pipx" in result.stderr
+
+    def test_custom_timeout_passes_through_to_subprocess_run(self):
+        with patch("core.install.methods.subprocess.run") as mock_run:
+            mock_run.return_value = _mock_completed(0)
+            install_pipx("csvkit", timeout_seconds=5.0)
+
+        assert mock_run.call_args.kwargs["timeout"] == 5.0
+
+
 class TestInstallSingleBinary:
     def test_success(self, tmp_path):
         dest = str(tmp_path / "my_binary")
@@ -397,6 +471,10 @@ class TestNormalizeInstallMethod:
             ("pip install --user", METHOD_PIP_USER),
             ("pip user", METHOD_PIP_USER),
             ("PIP --USER", METHOD_PIP_USER),
+            ("pipx", METHOD_PIPX),
+            ("pipx install", METHOD_PIPX),
+            ("pipx install csvkit", METHOD_PIPX),
+            ("PIPX INSTALL", METHOD_PIPX),
             ("single binary", METHOD_SINGLE_BINARY),
             ("binary", METHOD_SINGLE_BINARY),
             ("curl download", METHOD_SINGLE_BINARY),
@@ -424,6 +502,18 @@ class TestNormalizeInstallMethod:
 
     def test_none_input_returns_none(self):
         assert normalize_install_method(None) is None
+
+    def test_pipx_takes_precedence_over_pip(self):
+        """`"pipx"` must canonicalize to METHOD_PIPX, not METHOD_PIP_USER,
+        even though `"pip" in "pipx"` is True. The pipx check must fire
+        before the pip-user check in the normalizer — same shape as the
+        existing npx-before-npm precedence guarantee.
+        """
+        assert normalize_install_method("pipx") == METHOD_PIPX
+        assert normalize_install_method("pipx install csvkit") == METHOD_PIPX
+        # Inverse: plain pip strings are unaffected by the pipx branch
+        assert normalize_install_method("pip --user") == METHOD_PIP_USER
+        assert normalize_install_method("pip install --user csvkit") == METHOD_PIP_USER
 
 
 # ---- install_by_method dispatcher ---------------------------------------
@@ -479,6 +569,38 @@ class TestInstallByMethod:
 
         mock_pip.assert_called_once_with("csvkit")
         assert result.method == METHOD_PIP_USER
+
+    def test_routes_pipx_to_install_pipx(self):
+        with patch("core.install.service.install_pipx") as mock_pipx:
+            mock_pipx.return_value = InstallResult(
+                method=METHOD_PIPX,
+                command="pipx install csvkit",
+                success=True,
+                returncode=0,
+                stdout="",
+                stderr="",
+                elapsed_ms=100,
+            )
+            result = install_by_method("pipx", tool_name="csvkit")
+
+        mock_pipx.assert_called_once_with("csvkit")
+        assert result.method == METHOD_PIPX
+        assert result.success is True
+
+    def test_pipx_timeout_override_passes_through_to_installer(self):
+        with patch("core.install.service.install_pipx") as mock_pipx:
+            mock_pipx.return_value = InstallResult(
+                method=METHOD_PIPX,
+                command="",
+                success=True,
+                returncode=0,
+                stdout="",
+                stderr="",
+                elapsed_ms=0,
+            )
+            install_by_method("pipx install", tool_name="csvkit", timeout_seconds=5.0)
+
+        mock_pipx.assert_called_once_with("csvkit", timeout_seconds=5.0)
 
     def test_routes_single_binary_with_url_and_dest(self):
         with patch("core.install.service.install_single_binary") as mock_bin:

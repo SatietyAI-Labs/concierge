@@ -45,6 +45,7 @@ from core.install.methods import (
     METHOD_NPM_GLOBAL,
     METHOD_NPX_MCP,
     METHOD_PIP_USER,
+    METHOD_PIPX,
     METHOD_SINGLE_BINARY,
 )
 
@@ -66,6 +67,7 @@ PROVENANCE_BY_RESULT_METHOD: dict[str, str] = {
     METHOD_NPM_GLOBAL: "npm-global",
     METHOD_NPX_MCP: "npx-mcp",
     METHOD_SINGLE_BINARY: "single-binary",
+    METHOD_PIPX: "pipx",
 }
 
 
