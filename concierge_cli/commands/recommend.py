@@ -3,6 +3,13 @@
 POSTs to /recommend and renders the response. The render layer in
 `concierge_cli.output` is responsible for the prominent
 memory-unavailable warning when applicable.
+
+`--agent-id` plumbs Stage 1A item 3's per-agent context onto the
+request: the value flows into the server's `RecommendRequest.agent_id`
+field and renders in the prompt's `# Context` block so the
+recommendation engine sees who the caller is. Omitted-flag posts a
+body without the `agent_id` key — Pydantic's default `None` engages
+on the server, and the prompt sentinel renders.
 """
 from __future__ import annotations
 
@@ -33,11 +40,23 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         default=90.0,
         help="Per-call HTTP timeout in seconds (default 90).",
     )
+    sub.add_argument(
+        "--agent-id",
+        dest="agent_id",
+        default=None,
+        help=(
+            "Caller-agent identifier (free-text). Flows into the "
+            "server's RecommendRequest.agent_id; renders in the "
+            "prompt's Context block. Omit to post without agent context."
+        ),
+    )
     sub.set_defaults(func=run)
 
 
 def run(args: argparse.Namespace) -> int:
     body: dict[str, Any] = {"task": args.task}
+    if args.agent_id is not None:
+        body["agent_id"] = args.agent_id
     with HttpClient(timeout=args.timeout) as client:
         response = client.post(
             "/recommend", body, response_model=RecommendResponse

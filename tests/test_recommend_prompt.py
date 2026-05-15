@@ -696,3 +696,132 @@ class TestSideObservationsPromptInstruction:
         # Anchor phrases that permit silence without sentinel drift.
         assert "omit the key" in p.system
         assert "silence is correct" in p.system
+
+
+# ---- Stage 1A item 3 — agent_id context line -----------------------------
+
+
+class TestAgentIdContext:
+    """`agent_id` renders as a fourth line in the user prompt's
+    `# Context` block. Symmetric with cwd / task_hint / active_tools:
+    line always present, sentinel when caller omits.
+
+    Mechanism contract (per Stage 1A item 3 plan-surface):
+    - When set: `"- Calling agent: <id>"` appears
+    - When None / whitespace-only: `"- Calling agent: (no caller-provided agent identifier)"`
+      appears (sentinel form mirrors task_hint's `(no caller-provided ...)` shape)
+    - Determinism: identical inputs including agent_id produce
+      byte-identical `system` AND `user` output across repeated calls
+    - Position: under `# Context`, before `# Available tools`
+    """
+
+    def test_agent_id_renders_in_context_block(self):
+        p = compose_recommendation_prompt(
+            task="t", catalog=[], memory_hits=None, agent_id="scout"
+        )
+        assert "- Calling agent: scout" in p.user
+
+    def test_agent_id_appears_in_context_section(self):
+        """Position invariant: the `Calling agent` line sits inside the
+        `# Context` block, between `# Context` and `# Available tools`.
+        """
+        p = compose_recommendation_prompt(
+            task="t", catalog=[], memory_hits=None, agent_id="bridge"
+        )
+        ctx_pos = p.user.index("# Context")
+        agent_pos = p.user.index("- Calling agent:")
+        avail_pos = p.user.index("# Available tools")
+        assert ctx_pos < agent_pos < avail_pos
+
+    def test_agent_id_none_renders_sentinel(self):
+        """Default `agent_id=None` must still render the line with the
+        sentinel — same shape as cwd/task_hint/active_tools defaults.
+        Sentinel form `(no caller-provided agent identifier)` mirrors
+        task_hint's `(no caller-provided category hint)` phrasing.
+        """
+        p = compose_recommendation_prompt(
+            task="t", catalog=[], memory_hits=None
+        )
+        assert "- Calling agent: (no caller-provided agent identifier)" in p.user
+
+    def test_agent_id_whitespace_only_collapses_to_sentinel(self):
+        """Defensive: a whitespace-only `agent_id` collapses to the
+        sentinel rather than rendering an empty line. Same defensive
+        posture as `_render_identity_block` uses for the operator-
+        identity string.
+        """
+        p = compose_recommendation_prompt(
+            task="t", catalog=[], memory_hits=None, agent_id="   "
+        )
+        assert "- Calling agent: (no caller-provided agent identifier)" in p.user
+
+    def test_agent_id_stripped_when_padded(self):
+        """A padded `agent_id` ("  scout  ") renders the stripped value
+        — matches identity-block stripping; prevents whitespace from
+        leaking into per-call prompt hashes.
+        """
+        p = compose_recommendation_prompt(
+            task="t", catalog=[], memory_hits=None, agent_id="  scout  "
+        )
+        # Exact: line renders the stripped value with no surrounding spaces.
+        assert "- Calling agent: scout\n" in p.user
+        # Negative: the unstripped form must not survive.
+        assert "- Calling agent:   scout  " not in p.user
+
+    def test_agent_id_determinism_across_calls(self):
+        """Byte-equality of BOTH system and user prompts across two
+        identical-input calls including `agent_id`. The determinism
+        contract documented in `compose_recommendation_prompt`'s
+        docstring applies to the new param too — same proof as
+        `TestDeterminism.test_identical_inputs_produce_byte_identical_output`
+        applied with `agent_id` set.
+        """
+        catalog = _sample_catalog()
+        a = compose_recommendation_prompt(
+            task="analyze this CSV",
+            catalog=catalog,
+            memory_hits=None,
+            cwd="/home/lewie",
+            task_hint="data-analysis",
+            active_tools=["pandas"],
+            agent_id="scout",
+        )
+        b = compose_recommendation_prompt(
+            task="analyze this CSV",
+            catalog=catalog,
+            memory_hits=None,
+            cwd="/home/lewie",
+            task_hint="data-analysis",
+            active_tools=["pandas"],
+            agent_id="scout",
+        )
+        assert a.system == b.system
+        assert a.user == b.user
+
+    def test_agent_id_changes_user_prompt_bytes(self):
+        """Different `agent_id` values produce different user-prompt
+        bytes. This is what gives the recommendation engine the
+        per-agent signal — without observable bytes diverging in the
+        prompt, agent_id would be a no-op pass-through.
+        """
+        a = compose_recommendation_prompt(
+            task="t", catalog=[], memory_hits=None, agent_id="scout"
+        )
+        b = compose_recommendation_prompt(
+            task="t", catalog=[], memory_hits=None, agent_id="bridge"
+        )
+        assert a.user != b.user
+        # System prompt is agent-agnostic — it stays byte-identical.
+        assert a.system == b.system
+
+    def test_agent_id_does_not_leak_into_system_prompt(self):
+        """The agent_id signal belongs in the user message, not in the
+        system prompt — the system prompt is the agent-agnostic
+        protocol surface. A caller-specific identifier landing in the
+        system block would defeat prompt-caching once the service
+        wires it in.
+        """
+        p = compose_recommendation_prompt(
+            task="t", catalog=[], memory_hits=None, agent_id="scout"
+        )
+        assert "scout" not in p.system

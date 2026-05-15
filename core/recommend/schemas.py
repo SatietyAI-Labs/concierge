@@ -63,6 +63,25 @@ class RecommendRequest(BaseModel):
             "session."
         ),
     )
+    agent_id: Optional[str] = Field(
+        None,
+        description=(
+            "Caller-agent identifier (Stage 1A item 3 — per-agent "
+            "context). Free-text by design: Concierge is platform-"
+            "agnostic per the adapter preamble, so any constraint on "
+            "agent vocabulary would bake fleet-specific identifiers "
+            "into a platform-agnostic schema. Adapter layers map their "
+            "native agent identity onto this field. When set, the "
+            "value renders in the user prompt's `# Context` block so "
+            "the recommendation engine sees who the caller is alongside "
+            "task/cwd/active-tools context. Identity-collection lookup "
+            "by `agent_id` and memory-search filtering by per-agent "
+            "store are explicitly out of scope for this item — they "
+            "depend on item 8's identity-notes migration tagging the "
+            "identity collection with `agent_id` metadata; today this "
+            "field is signal-only at the prompt layer."
+        ),
+    )
 
 
 class ToolRecommendation(BaseModel):

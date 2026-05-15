@@ -338,3 +338,55 @@ def test_httpx_transport_error_outer_catchall_exits_3(monkeypatch, capsys):
 
     assert exit_code == 3
     assert "cannot reach service" in captured.err
+
+
+# ---- Stage 1A item 3 — --agent-id flag plumbing ----------------------------
+
+
+def test_recommend_with_agent_id_flag_plumbs_into_body(mock_http_client):
+    """--agent-id value flows into the POST body as agent_id. Asserted
+    by inspecting the call args on the mocked HttpClient.post; the body
+    is the second positional argument per concierge_cli.client.HttpClient.post.
+    """
+    mock_http_client.post.return_value = _valid_response()
+
+    exit_code = main(["recommend", "--agent-id", "scout", "test task"])
+
+    assert exit_code == 0
+    assert mock_http_client.post.call_count == 1
+    call = mock_http_client.post.call_args
+    # Positional args: (path, body); kwargs: response_model=...
+    assert call.args[0] == "/recommend"
+    body = call.args[1]
+    assert body == {"task": "test task", "agent_id": "scout"}
+
+
+def test_recommend_without_agent_id_omits_from_body(mock_http_client):
+    """Without --agent-id, the body must omit the `agent_id` key
+    entirely — not send `agent_id=None`. Pydantic's Optional default
+    handles the missing-field case on the server, keeping the wire
+    form lean and the prompt-sentinel path exercised cleanly.
+    """
+    mock_http_client.post.return_value = _valid_response()
+
+    exit_code = main(["recommend", "test task"])
+
+    assert exit_code == 0
+    call = mock_http_client.post.call_args
+    body = call.args[1]
+    assert body == {"task": "test task"}
+    assert "agent_id" not in body
+
+
+def test_agent_id_flag_help_text(capsys):
+    """`concierge recommend --help` advertises --agent-id with the
+    caller-agent-identifier framing. Help text is the operator-facing
+    contract for the flag; regression here would surprise users.
+    """
+    with pytest.raises(SystemExit) as exc:
+        main(["recommend", "--help"])
+    assert exc.value.code == 0
+    captured = capsys.readouterr()
+    assert "--agent-id" in captured.out
+    # Substring anchored on the docstring framing (agent identifier).
+    assert "agent" in captured.out.lower()
