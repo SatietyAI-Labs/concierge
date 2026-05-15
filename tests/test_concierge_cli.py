@@ -11,6 +11,7 @@ Mocking strategy:
 """
 from __future__ import annotations
 
+import argparse
 import json
 import re
 from pathlib import Path
@@ -20,7 +21,7 @@ import httpx
 import pytest
 
 from concierge_cli.client import DEFAULT_BASE_URL, DEFAULT_TIMEOUT_SECONDS, HttpClient
-from concierge_cli.main import main
+from concierge_cli.main import _build_parser, main
 from core.recommend.schemas import (
     LatencyBreakdown,
     RecommendResponse,
@@ -300,6 +301,27 @@ def test_version_flag(capsys):
     assert exc.value.code == 0
     captured = capsys.readouterr()
     assert "concierge" in captured.out
+
+
+def test_all_subcommands_registered():
+    """D24-style exhaustiveness guard (item-1b Decision D8): the CLI
+    advertises exactly the canonical subcommand set. Adding or removing
+    a subcommand without updating this set trips the test — deliberate,
+    so a future contributor's new subcommand cannot ship under-tested.
+    """
+    parser = _build_parser()
+    subparser_actions = [
+        a for a in parser._actions if isinstance(a, argparse._SubParsersAction)
+    ]
+    assert len(subparser_actions) == 1
+    registered = set(subparser_actions[0].choices)
+    assert registered == {
+        "recommend",
+        "request-tool",
+        "list-active",
+        "enable",
+        "disable",
+    }
 
 
 def test_concierge_url_env_var(monkeypatch):

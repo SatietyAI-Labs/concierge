@@ -53,7 +53,7 @@ import sys
 from typing import Any, Optional
 
 from concierge_cli.client import HttpClient
-from concierge_cli.errors import ConciergeCliError
+from concierge_cli.errors import UsageError
 from concierge_cli.output import render_request_tool
 from core.lifecycle_store.escalation import (
     ESCALATION_TARGET_VALUES,
@@ -73,27 +73,10 @@ from core.lifecycle_store.schema import RequestDetail
 _ACCEPTED_AGENT_IDS: frozenset[str] = WORKER_AGENT_IDS | {"alfred"}
 
 
-class _UsageError(ConciergeCliError):
-    """Surface client-side validation failures at CLI exit code 2 —
-    the argparse "usage error" convention. Distinct from the
-    ServiceError taxonomy (exits 3/4/5/6) so the operator-facing
-    error contract stays legible.
-
-    Overrides `user_message` as a property (not attribute) to mirror
-    the existing ConciergeCliError subclass pattern — the base
-    class's `user_message` is a property without a setter, and
-    Python attribute assignment to a property raises AttributeError.
-    """
-
-    exit_code = 2
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
-        self._message = message
-
-    @property
-    def user_message(self) -> str:
-        return f"concierge: {self._message}"
+# Client-side validation failures surface as `UsageError` (exit 2).
+# Promoted to `concierge_cli.errors` at Stage 1A item 1b — `concierge
+# enable/disable` need the same class, so the formerly-private
+# `_UsageError` is now the shared `UsageError` per the D51 forward-carry.
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
@@ -250,14 +233,14 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 def _resolve_agent_id(raw: Optional[str]) -> Optional[str]:
     """Lower-case the agent_id and validate against the accepted set.
 
-    Returns None if `raw` is None; raises `_UsageError` if `raw` is
+    Returns None if `raw` is None; raises `UsageError` if `raw` is
     non-None and outside the accepted set. Accepted: workers + alfred.
     """
     if raw is None:
         return None
     lowered = raw.lower()
     if lowered not in _ACCEPTED_AGENT_IDS:
-        raise _UsageError(
+        raise UsageError(
             f"--agent-id {raw!r} is not a recognized codename. "
             f"Accepted: {sorted(_ACCEPTED_AGENT_IDS)}"
         )
@@ -330,7 +313,7 @@ def run(args: argparse.Namespace) -> int:
         # not None). Alfred-as-filer with --gap / --workaround set
         # surfaces here for a clarifying error.
         if args.agent_id is None or args.agent_id not in WORKER_AGENT_IDS:
-            raise _UsageError(
+            raise UsageError(
                 "Worker-form filings (--gap / --workaround / "
                 "--escalation-target alfred) require --agent-id to "
                 "name a worker (one of: "
@@ -343,7 +326,7 @@ def run(args: argparse.Namespace) -> int:
                 workaround_used=args.workaround_used,
             )
         except WorkerFormError as exc:
-            raise _UsageError(
+            raise UsageError(
                 f"Worker-form filing for --agent-id {args.agent_id} "
                 f"is missing required field(s): "
                 f"{', '.join(exc.missing_fields)}. "

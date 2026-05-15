@@ -25,6 +25,38 @@ class ConciergeCliError(Exception):
         raise NotImplementedError
 
 
+class UsageError(ConciergeCliError):
+    """Client-side validation / local-precondition failure — surfaces at
+    exit 2, the argparse usage-error convention.
+
+    Distinct from the ServiceError taxonomy (exits 3/4/5/6) so the
+    operator-facing error contract stays legible: 2 means "the command
+    could not be carried out as given — fix something locally and
+    retry," 3-6 mean "the HTTP service is the problem."
+
+    Shared across subcommands. `concierge request-tool` (Stage 1A item
+    5) carried a private `_UsageError`; `concierge enable/disable`
+    (item 1b) needs the same class, so it is promoted here per the
+    D51 forward-carry ("when extending `concierge_cli.errors`...").
+
+    Mirrors the descriptor shape of every other subclass: the base
+    `user_message` is a property without a setter, so the underlying
+    string is stored as a plain attribute and `user_message` is
+    overridden as a property (assigning `self.user_message = ...`
+    raises AttributeError — see D51).
+    """
+
+    exit_code = 2
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self._message = message
+
+    @property
+    def user_message(self) -> str:
+        return f"concierge: {self._message}"
+
+
 class ServiceUnreachableError(ConciergeCliError):
     """TCP connect failed (or connect-timed-out) twice in a row."""
 

@@ -21,6 +21,8 @@ import httpx
 
 from concierge_cli import __version__
 from concierge_cli.client import DEFAULT_BASE_URL
+from concierge_cli.commands import agent_config as agent_config_cmd
+from concierge_cli.commands import list_active as list_active_cmd
 from concierge_cli.commands import recommend as recommend_cmd
 from concierge_cli.commands import request_tool as request_tool_cmd
 from concierge_cli.errors import ConciergeCliError, ServiceUnreachableError
@@ -40,6 +42,9 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="subcommand", metavar="<subcommand>")
     recommend_cmd.register(subparsers)
     request_tool_cmd.register(subparsers)
+    list_active_cmd.register(subparsers)
+    agent_config_cmd.register_enable(subparsers)
+    agent_config_cmd.register_disable(subparsers)
 
     return parser
 

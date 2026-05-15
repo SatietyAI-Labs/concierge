@@ -94,6 +94,47 @@ class HttpClient:
         except httpx.ReadTimeout as exc:
             raise ServiceTimeoutError(self.timeout) from exc
 
+    def get(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        response_model: type[ResponseT],
+    ) -> ResponseT:
+        """GET `path` (with optional query `params`); return the
+        validated response model.
+
+        Mirrors `post`'s error taxonomy exactly — the read path needs
+        the same 3/4/5/6 contract so subcommands like `concierge
+        list-active` map failures identically to `concierge recommend`.
+        A GET is idempotent, so the connect-failure retry is safe here
+        for the same reason it is on `post` (covers uvicorn restart
+        latency on a localhost shim).
+
+        Raises:
+            ServiceUnreachableError: TCP connect failed twice (exit 3).
+            ServiceTimeoutError: read timed out (exit 4).
+            ServiceError: non-2xx response (exit 5).
+            MalformedResponseError: 2xx body not JSON or did not validate (exit 6).
+        """
+        response = self._get_with_retry(path, params)
+        self._raise_for_status(response)
+        return self._parse_response(response, response_model)
+
+    def _get_with_retry(
+        self, path: str, params: dict[str, Any] | None
+    ) -> httpx.Response:
+        try:
+            return self._client.get(path, params=params)
+        except (httpx.ConnectError, httpx.ConnectTimeout):
+            time.sleep(CONNECT_RETRY_BACKOFF_SECONDS)
+            try:
+                return self._client.get(path, params=params)
+            except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+                raise ServiceUnreachableError(self.base_url) from exc
+        except httpx.ReadTimeout as exc:
+            raise ServiceTimeoutError(self.timeout) from exc
+
     @staticmethod
     def _raise_for_status(response: httpx.Response) -> None:
         if 200 <= response.status_code < 300:
