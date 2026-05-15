@@ -345,6 +345,7 @@ class MemoryClient:
         *,
         tag_filter: str | None = None,
         importance_filter: str | None = None,
+        source_store_filter: set[Path] | None = None,
         limit: int = 10,
     ) -> list[MemoryHit]:
         """Semantic search by meaning. Returns ranked hits.
@@ -357,6 +358,15 @@ class MemoryClient:
             importance_filter: Only match memories with this exact
                 importance level. Applied as a ChromaDB metadata
                 filter at query time.
+            source_store_filter: If set, a whitelist of store paths —
+                only hits whose `source_store` is in the set survive.
+                `None` (default) disables filtering and is a pure
+                no-op: results are byte-identical to a call without
+                the kwarg. An empty set whitelists nothing and returns
+                `[]`. Consumes the `MemoryHit.source_store` field
+                stamped by item 2's multi-store read; see
+                `_apply_source_store_filter` for the over-fetch and
+                Path-equality notes.
             limit: Max hits to return.
 
         Returns:
@@ -463,6 +473,11 @@ class MemoryClient:
             # inherited by Gate 4.5 for the four configured stores).
             if tag_filter is not None:
                 aggregated = [h for h in aggregated if tag_filter in h.tags]
+            aggregated = _apply_source_store_filter(
+                aggregated,
+                source_store_filter,
+                configured_stores={self.memory_dir, *self.read_stores},
+            )
             aggregated.sort(
                 key=lambda h: (
                     h.similarity is None,
@@ -538,6 +553,7 @@ class MemoryClient:
         self,
         *,
         tag_filter: str | None = None,
+        source_store_filter: set[Path] | None = None,
         limit: int = 20,
     ) -> list[MemoryHit]:
         """List recent memories (not a semantic search).
@@ -546,7 +562,10 @@ class MemoryClient:
         Stage 1A item 2. `tag_filter` uses exact-tag-membership
         post-hoc filtering (see `search` docstring for the rationale).
         The over-fetch factor is 5× applied per-store for the same
-        reason.
+        reason. `source_store_filter` whitelists hits by originating
+        store, with the same semantics as on `search` — `None`
+        (default) is a pure no-op; an empty set returns `[]`. See
+        `_apply_source_store_filter`.
 
         **`created_at` cross-store comparability:** Concierge writes
         `datetime.now(UTC).replace(tzinfo=None).isoformat()` (matches
@@ -613,6 +632,11 @@ class MemoryClient:
 
             if tag_filter is not None:
                 aggregated = [h for h in aggregated if tag_filter in h.tags]
+            aggregated = _apply_source_store_filter(
+                aggregated,
+                source_store_filter,
+                configured_stores={self.memory_dir, *self.read_stores},
+            )
             aggregated.sort(key=lambda h: h.created_at, reverse=True)
             return aggregated[:limit]
         except MemoryUnavailableError:
@@ -847,6 +871,57 @@ def _dedupe_read_stores(
         seen.add(p)
         deduped.append(p)
     return deduped
+
+
+def _apply_source_store_filter(
+    hits: list[MemoryHit],
+    source_store_filter: set[Path] | None,
+    *,
+    configured_stores: set[Path],
+) -> list[MemoryHit]:
+    """Whitelist `hits` by originating store.
+
+    Consumer surface for the `MemoryHit.source_store` field parked by
+    Stage 1A item 2 (DECISIONS D35) — `search` / `list` stamp every
+    aggregated hit with its originating store path; this is the first
+    code that reads it. Semantics:
+
+    - `source_store_filter is None` → no filtering; `hits` returned
+      unchanged. This is the back-compat no-op path — `search` /
+      `list` results are byte-identical to the pre-slice behavior.
+      `None` is the *sole* "no filter" sentinel.
+    - a `set[Path]` → keep only hits whose `source_store` is in the
+      set. An empty set keeps nothing (returns `[]`): an empty
+      whitelist whitelists nothing, distinct from the `None` no-op.
+
+    **Over-fetch:** filtering is by whole store, not by entry. Unlike
+    `tag_filter` — which drops entries *within* a store's candidate
+    set and so needs the 5× over-fetch to still reach `limit` —
+    `source_store_filter` excludes entire stores' contributions. The
+    surviving stores already contributed their full candidate sets,
+    so no over-fetch compensation is needed and the caller's
+    `overfetch` math is left unchanged.
+
+    **Path equality:** `configured_stores` is `{memory_dir} ∪
+    read_stores`. A filter path outside it can never match a produced
+    hit (every `search` / `list` hit carries one of the configured
+    store paths), so it is logged once per call — a likely operator
+    typo or config drift, useful signal when the filter is wired from
+    `Settings` post-Gate-4.5. Comparison is raw-string `Path`
+    equality (see `_dedupe_read_stores`): callers must pass paths
+    matching the configured store paths exactly, with no divergent
+    `.resolve()`.
+    """
+    if source_store_filter is None:
+        return hits
+    unmatched = source_store_filter - configured_stores
+    if unmatched:
+        logger.warning(
+            "memory.source_store_filter_unmatched paths=[%s] "
+            "— match no configured store; they contribute zero hits",
+            ", ".join(sorted(str(p) for p in unmatched)),
+        )
+    return [h for h in hits if h.source_store in source_store_filter]
 
 
 def _query_store(
