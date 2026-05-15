@@ -683,7 +683,12 @@ class MemoryClient:
             ) from exc
 
     def identity_set(
-        self, text: str, *, key: str = IDENTITY_DEFAULT_KEY
+        self,
+        text: str,
+        *,
+        key: str = IDENTITY_DEFAULT_KEY,
+        agent_id: str | None = None,
+        extra_metadata: dict[str, str] | None = None,
     ) -> None:
         """Upsert the identity note for `key`.
 
@@ -691,6 +696,16 @@ class MemoryClient:
         pattern guarantees the row has the current text even across
         repeated calls. Delete-before-add is safe when the id is
         absent (ChromaDB returns silently).
+
+        `agent_id` (Stage 1A item 8 / D6): when given, stamped onto the
+        row's metadata so per-agent identity entries are filterable by
+        `identity_get_agent`. The default-keyed operator tool-prefs
+        note (`core/identity.py`) passes no `agent_id` — it stays
+        unscoped, exactly as before. `extra_metadata` (item 8) carries
+        the migration's `source` / `entry` provenance fields; any
+        small string→string map is accepted. Both params default to
+        the pre-item-8 behavior (no extra metadata), so existing
+        callers are unaffected.
 
         Raises:
             MemoryUnavailableError: on backing-store failure.
@@ -706,13 +721,53 @@ class MemoryClient:
                 .isoformat(),
                 "key": key,
             }
+            if agent_id is not None:
+                metadata["agent_id"] = agent_id
+            if extra_metadata:
+                metadata.update(extra_metadata)
             col.add(ids=[key], documents=[text], metadatas=[metadata])
             logger.debug(
-                "memory.identity_set(key=%s, len=%d): ok", key, len(text)
+                "memory.identity_set(key=%s, agent_id=%s, len=%d): ok",
+                key, agent_id, len(text),
             )
         except Exception as exc:
             raise MemoryUnavailableError(
                 f"memory.identity_set(key={key!r}) failed: {exc}"
+            ) from exc
+
+    def identity_get_agent(self, agent_id: str) -> str:
+        """Return the aggregated identity note(s) for `agent_id`, or "".
+
+        Reads every identity-collection entry whose `agent_id`
+        metadata matches, sorts by document id for a deterministic
+        ordering, and joins the documents with a blank line. Per-agent
+        identity entries are populated by the Stage 1A item 8
+        migration (`scripts/migrate_identity_notes.py`) — an agent may
+        own several (Alfred has four: workspace IDENTITY.md plus the
+        `role` / `owner` / `rules` notes), so aggregation rather than
+        a single keyed `get` is the right read shape (D4).
+
+        This does NOT consult `key="default"`: the default-keyed
+        operator tool-preferences summary carries no `agent_id`
+        metadata, so it never matches the filter. No-arg
+        `identity_get()` remains the surface for that note and is
+        unaffected by item 8 (Finding 3 invariant).
+
+        Raises:
+            MemoryUnavailableError: on backing-store failure.
+        """
+        try:
+            col = self._get_identity_collection()
+            result = col.get(where={"agent_id": agent_id})
+            ids = result.get("ids") or []
+            docs = result.get("documents") or []
+            if not ids:
+                return ""
+            paired = sorted(zip(ids, docs), key=lambda pair: pair[0])
+            return "\n\n".join(doc or "" for _, doc in paired)
+        except Exception as exc:
+            raise MemoryUnavailableError(
+                f"memory.identity_get_agent(agent_id={agent_id!r}) failed: {exc}"
             ) from exc
 
     # ---- Internal helpers ---------------------------------------------
