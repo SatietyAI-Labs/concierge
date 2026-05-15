@@ -10,6 +10,7 @@ a glance.
 from __future__ import annotations
 
 import logging
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
@@ -96,9 +97,25 @@ def list_pending(
     stale: bool = Query(False, description="Filter to files older than STALE_PENDING_DAYS."),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
+    escalation_target: Optional[Literal["alfred", "operator"]] = Query(
+        None,
+        description=(
+            "Filter pending requests by escalation routing target. "
+            "Allowed values: 'alfred' (worker-escalated requests "
+            "awaiting Alfred's review), 'operator' (Alfred's onward "
+            "escalations awaiting operator review; Stage 1.5). "
+            "Omit or pass null for no filter. Empty string is treated "
+            "as no filter (Decision N3a)."
+        ),
+    ),
     service: LifecycleService = Depends(get_lifecycle_service),
 ) -> PendingListResponse:
-    items = service.list_pending(stale=stale, limit=limit, offset=offset)
+    items = service.list_pending(
+        stale=stale,
+        limit=limit,
+        offset=offset,
+        escalation_target=escalation_target,
+    )
     return PendingListResponse(items=items, total=len(items))
 
 

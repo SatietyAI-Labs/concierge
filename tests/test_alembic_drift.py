@@ -151,6 +151,75 @@ def test_alembic_matches_metadata_create_all(
     _assert_schemas_equal(alembic_schema, metadata_schema)
 
 
+def test_request_escalation_target_migration_round_trips(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stage 1A item 5 — operator watch item: pin the migration
+    upgrade → downgrade → upgrade symmetry for
+    `e17b8137cade_add_request_escalation_target`.
+
+    The migration is structurally simple (one column add + one
+    index) so the downgrade is the inverse (drop index, drop
+    column) and the second upgrade should land at the same schema
+    as the first. Pinning the symmetry here catches any future edit
+    that drifts the up/down inverse relationship — same shape as
+    items-4+7's lifecycle_state migration round-trip discipline
+    pinned implicitly at items-4+7 close.
+    """
+    db = tmp_path / "alembic_roundtrip.db"
+
+    monkeypatch.setenv("CONCIERGE_DATABASE_PATH", str(db))
+    get_settings.cache_clear()
+    try:
+        settings = get_settings()
+        cfg = Config(str(settings.project_root / "alembic.ini"))
+
+        # First upgrade to head — captures the post-migration schema.
+        command.upgrade(cfg, "head")
+        engine = create_engine(f"sqlite:///{db}")
+        try:
+            after_first_upgrade = _reflect_schema(engine)
+        finally:
+            engine.dispose()
+
+        # Downgrade one revision (undo item 5's migration).
+        command.downgrade(cfg, "-1")
+        engine = create_engine(f"sqlite:///{db}")
+        try:
+            after_downgrade = _reflect_schema(engine)
+        finally:
+            engine.dispose()
+
+        # Re-upgrade to head — should land at the same schema as the
+        # first upgrade.
+        command.upgrade(cfg, "head")
+        engine = create_engine(f"sqlite:///{db}")
+        try:
+            after_second_upgrade = _reflect_schema(engine)
+        finally:
+            engine.dispose()
+    finally:
+        get_settings.cache_clear()
+
+    # Downgrade actually removed the column.
+    assert "escalation_target" in after_first_upgrade["requests"]["columns"]
+    assert "escalation_target" not in after_downgrade["requests"]["columns"]
+    # Downgrade also removed the index (same name, key check).
+    after_downgrade_index_names = {
+        idx[0] for idx in after_downgrade["requests"]["indexes"]
+    }
+    assert "ix_requests_escalation_target" not in after_downgrade_index_names
+
+    # Symmetry: second upgrade matches first upgrade. The full
+    # `requests` table schema (columns + indexes + fks) must round-trip
+    # byte-for-byte through downgrade-then-upgrade.
+    assert after_first_upgrade == after_second_upgrade, (
+        "Migration round-trip drift detected. Expected the schema "
+        "after downgrade-then-upgrade to match the schema after the "
+        "first upgrade. Inspect e17b8137cade for asymmetric up/down."
+    )
+
+
 def test_alembic_drift_detector_catches_injected_column(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

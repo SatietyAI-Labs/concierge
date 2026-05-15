@@ -184,6 +184,27 @@ _EXPORT_SECTIONS: list[tuple[str, list[tuple[str, str]]]] = [
             ("Discovered", "discovered"),
         ],
     ),
+    # Stage 1A item 5 — worker-to-Alfred escalation section. Slotted
+    # between Request and Recommendation so Alfred reads the worker
+    # context (who escalated, what gap, what workaround they tried)
+    # before the recommendation rationale. Presence-driven emission
+    # (the existing exporter rule): section is rendered only when
+    # `parsed_data["escalation"]` exists, so Alfred-form requests
+    # produce byte-identical output to pre-item-5 (no spurious empty
+    # "## Escalation" header for non-worker filings).
+    # Field naming preserves CLAUDE.md §6 schema verbatim — Worker,
+    # Gap, Workaround used. Unified `# Tool Request:` H1 rendering
+    # per items-5+6 Finding F reframe (Option β); the prototype-era
+    # "# Worker Escalation:" H1 form is subsumed into the unified
+    # Tool Request shape with this dedicated section.
+    (
+        "Escalation",
+        [
+            ("Worker", "worker"),
+            ("Gap", "gap"),
+            ("Workaround used", "workaround_used"),
+        ],
+    ),
     (
         "Recommendation",
         [

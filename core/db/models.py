@@ -154,6 +154,17 @@ class Request(Base):
     category: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     confidence: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     is_discovered: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Stage 1A item 5 — worker-to-Alfred escalation routing. NULL means
+    # "no escalation target" (default for Alfred-form filings and
+    # backward-compat with pre-item-5 rows). Allowed non-NULL values
+    # per ESCALATION_TARGET_VALUES in core/lifecycle_store/escalation.py
+    # ({"alfred", "operator"}); validation lives at the Pydantic Literal
+    # on the API query parameter + the NewRequestDraft schema. Indexed
+    # for the `GET /requests/pending?escalation_target=alfred` filter
+    # (Alfred-facing review queue lookup).
+    escalation_target: Mapped[Optional[str]] = mapped_column(
+        String(16), nullable=True, index=True
+    )
     raw_markdown: Mapped[str] = mapped_column(Text)
     parsed_data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

@@ -1,4 +1,4 @@
-"""Text-mode rendering for `recommend` responses.
+"""Text-mode rendering for CLI responses.
 
 `--json` mode bypasses this module entirely — raw response goes to
 stdout via `model_dump_json`. The memory-unavailable banner is
@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import TextIO
 
+from core.lifecycle_store.schema import RequestDetail
 from core.recommend.schemas import RecommendResponse, ToolRecommendation
 
 
@@ -92,3 +93,25 @@ def _render_footer(r: RecommendResponse, out: TextIO) -> None:
         f"parse {lat.parse / 1000:.1f})"
     )
     out.write("  ".join(parts) + "\n")
+
+
+def render_request_tool(response: RequestDetail, out: TextIO) -> None:
+    """Render a successful POST /requests confirmation.
+
+    Stage 1A item 5 surface. Short and informational — confirms the
+    durable record landed and tells the operator where to look for
+    it. Worker-form responses additionally surface the escalation
+    target so the filing agent (or operator running the CLI manually)
+    sees the routing was recorded.
+
+    Category-agnostic framing per items-5+6 scope clarification — no
+    "MCP server" phrasing; the word "request" is sufficient.
+    """
+    out.write(f"Filed: {response.tool_name}\n")
+    out.write(f"  filename: {response.filename}\n")
+    out.write(f"  status:   {response.status}\n")
+    out.write(f"  folder:   {response.folder}\n")
+    if response.escalation_target:
+        out.write(f"  routes to: {response.escalation_target}\n")
+    if response.category:
+        out.write(f"  category: {response.category}\n")

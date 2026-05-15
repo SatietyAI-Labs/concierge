@@ -38,16 +38,37 @@ logger = logging.getLogger(__name__)
 _STATUS_LINE_RE = re.compile(r"^status:\s*\S.*$", re.MULTILINE)
 
 
-def generate_filename(*, tool_name: str, when: Optional[datetime] = None) -> str:
-    """Build a `YYYY-MM-DD-HHMM-<slug>.md` filename from a tool
-    name. `when=None` defaults to `datetime.now()`.
+def generate_filename(
+    *,
+    tool_name: str,
+    when: Optional[datetime] = None,
+    agent_prefix: Optional[str] = None,
+) -> str:
+    """Build a filename from a tool name. `when=None` defaults to
+    `datetime.now()`.
+
+    Two shapes:
+
+    - Default: ``YYYY-MM-DD-HHMM-<slug>.md`` (Alfred form, pre-item-5
+      back-compat).
+    - With `agent_prefix`: ``YYYY-MM-DD-HHMM-<prefix>-<slug>.md`` —
+      Stage 1A item 5 worker-form convention per CLAUDE.md §6. The
+      prefix renders as-is (caller controls case + content), but
+      passes through `slugify` to normalize whitespace and punctuation
+      to the same alnum-hyphen form as the slug. Typical caller
+      value: ``"worker-scout"`` (built by
+      `core.lifecycle_store.escalation.worker_filename_prefix`).
 
     Filename slug is derived from the tool name via the shared
     `slugify(...)` helper (N3 parser) so the filename sort order
     matches the DB-side tool_slug sort.
     """
     dt = when if when is not None else datetime.now()
-    stem = f"{dt:%Y-%m-%d-%H%M}-{slugify(tool_name)}"
+    parts: list[str] = [f"{dt:%Y-%m-%d-%H%M}"]
+    if agent_prefix:
+        parts.append(slugify(agent_prefix))
+    parts.append(slugify(tool_name))
+    stem = "-".join(parts)
     return f"{stem}.md"
 
 
@@ -56,6 +77,14 @@ def build_markdown(draft: NewRequestDraft) -> str:
     format. Delegates section composition to the shared
     `export_to_markdown(...)` — we construct a synthetic
     `Request`-shaped object so the shared exporter does the lifting.
+
+    Stage 1A item 5 extension: when the draft carries worker-form
+    fields (`agent_id` naming a worker, or `gap` / `workaround_used`
+    populated), an additional `escalation` section is added to the
+    parsed_data dict. The shared exporter emits the section
+    presence-driven (only when the key exists), so Alfred-form drafts
+    produce byte-identical output to pre-item-5 (back-compat invariant
+    pinned in `tests/test_lifecycle_service_escalation.py`).
     """
     # Reuse N3's exporter by projecting the draft into the shape
     # `export_to_markdown` expects (an object with `.status`,
@@ -92,11 +121,35 @@ def build_markdown(draft: NewRequestDraft) -> str:
     # parser tolerates empty values.
     approval_section: dict = {"decision": "", "conditions": "", "date": ""}
 
-    stand.parsed_data = {
+    parsed_data: dict[str, dict] = {
         "request": request_section,
         "recommendation": recommendation_section,
         "approval": approval_section,
     }
+
+    # Stage 1A item 5 — Escalation section emitted only when the
+    # draft carries worker-form content. Lazy-import the predicate to
+    # avoid cycles (escalation.py imports nothing from this module
+    # today, but the directionality matters if a future refactor
+    # crosses the lines).
+    from core.lifecycle_store.escalation import is_worker_form
+
+    if is_worker_form(
+        agent_id=draft.agent_id,
+        escalation_target=draft.escalation_target,
+        gap=draft.gap,
+        workaround_used=draft.workaround_used,
+    ):
+        escalation_section: dict = {}
+        if draft.agent_id:
+            escalation_section["worker"] = draft.agent_id
+        if draft.gap is not None:
+            escalation_section["gap"] = draft.gap
+        if draft.workaround_used is not None:
+            escalation_section["workaround_used"] = draft.workaround_used
+        parsed_data["escalation"] = escalation_section
+
+    stand.parsed_data = parsed_data
     return export_to_markdown(stand)
 
 

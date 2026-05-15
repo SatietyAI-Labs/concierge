@@ -66,6 +66,7 @@ from core.lifecycle_store.transitions import (
     VALID_FILE_STATUSES,
     assert_valid_transition,
 )
+from core.lifecycle_store.escalation import worker_filename_prefix
 from core.lifecycle_store.writer import (
     generate_filename,
     update_install_section,
@@ -189,7 +190,15 @@ class LifecycleService:
 
     def create_request(self, draft: NewRequestDraft) -> RequestDetail:
         request_id = self._short_id()
-        filename = generate_filename(tool_name=draft.tool_name)
+        # Stage 1A item 5 — worker filings get the `worker-<name>-` prefix
+        # in the filename per CLAUDE.md §6 so operators can grep
+        # `pending/worker-*` for the escalation queue. Alfred-form
+        # filings keep the bare `YYYY-MM-DD-HHMM-<slug>.md` shape
+        # (agent_prefix=None preserves pre-item-5 behavior).
+        filename = generate_filename(
+            tool_name=draft.tool_name,
+            agent_prefix=worker_filename_prefix(draft.agent_id),
+        )
         # Ensure filename uniqueness; the YYYY-MM-DD-HHMM resolution
         # collides only if two requests for the same tool-slug land in
         # the same minute — add a uniqueness suffix in that narrow case.
@@ -236,6 +245,13 @@ class LifecycleService:
             category=parsed.category,
             confidence=parsed.confidence,
             is_discovered=parsed.is_discovered,
+            # Stage 1A item 5 — escalation routing target persists on the
+            # column (indexed for the Alfred-facing review queue query).
+            # NULL for Alfred-form filings; one of `"alfred"` /
+            # `"operator"` per ESCALATION_TARGET_VALUES otherwise. The
+            # draft.escalation_target value flows straight through;
+            # Pydantic Literal validation already ran on the draft.
+            escalation_target=draft.escalation_target,
             raw_markdown=parsed.raw_markdown,
             parsed_data=parsed.sections,
         )
@@ -245,11 +261,12 @@ class LifecycleService:
         self.counters.record_create()
         logger.info(
             "lifecycle.create request_id=%s filename=%s tool_slug=%s "
-            "is_discovered=%s folder=pending",
+            "is_discovered=%s folder=pending escalation_target=%s",
             request_id,
             filename,
             parsed.tool_slug,
             parsed.is_discovered,
+            draft.escalation_target,
         )
 
         # Fix Day 4 Task 4 — SSE `new_request` fan-out. Broker is
@@ -281,6 +298,7 @@ class LifecycleService:
             category=row.category,
             confidence=row.confidence,
             is_discovered=row.is_discovered,
+            escalation_target=row.escalation_target,
             is_parseable=True,
             parse_error=None,
             created_at=row.created_at,
@@ -416,6 +434,7 @@ class LifecycleService:
             category=row.category,
             confidence=row.confidence,
             is_discovered=row.is_discovered,
+            escalation_target=row.escalation_target,
             is_parseable=True,
             parse_error=None,
             created_at=row.created_at,
@@ -584,20 +603,36 @@ class LifecycleService:
     # ---- Read -----------------------------------------------------------
 
     def list_pending(
-        self, *, stale: bool = False, limit: int = 100, offset: int = 0
+        self,
+        *,
+        stale: bool = False,
+        limit: int = 100,
+        offset: int = 0,
+        escalation_target: Optional[str] = None,
     ) -> list[ListedRequest]:
         rows = list_pending_rows(
-            self.session, stale_only=stale, limit=limit, offset=offset
+            self.session,
+            stale_only=stale,
+            limit=limit,
+            offset=offset,
+            escalation_target=escalation_target,
         )
         # Augment with any unparseable files currently in pending/.
         # They're invisible to the DB-based list; surface them here
-        # so the UI (and a log reader) can see them.
-        snapshot = [
-            r
-            for r in list_parseability_snapshot(self.lifecycle_root)
-            if r.folder == "pending" and not r.is_parseable
-        ]
-        return rows + snapshot
+        # so the UI (and a log reader) can see them. Unparseable
+        # files have no escalation_target context (they couldn't be
+        # parsed) — when an escalation_target filter is applied, we
+        # omit the unparseable overlay so the result represents only
+        # rows the filter applies to. Without a filter, unparseable
+        # files surface as before (operational-first per N7 scope).
+        if escalation_target is None:
+            snapshot = [
+                r
+                for r in list_parseability_snapshot(self.lifecycle_root)
+                if r.folder == "pending" and not r.is_parseable
+            ]
+            return rows + snapshot
+        return rows
 
     def get_request(self, request_id: int) -> Optional[RequestDetail]:
         return row_detail(self.session, request_id)
