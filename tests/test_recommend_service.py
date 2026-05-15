@@ -50,6 +50,16 @@ class FakeMemory:
     identity: str = ""
     raise_on_identity: bool = False
     identity_get_calls: int = 0
+    # Per-agent identity notes (recommend-prompt wiring slice) —
+    # identity_get_agent returns the migrated identity note for an
+    # agent_id, or "" when none. `per_agent_identity` maps
+    # agent_id → note text; `raise_on_identity_get_agent` forces the
+    # outage path independently of identity_get so the single-try-block
+    # degradation can be exercised with identity_get succeeding.
+    per_agent_identity: dict = field(default_factory=dict)
+    raise_on_identity_get_agent: bool = False
+    identity_get_agent_calls: int = 0
+    last_identity_get_agent_arg: Optional[str] = None
 
     def search(self, query: str, *, limit: int = 5):
         self.search_calls += 1
@@ -64,6 +74,15 @@ class FakeMemory:
                 "chromadb identity collection unavailable"
             )
         return self.identity
+
+    def identity_get_agent(self, agent_id: str) -> str:
+        self.identity_get_agent_calls += 1
+        self.last_identity_get_agent_arg = agent_id
+        if self.raise_on_identity_get_agent:
+            raise MemoryUnavailableError(
+                "chromadb identity collection unavailable"
+            )
+        return self.per_agent_identity.get(agent_id, "")
 
 
 @dataclass
@@ -517,6 +536,152 @@ class TestContextPropagation:
         ]
         assert len(request_lines) == 1
         assert "agent_id=None" in request_lines[0].message
+
+
+# ---- Recommend-prompt wiring slice — per-agent identity ------------------
+
+
+class TestAgentIdentityPropagation:
+    """`identity_get_agent` wiring: the calling agent's migrated
+    identity notes flow from `MemoryClient.identity_get_agent` into the
+    composed user prompt's `# Calling agent identity` section.
+
+    Covers the three paths the wiring slice must get right:
+    - per-agent-identity path (agent_id set + a note exists)
+    - back-compat path (no agent_id → identity_get_agent not called,
+      prompt byte-shape unchanged)
+    - no-per-agent-identity-exists path (agent_id set but no note →
+      section collapses)
+    plus graceful degradation on an identity-store outage.
+    """
+
+    _IDENTITY = "Scout — content-prep worker. Prefers ripgrep."
+
+    def test_agent_identity_flows_from_request_to_prompt(self):
+        """agent_id on the request → identity_get_agent lookup → the
+        note renders in the `# Calling agent identity` section of the
+        user message the Anthropic wrapper receives.
+        """
+        memory = FakeMemory(
+            hits=[], per_agent_identity={"scout": self._IDENTITY}
+        )
+        anthropic = FakeAnthropic(content=_good_response_json())
+        svc = _service(memory, anthropic)
+        svc.recommend(RecommendRequest(task="t", agent_id="scout"))
+        assert memory.identity_get_agent_calls == 1
+        assert anthropic.last_user is not None
+        assert "# Calling agent identity" in anthropic.last_user
+        assert self._IDENTITY in anthropic.last_user
+
+    def test_no_agent_id_skips_identity_get_agent(self):
+        """Back-compat path: a request without agent_id never calls
+        identity_get_agent, and the user prompt has no per-agent
+        identity section. A blank/whitespace agent_id is the same —
+        the guard skips the (wasted) lookup.
+        """
+        for agent_id in (None, "   "):
+            memory = FakeMemory(
+                hits=[], per_agent_identity={"scout": self._IDENTITY}
+            )
+            anthropic = FakeAnthropic(content=_good_response_json())
+            svc = _service(memory, anthropic)
+            kwargs = {"task": "t"}
+            if agent_id is not None:
+                kwargs["agent_id"] = agent_id
+            svc.recommend(RecommendRequest(**kwargs))
+            assert memory.identity_get_agent_calls == 0, (
+                f"agent_id={agent_id!r} must skip the lookup"
+            )
+            assert anthropic.last_user is not None
+            assert "# Calling agent identity" not in anthropic.last_user
+
+    def test_agent_id_with_no_per_agent_identity_collapses_section(self):
+        """No-per-agent-identity-exists path: identity_get_agent IS
+        called (agent_id is present) but returns "" — the section
+        collapses, leaving the user prompt byte-shape unchanged.
+        """
+        memory = FakeMemory(hits=[], per_agent_identity={})
+        anthropic = FakeAnthropic(content=_good_response_json())
+        svc = _service(memory, anthropic)
+        svc.recommend(RecommendRequest(task="t", agent_id="scout"))
+        assert memory.identity_get_agent_calls == 1
+        assert anthropic.last_user is not None
+        assert "# Calling agent identity" not in anthropic.last_user
+
+    def test_agent_id_lookup_uses_stripped_value(self):
+        """D4: the lookup strips the request agent_id before calling
+        identity_get_agent, so a padded value still matches the bare
+        codename the migration stores as `agent_id` metadata.
+        """
+        memory = FakeMemory(
+            hits=[], per_agent_identity={"scout": self._IDENTITY}
+        )
+        anthropic = FakeAnthropic(content=_good_response_json())
+        svc = _service(memory, anthropic)
+        svc.recommend(RecommendRequest(task="t", agent_id="  scout  "))
+        assert memory.last_identity_get_agent_arg == "scout"
+        assert anthropic.last_user is not None
+        assert self._IDENTITY in anthropic.last_user
+
+    def test_identity_get_agent_outage_degrades_gracefully(self, caplog):
+        """Single-try-block degradation (D3): when identity_get_agent
+        raises MemoryUnavailableError, the recommend call still returns
+        a response, a WARNING is logged, and the per-agent identity
+        section collapses — same posture as the operator-identity
+        outage path.
+        """
+        memory = FakeMemory(hits=[], raise_on_identity_get_agent=True)
+        anthropic = FakeAnthropic(content=_good_response_json())
+        svc = _service(memory, anthropic)
+        with caplog.at_level(logging.WARNING, logger="core.recommend.service"):
+            resp = svc.recommend(
+                RecommendRequest(task="t", agent_id="scout")
+            )
+        assert len(resp.recommendations) >= 1
+        assert anthropic.last_user is not None
+        assert "# Calling agent identity" not in anthropic.last_user
+        warn_lines = [
+            r
+            for r in caplog.records
+            if "recommend.identity_unavailable" in r.message
+        ]
+        assert len(warn_lines) == 1
+
+    def test_agent_identity_chars_token_in_info_log(self, caplog):
+        """D5: the `recommend.request` INFO line carries an
+        `agent_identity_chars` token — non-zero when per-agent identity
+        surfaced, 0 when it did not. Lets a soak/gate log reader
+        confirm Gate 4.5 Test 4 from log output without re-running.
+        """
+        # Populated: token reflects the note length.
+        memory = FakeMemory(
+            hits=[], per_agent_identity={"scout": self._IDENTITY}
+        )
+        anthropic = FakeAnthropic(content=_good_response_json())
+        svc = _service(memory, anthropic)
+        with caplog.at_level(logging.INFO, logger="core.recommend.service"):
+            svc.recommend(RecommendRequest(task="t", agent_id="scout"))
+        request_lines = [
+            r for r in caplog.records if "recommend.request" in r.message
+        ]
+        assert len(request_lines) == 1
+        assert (
+            f"agent_identity_chars={len(self._IDENTITY)}"
+            in request_lines[0].message
+        )
+
+        # Absent: token is 0.
+        caplog.clear()
+        memory2 = FakeMemory(hits=[])
+        anthropic2 = FakeAnthropic(content=_good_response_json())
+        svc2 = _service(memory2, anthropic2)
+        with caplog.at_level(logging.INFO, logger="core.recommend.service"):
+            svc2.recommend(RecommendRequest(task="t"))
+        request_lines2 = [
+            r for r in caplog.records if "recommend.request" in r.message
+        ]
+        assert len(request_lines2) == 1
+        assert "agent_identity_chars=0" in request_lines2[0].message
 
 
 # ---- Usage-telemetry wiring (Fix Day 3 Task 2) --------------------------
