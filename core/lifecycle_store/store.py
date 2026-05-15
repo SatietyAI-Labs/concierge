@@ -165,6 +165,7 @@ def _row_to_listed(row: Request) -> ListedRequest:
         category=row.category,
         confidence=row.confidence,
         is_discovered=row.is_discovered,
+        escalation_target=row.escalation_target,
         is_parseable=True,
         parse_error=None,
         created_at=row.created_at,
@@ -179,10 +180,21 @@ def list_pending_rows(
     stale_only: bool = False,
     limit: int = 100,
     offset: int = 0,
+    escalation_target: Optional[str] = None,
 ) -> list[ListedRequest]:
     """DB-backed list of pending requests. `stale_only=True`
     applies the `STALE_PENDING_DAYS` threshold via filename-derived
     `age_days`.
+
+    Stage 1A item 5: `escalation_target` (default None) filters the
+    list to rows whose `escalation_target` column matches. None means
+    no filter (returns all pending rows). The endpoint-layer
+    validates the value against ESCALATION_TARGET_VALUES via Pydantic
+    Literal before calling here, so an unknown value would 422 at
+    that layer rather than silently returning an empty list (Decision
+    N4a). Empty-string handling per Decision N3a: callers convert
+    `""` to None before calling; this function does not interpret
+    empty string specially.
 
     The DB filter is on `folder='pending'` + `status='pending'`;
     the cron moves files based on status, so any mismatch between
@@ -194,8 +206,10 @@ def list_pending_rows(
         session.query(Request)
         .filter(Request.folder == "pending")
         .filter(Request.status == "pending")
-        .order_by(Request.filename.asc())
     )
+    if escalation_target is not None:
+        query = query.filter(Request.escalation_target == escalation_target)
+    query = query.order_by(Request.filename.asc())
     rows = query.offset(offset).limit(limit).all()
     listed = [_row_to_listed(r) for r in rows]
     if stale_only:
