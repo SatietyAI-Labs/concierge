@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import TextIO
 
+from core.api.schemas import ToolList, ToolOut
 from core.lifecycle_store.schema import RequestDetail
 from core.recommend.schemas import RecommendResponse, ToolRecommendation
 
@@ -115,3 +116,90 @@ def render_request_tool(response: RequestDetail, out: TextIO) -> None:
         out.write(f"  routes to: {response.escalation_target}\n")
     if response.category:
         out.write(f"  category: {response.category}\n")
+
+
+def render_list_active(
+    response: ToolList, out: TextIO, *, dormant: bool = False
+) -> None:
+    """Render a `concierge list-active` catalog inventory.
+
+    Stage 1A item 1b surface. Tools are grouped by pack (unpacked
+    tools collected under a trailing `[unpacked]` group), mirroring
+    the `concierge_list_active` meta-tool's group-by-pack shape. The
+    Stage 1A items-4+7 catalog metadata (`best_for`, `limitation`,
+    `agent_owner`, `transport`) renders as indented detail lines so
+    the use-case / anti-pattern prose is visible inline.
+
+    `dormant` only changes the header noun — the filter itself was
+    already applied server-side by the `/tools` query.
+    """
+    noun = "dormant" if dormant else "active"
+    items = response.items
+
+    if not items:
+        out.write(f"No {noun} tools match the current filters.\n")
+        return
+
+    by_pack: dict[tuple[str, str], list[ToolOut]] = {}
+    unpacked: list[ToolOut] = []
+    for tool in items:
+        if tool.pack_slug:
+            key = (tool.pack_name or tool.pack_slug, tool.pack_slug)
+            by_pack.setdefault(key, []).append(tool)
+        else:
+            unpacked.append(tool)
+
+    pack_count = len(by_pack) + (1 if unpacked else 0)
+    out.write(
+        f"{response.total} {noun} tool(s) across {pack_count} pack(s).\n\n"
+    )
+
+    for pack_name, pack_slug in sorted(by_pack):
+        out.write(f"[{pack_name}] ({pack_slug})\n")
+        for tool in by_pack[(pack_name, pack_slug)]:
+            _render_tool_line(tool, out)
+        out.write("\n")
+
+    if unpacked:
+        out.write("[unpacked]\n")
+        for tool in unpacked:
+            _render_tool_line(tool, out)
+        out.write("\n")
+
+
+def _render_tool_line(tool: ToolOut, out: TextIO) -> None:
+    badges = [tool.lifecycle_state]
+    if tool.category:
+        badges.append(tool.category)
+    if tool.transport:
+        badges.append(tool.transport)
+    out.write(f"  {tool.slug} [{' | '.join(badges)}]\n")
+    if tool.agent_owner:
+        out.write(f"    owner:      {tool.agent_owner}\n")
+    if tool.best_for:
+        out.write(f"    best for:   {tool.best_for}\n")
+    if tool.limitation:
+        out.write(f"    limitation: {tool.limitation}\n")
+    if tool.succeeded_by:
+        out.write(f"    succeeded by: {tool.succeeded_by}\n")
+
+
+# Past-tense confirmation verb keyed by the action passed from the
+# enable / disable subcommands.
+_AGENT_CONFIG_VERB = {"enable": "Enabled", "disable": "Disabled"}
+
+
+def render_agent_config(
+    action: str, agent_id: str, server_name: str, out: TextIO
+) -> None:
+    """Render a `concierge enable` / `concierge disable` confirmation.
+
+    Stage 1A item 1b surface. Short and informational — confirms which
+    `mcp.servers` entry changed in which agent's openclaw.json. The
+    `.bak` sibling the writer leaves behind is not echoed here; the
+    writer logs it, and the path is deterministic from the agent.
+    """
+    verb = _AGENT_CONFIG_VERB.get(action, f"{action}d")
+    out.write(f"{verb}: {server_name}\n")
+    out.write(f"  agent:  {agent_id}\n")
+    out.write(f"  server: {server_name}\n")

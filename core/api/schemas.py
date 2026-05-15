@@ -22,6 +22,17 @@ class ToolOut(BaseModel):
     lifecycle_state: str
     path: Optional[str] = None
     ambient_loading: Optional[bool] = None
+    # Catalog metadata extension (Stage 1A items 4+7). Surfaced on the
+    # API at item 1b so `concierge list-active` can render the use-case
+    # / limitation / ownership / transport prose the ingest populated.
+    # All Optional — NULL for rows predating the ingest.
+    agent_owner: Optional[str] = None
+    best_for: Optional[str] = None
+    limitation: Optional[str] = None
+    prefix: Optional[str] = None
+    transport: Optional[str] = None
+    auth: Optional[str] = None
+    succeeded_by: Optional[str] = None
     pack_id: Optional[int] = None
     pack_slug: Optional[str] = None
     pack_name: Optional[str] = None
