@@ -309,3 +309,107 @@ class TestRawSqlBypass:
             text("SELECT lifecycle_state FROM tools WHERE slug = 'x'")
         ).scalar()
         assert row == "loaded-on-boot"
+
+
+# ---- pending-decision transitions (Stage 1A item 4) -----------------------
+
+
+class TestPendingDecisionTransitions:
+    """`pending-decision` is the sixth lifecycle state, added by Stage 1A
+    item 4 for tools the operator is actively evaluating. The state's
+    semantics:
+
+    - Incoming from `discovered` (operator picks up a known-but-not-loaded
+      row for active evaluation) or from `pending` (a request that needs
+      operator deliberation before approve/deny).
+    - Outgoing: approve → `used` or `loaded-on-boot`; deny → `retired`;
+      park the evaluation → `discovered`.
+
+    The `retired → pending-decision` edge is intentionally illegal — the
+    retired-reinstatement invariant (retired's only exit is `discovered`)
+    extends to this new state: a retired tool cannot silently move to
+    active evaluation without an explicit reinstatement step.
+    """
+
+    def test_discovered_to_pending_decision_legal(self, session: Session):
+        t = _seed(session, slug="stripe", lifecycle_state="discovered")
+        transition_tool_lifecycle(session, t, "pending-decision")
+        session.refresh(t)
+        assert t.lifecycle_state == "pending-decision"
+
+    def test_pending_to_pending_decision_legal(self, session: Session):
+        t = _seed(session, slug="cloudflare", lifecycle_state="pending")
+        transition_tool_lifecycle(session, t, "pending-decision")
+        session.refresh(t)
+        assert t.lifecycle_state == "pending-decision"
+
+    def test_pending_decision_to_loaded_on_boot_legal_approval(
+        self, session: Session
+    ):
+        t = _seed(session, slug="ghl", lifecycle_state="pending-decision")
+        transition_tool_lifecycle(session, t, "loaded-on-boot")
+        session.refresh(t)
+        assert t.lifecycle_state == "loaded-on-boot"
+
+    def test_pending_decision_to_used_legal_session_loaded_approval(
+        self, session: Session
+    ):
+        t = _seed(session, slug="mailerlite", lifecycle_state="pending-decision")
+        transition_tool_lifecycle(session, t, "used")
+        session.refresh(t)
+        assert t.lifecycle_state == "used"
+
+    def test_pending_decision_to_retired_legal_denial(self, session: Session):
+        t = _seed(session, slug="ad-hoc-tool", lifecycle_state="pending-decision")
+        transition_tool_lifecycle(session, t, "retired")
+        session.refresh(t)
+        assert t.lifecycle_state == "retired"
+
+    def test_pending_decision_to_discovered_legal_park(self, session: Session):
+        t = _seed(
+            session, slug="parked-eval", lifecycle_state="pending-decision"
+        )
+        transition_tool_lifecycle(session, t, "discovered")
+        session.refresh(t)
+        assert t.lifecycle_state == "discovered"
+
+    def test_pending_decision_to_pending_illegal(self, session: Session):
+        """`pending` is the request-in-flight state; once an evaluation
+        has been picked up (pending-decision), going back to "request
+        is open" is not modeled — outcomes are approve/deny/park."""
+        t = _seed(session, slug="x", lifecycle_state="pending-decision")
+        with pytest.raises(IllegalLifecycleTransition):
+            transition_tool_lifecycle(session, t, "pending")
+        session.rollback()
+        session.refresh(t)
+        assert t.lifecycle_state == "pending-decision"
+
+    def test_retired_to_pending_decision_illegal(self, session: Session):
+        """Retired-reinstatement invariant: retired's only exit is
+        `discovered`. A retired tool cannot bypass that to land
+        directly in active evaluation."""
+        t = _seed(session, slug="x", lifecycle_state="retired")
+        with pytest.raises(IllegalLifecycleTransition):
+            transition_tool_lifecycle(session, t, "pending-decision")
+        session.rollback()
+        session.refresh(t)
+        assert t.lifecycle_state == "retired"
+
+    def test_pending_decision_self_transition_is_noop(self, session: Session):
+        t = _seed(session, slug="x", lifecycle_state="pending-decision")
+        transition_tool_lifecycle(session, t, "pending-decision")
+        session.refresh(t)
+        assert t.lifecycle_state == "pending-decision"
+
+    def test_insert_with_pending_decision_is_legal(self, session: Session):
+        """Inserts are not validated; ingest can land rows directly in
+        `pending-decision` without a two-step ceremony (matches the
+        precedent for `retired` / `loaded-on-boot` inserts)."""
+        t = Tool(
+            slug="fresh-eval",
+            name="fresh-eval",
+            lifecycle_state="pending-decision",
+        )
+        session.add(t)
+        session.commit()
+        assert t.lifecycle_state == "pending-decision"

@@ -42,7 +42,7 @@ source's active/in-manifest signal). Validation only gates *updates*.
 
 ## Skills-specific lifecycle semantics (Fix Day 3 Task 4)
 
-Skills (`tool_type='skill'`) share the same five-state enum as MCP /
+Skills (`tool_type='skill'`) share the same six-state enum as MCP /
 CLI / HTTP tools, but the state labels carry slightly different
 semantics because skills are ambient-loaded (no per-session install,
 no explicit load step):
@@ -115,16 +115,20 @@ failures don't roll back a validated transition.
 
 _TRANSITIONS: dict[str, frozenset[str]] = {
     # From discovered — known to the catalog, not yet in play. Any
-    # downstream state is reachable as a first move.
+    # downstream state is reachable as a first move, including
+    # `pending-decision` when the operator picks the row up for
+    # active evaluation.
     "discovered": frozenset(
-        {"pending", "used", "loaded-on-boot", "retired"}
+        {"pending", "used", "loaded-on-boot", "retired", "pending-decision"}
     ),
     # From pending — request is in-flight. Approval outcomes are
     # `used` or `loaded-on-boot`; denial sends the row back to
     # `discovered` (tool still known, just not installed) or to
-    # `retired` if the denial is a considered demotion.
+    # `retired` if the denial is a considered demotion. A request
+    # that needs further operator evaluation before approve/deny can
+    # also move to `pending-decision`.
     "pending": frozenset(
-        {"discovered", "used", "loaded-on-boot", "retired"}
+        {"discovered", "used", "loaded-on-boot", "retired", "pending-decision"}
     ),
     # From used — actively exercised. Promotion path is
     # `loaded-on-boot`; demotion paths are `discovered` (usage fell
@@ -140,6 +144,15 @@ _TRANSITIONS: dict[str, frozenset[str]] = {
     # cannot silently become loaded-on-boot without an intermediate
     # "I've decided to reconsider this" step.
     "retired": frozenset({"discovered"}),
+    # From pending-decision — operator is actively evaluating the
+    # tool (typically a Buildable manifest entry or a Stripe/
+    # Cloudflare-style "we have it but don't know yet"). Approval
+    # outcomes are `used` (session-loaded) or `loaded-on-boot`
+    # (auto-loaded); denial outcome is `retired`; parking the
+    # evaluation sends the row back to `discovered`.
+    "pending-decision": frozenset(
+        {"discovered", "used", "loaded-on-boot", "retired"}
+    ),
 }
 
 

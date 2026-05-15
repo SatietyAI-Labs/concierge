@@ -26,15 +26,20 @@ LIFECYCLE_STATE_VALUES = (
     "used",
     "loaded-on-boot",
     "retired",
+    "pending-decision",
 )
 """Tool-level lifecycle states per TOOL-CONCIERGE-OVERVIEW §Tool Lifecycle
 Management and the blueprint-v2 §D audit (third state machine; distinct
 from Request folder state and Request status field).
 
-Transition validation lives in Fix Day 3 (`core/tool_transitions.py`);
-this revision only lands the schema + backfill. Writes happen today via
-normal SQLAlchemy setattr — transitions become gated once the validation
-module is wired in.
+`pending-decision` is for tools the operator is actively evaluating
+(distinct from `discovered`, which means known-but-not-loaded with no
+active evaluation). Originates from the TOOL-MANIFEST.md "BUILDABLE"
+section ("NOT YET BUILT" / "PARTIALLY BUILT" statuses) at ingest, or
+from explicit operator action elsewhere. Transitions out: approve into
+`loaded-on-boot` / `used`, deny into `retired`, park back to `discovered`.
+
+Transition validation lives in `core/tool_transitions.py`.
 """
 
 
@@ -113,6 +118,22 @@ class Tool(Base):
     ambient_loading: Mapped[Optional[bool]] = mapped_column(
         Boolean, nullable=True
     )
+    # Catalog metadata extension (Stage 1A items 4+7). All nullable —
+    # populated by `scripts/ingest_tool_manifest.py` from the live
+    # TOOL-MANIFEST.md, NULL for rows that predate the ingest or for
+    # tools whose manifest entries don't carry the field. `transport`
+    # exists separately on Pack already; per-tool `transport` here is
+    # a different concern (per-tool override / non-MCP transport).
+    # `succeeded_by` is a plain slug reference, not a foreign key —
+    # retirement lineage is informational for the recommendation
+    # engine, not a structural constraint.
+    agent_owner: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    best_for: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    limitation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    prefix: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    transport: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    auth: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    succeeded_by: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
