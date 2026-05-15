@@ -376,3 +376,96 @@ class TestIdentityNotes:
         client = MemoryClient(memory_dir=target)
         client.stats()
         assert target.exists()
+
+
+@pytest.mark.integration
+class TestIdentityPerAgent:
+    """Stage 1A item 8 — `agent_id` / `extra_metadata` on
+    `identity_set` and the per-agent aggregating read
+    `identity_get_agent`. The default-keyed operator tool-prefs note
+    must stay reachable only via no-arg `identity_get` (Finding 3).
+    """
+
+    def test_identity_set_with_agent_id_stored_in_metadata(
+        self, tmp_path: Path
+    ):
+        client = MemoryClient(memory_dir=tmp_path / "store")
+        client.identity_set("scout note", key="agent:scout:identity",
+                            agent_id="scout")
+        meta = client._get_identity_collection().get(
+            ids=["agent:scout:identity"], include=["metadatas"]
+        )["metadatas"][0]
+        assert meta["agent_id"] == "scout"
+
+    def test_identity_set_extra_metadata_stored(self, tmp_path: Path):
+        client = MemoryClient(memory_dir=tmp_path / "store")
+        client.identity_set(
+            "a note", key="agent:radar:identity", agent_id="radar",
+            extra_metadata={"source": "identity-md", "entry": "identity"},
+        )
+        meta = client._get_identity_collection().get(
+            ids=["agent:radar:identity"], include=["metadatas"]
+        )["metadatas"][0]
+        assert meta["source"] == "identity-md"
+        assert meta["entry"] == "identity"
+
+    def test_identity_set_without_agent_id_omits_the_field(
+        self, tmp_path: Path
+    ):
+        """Backward compat: the pre-item-8 call shape stores no
+        `agent_id` metadata key at all.
+        """
+        client = MemoryClient(memory_dir=tmp_path / "store")
+        client.identity_set("legacy-shape note")
+        meta = client._get_identity_collection().get(
+            ids=["default"], include=["metadatas"]
+        )["metadatas"][0]
+        assert "agent_id" not in meta
+
+    def test_identity_get_agent_empty_when_no_entries(self, tmp_path: Path):
+        client = MemoryClient(memory_dir=tmp_path / "store")
+        assert client.identity_get_agent("alfred") == ""
+
+    def test_identity_get_agent_aggregates_sorted_by_key(
+        self, tmp_path: Path
+    ):
+        client = MemoryClient(memory_dir=tmp_path / "store")
+        # Inserted out of key order — read must sort by document id.
+        client.identity_set("rules text", key="agent:alfred:rules",
+                            agent_id="alfred")
+        client.identity_set("identity text", key="agent:alfred:identity",
+                            agent_id="alfred")
+        aggregated = client.identity_get_agent("alfred")
+        # agent:alfred:identity sorts before agent:alfred:rules.
+        assert aggregated == "identity text\n\nrules text"
+
+    def test_identity_get_agent_scopes_by_agent(self, tmp_path: Path):
+        client = MemoryClient(memory_dir=tmp_path / "store")
+        client.identity_set("alfred only", key="agent:alfred:identity",
+                            agent_id="alfred")
+        client.identity_set("bridge only", key="agent:bridge:identity",
+                            agent_id="bridge")
+        assert client.identity_get_agent("alfred") == "alfred only"
+        assert client.identity_get_agent("bridge") == "bridge only"
+
+    def test_identity_get_agent_excludes_default_note(self, tmp_path: Path):
+        """The default tool-prefs note carries no `agent_id` — a
+        per-agent read must never surface it.
+        """
+        client = MemoryClient(memory_dir=tmp_path / "store")
+        client.identity_set("operator tool-prefs summary")
+        client.identity_set("alfred identity", key="agent:alfred:identity",
+                            agent_id="alfred")
+        assert client.identity_get_agent("alfred") == "alfred identity"
+
+    def test_no_arg_identity_get_unaffected_by_agent_entries(
+        self, tmp_path: Path
+    ):
+        """No-arg `identity_get()` keeps returning `key="default"`
+        even after per-agent entries land in the same collection.
+        """
+        client = MemoryClient(memory_dir=tmp_path / "store")
+        client.identity_set("the default note")
+        client.identity_set("alfred identity", key="agent:alfred:identity",
+                            agent_id="alfred")
+        assert client.identity_get() == "the default note"

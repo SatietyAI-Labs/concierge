@@ -21,6 +21,7 @@ import pytest
 
 from core.agent_config.openclaw_writer import (
     AGENT_PATHS,
+    AGENT_ROOTS,
     UnknownAgentError,
     set_mcp_server,
 )
@@ -78,6 +79,35 @@ class TestAgentPaths:
             assert path.name == "openclaw.json", (
                 f"agent {codename} resolved to non-openclaw.json path: {path}"
             )
+
+
+class TestAgentRoots:
+    """`AGENT_ROOTS` (Stage 1A item 8 D2) is the package's canonical
+    codename↔functional-name registry. `AGENT_PATHS` is derived from
+    it; the identity-notes migration derives `<root>/workspace/
+    IDENTITY.md` from it. The two maps must not drift.
+    """
+
+    def test_covers_exactly_the_five_codenames(self):
+        assert set(AGENT_ROOTS.keys()) == {
+            "alfred", "scout", "dispatch", "radar", "bridge",
+        }
+
+    def test_root_to_functional_translation(self):
+        home = Path.home()
+        assert AGENT_ROOTS["alfred"] == home / ".openclaw"
+        assert AGENT_ROOTS["scout"] == home / ".openclaw-content"
+        assert AGENT_ROOTS["dispatch"] == home / ".openclaw-distribution"
+        assert AGENT_ROOTS["radar"] == home / ".openclaw-intelligence"
+        assert AGENT_ROOTS["bridge"] == home / ".openclaw-engagement"
+
+    def test_agent_paths_are_derived_from_roots(self):
+        """`AGENT_PATHS` values stay byte-identical to
+        `<root>/openclaw.json` — derivation, not a second literal map.
+        """
+        assert set(AGENT_PATHS.keys()) == set(AGENT_ROOTS.keys())
+        for codename, root in AGENT_ROOTS.items():
+            assert AGENT_PATHS[codename] == root / "openclaw.json"
 
 
 # ---- Enable (insert / replace) ---------------------------------------------

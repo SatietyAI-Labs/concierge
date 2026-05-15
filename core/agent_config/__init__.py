@@ -22,6 +22,7 @@ verb. Naming honesty for a publicly-released product.
 """
 from core.agent_config.openclaw_writer import (
     AGENT_PATHS,
+    AGENT_ROOTS,
     UnknownAgentError,
     set_mcp_server,
 )
@@ -29,6 +30,7 @@ from core.agent_config.openclaw_writer import (
 
 __all__ = [
     "AGENT_PATHS",
+    "AGENT_ROOTS",
     "UnknownAgentError",
     "set_mcp_server",
 ]

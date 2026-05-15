@@ -55,16 +55,32 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 
-# Codename → openclaw.json path. Strict 5-agent set; functional-name
-# resolution lives here so callers pass codenames (CLAUDE.md §2
-# convention). New agents land by extending this map + the
-# exhaustiveness test in `tests/test_openclaw_writer.py`.
+# Codename → OpenClaw agent root directory. Strict 5-agent set;
+# functional-name resolution lives here so callers pass codenames
+# (CLAUDE.md §2 convention). New agents land by extending this map +
+# the exhaustiveness test in `tests/test_openclaw_writer.py`.
+#
+# This is the package's canonical codename↔functional-name registry.
+# `AGENT_PATHS` (openclaw.json, below) is derived from it; the
+# Stage 1A item 8 identity-notes migration derives
+# `<root>/workspace/IDENTITY.md` from the same map. Per items-8 D2,
+# exposing the root directory (rather than adding a sibling identity-
+# paths map) keeps a single source of truth for the codename→
+# functional translation — no second copy to drift.
+AGENT_ROOTS: dict[str, Path] = {
+    "alfred":   Path.home() / ".openclaw",
+    "scout":    Path.home() / ".openclaw-content",
+    "dispatch": Path.home() / ".openclaw-distribution",
+    "radar":    Path.home() / ".openclaw-intelligence",
+    "bridge":   Path.home() / ".openclaw-engagement",
+}
+
+# Codename → openclaw.json path. Derived from `AGENT_ROOTS` so the
+# two maps cannot drift; values are byte-identical to the pre-item-8
+# literal map.
 AGENT_PATHS: dict[str, Path] = {
-    "alfred":   Path.home() / ".openclaw" / "openclaw.json",
-    "scout":    Path.home() / ".openclaw-content" / "openclaw.json",
-    "dispatch": Path.home() / ".openclaw-distribution" / "openclaw.json",
-    "radar":    Path.home() / ".openclaw-intelligence" / "openclaw.json",
-    "bridge":   Path.home() / ".openclaw-engagement" / "openclaw.json",
+    codename: root / "openclaw.json"
+    for codename, root in AGENT_ROOTS.items()
 }
 
 
