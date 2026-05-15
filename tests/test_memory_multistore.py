@@ -26,6 +26,7 @@ from core.memory import (
     MemoryClient,
     MemoryHit,
     MemoryUnavailableError,
+    _apply_source_store_filter,
     _dedupe_read_stores,
 )
 
@@ -214,6 +215,90 @@ class TestSettingsField:
             Path.home() / "store-a",
             Path.home() / "store-b",
         ]
+
+
+def _hit(store: Path | None, hid: str = "mem_x") -> MemoryHit:
+    """Build a MemoryHit with a given `source_store` for filter tests."""
+    return MemoryHit(
+        id=hid,
+        text="t",
+        similarity=0.5,
+        tags=(),
+        importance="normal",
+        source="s",
+        created_at="2026-05-15T00:00:00",
+        source_store=store,
+    )
+
+
+class TestApplySourceStoreFilter:
+    """Fast unit coverage for the `_apply_source_store_filter` helper —
+    the consumer surface for the `MemoryHit.source_store` field parked
+    by item 2 (DECISIONS D35). Pure function; no ChromaDB touch."""
+
+    def test_none_returns_input_unchanged(self):
+        """`None` is the sole no-op sentinel — returns the input list
+        object itself (zero-copy), the back-compat path."""
+        hits = [_hit(Path("/a")), _hit(Path("/b"))]
+        result = _apply_source_store_filter(
+            hits, None, configured_stores={Path("/a"), Path("/b")}
+        )
+        assert result is hits
+
+    def test_whitelist_keeps_only_matching_stores(self):
+        hits = [
+            _hit(Path("/a"), "m1"),
+            _hit(Path("/b"), "m2"),
+            _hit(Path("/c"), "m3"),
+        ]
+        result = _apply_source_store_filter(
+            hits,
+            {Path("/a"), Path("/c")},
+            configured_stores={Path("/a"), Path("/b"), Path("/c")},
+        )
+        assert [h.id for h in result] == ["m1", "m3"]
+
+    def test_empty_whitelist_returns_empty(self):
+        """Empty set whitelists nothing — distinct from the `None`
+        no-op (D3)."""
+        hits = [_hit(Path("/a")), _hit(Path("/b"))]
+        result = _apply_source_store_filter(
+            hits, set(), configured_stores={Path("/a"), Path("/b")}
+        )
+        assert result == []
+
+    def test_unmatched_paths_warn_once_with_all_paths(self, caplog):
+        """A filter path outside the configured set logs exactly one
+        WARN per call, naming every unmatched path (D6 shape)."""
+        import logging
+
+        hits = [_hit(Path("/a"))]
+        with caplog.at_level(logging.WARNING, logger="core.memory"):
+            _apply_source_store_filter(
+                hits,
+                {Path("/a"), Path("/x"), Path("/y")},
+                configured_stores={Path("/a")},
+            )
+        warns = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warns) == 1, f"expected exactly one WARN; got {len(warns)}"
+        msg = warns[0].getMessage()
+        assert "source_store_filter_unmatched" in msg
+        assert "/x" in msg and "/y" in msg
+        assert "/a" not in msg.split("paths=[")[1].split("]")[0]
+
+    def test_all_matched_paths_do_not_warn(self, caplog):
+        import logging
+
+        hits = [_hit(Path("/a"))]
+        with caplog.at_level(logging.WARNING, logger="core.memory"):
+            _apply_source_store_filter(
+                hits,
+                {Path("/a")},
+                configured_stores={Path("/a"), Path("/b")},
+            )
+        assert [
+            r for r in caplog.records if r.levelname == "WARNING"
+        ] == []
 
 
 # ---- Integration tests --------------------------------------------------
@@ -744,3 +829,220 @@ class TestStatsReportsReadStores:
         entries = {e["path"]: e for e in stats["read_stores"]}
         assert "error" in entries[str(corrupt)]
         assert entries[str(corrupt)].get("total_memories") is None
+
+
+@pytest.mark.integration
+class TestSourceStoreFilter:
+    """End-to-end: `source_store_filter` whitelists `search` / `list`
+    results by originating store — the consumer surface for the
+    `MemoryHit.source_store` field (D35). Mirrors
+    `TestFourReadStoreConfiguration`'s seed-then-query shape on
+    temp-dir ChromaDB."""
+
+    def _seed(self, path: Path, text: str) -> str:
+        return MemoryClient(memory_dir=path).store(
+            text, tags=["test-fixture"], source="seed"
+        )
+
+    def test_whitelist_to_single_store(self, tmp_path: Path):
+        primary = tmp_path / "primary"
+        r1 = tmp_path / "r1"
+        r2 = tmp_path / "r2"
+        self._seed(primary, "primary store entry about CSV tooling")
+        self._seed(r1, "r1 store entry about CSV tooling")
+        self._seed(r2, "r2 store entry about CSV tooling")
+
+        client = MemoryClient(memory_dir=primary, read_stores=[r1, r2])
+        hits = client.search(
+            "CSV tooling", limit=20, source_store_filter={r1}
+        )
+        assert len(hits) == 1
+        assert hits[0].source_store == r1
+
+    def test_whitelist_to_subset_of_stores(self, tmp_path: Path):
+        primary = tmp_path / "primary"
+        r1 = tmp_path / "r1"
+        r2 = tmp_path / "r2"
+        r3 = tmp_path / "r3"
+        self._seed(primary, "primary entry on memory topics")
+        self._seed(r1, "r1 entry on memory topics")
+        self._seed(r2, "r2 entry on memory topics")
+        self._seed(r3, "r3 entry on memory topics")
+
+        client = MemoryClient(
+            memory_dir=primary, read_stores=[r1, r2, r3]
+        )
+        hits = client.search(
+            "memory topics", limit=20, source_store_filter={primary, r2}
+        )
+        assert {h.source_store for h in hits} == {primary, r2}
+
+    def test_whitelist_to_all_stores_equals_no_filter(self, tmp_path: Path):
+        """Whitelisting every configured store is equivalent to no
+        filter — the filter only ever removes, never reorders."""
+        primary = tmp_path / "primary"
+        r1 = tmp_path / "r1"
+        r2 = tmp_path / "r2"
+        self._seed(primary, "primary entry")
+        self._seed(r1, "r1 entry")
+        self._seed(r2, "r2 entry")
+
+        client = MemoryClient(memory_dir=primary, read_stores=[r1, r2])
+        no_filter = client.search("entry", limit=20)
+        all_filter = client.search(
+            "entry", limit=20, source_store_filter={primary, r1, r2}
+        )
+        assert all_filter == no_filter
+        assert len(no_filter) == 3
+
+    def test_empty_whitelist_returns_empty(self, tmp_path: Path):
+        primary = tmp_path / "primary"
+        r1 = tmp_path / "r1"
+        self._seed(primary, "primary entry")
+        self._seed(r1, "r1 entry")
+
+        client = MemoryClient(memory_dir=primary, read_stores=[r1])
+        hits = client.search(
+            "entry", limit=20, source_store_filter=set()
+        )
+        assert hits == []
+
+    def test_filter_path_not_configured_contributes_nothing(
+        self, tmp_path: Path, caplog
+    ):
+        """A filter path matching no configured store contributes
+        nothing and WARN-logs; the configured paths still filter
+        normally."""
+        primary = tmp_path / "primary"
+        r1 = tmp_path / "r1"
+        self._seed(primary, "primary entry")
+        self._seed(r1, "r1 entry")
+        bogus = tmp_path / "never-configured"
+
+        client = MemoryClient(memory_dir=primary, read_stores=[r1])
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="core.memory"):
+            hits = client.search(
+                "entry", limit=20, source_store_filter={r1, bogus}
+            )
+
+        assert {h.source_store for h in hits} == {r1}
+        assert any(
+            "source_store_filter_unmatched" in r.getMessage()
+            and str(bogus) in r.getMessage()
+            for r in caplog.records
+            if r.levelname == "WARNING"
+        ), "expected WARN naming the unconfigured filter path"
+
+    def test_filter_to_configured_but_empty_store_returns_empty(
+        self, tmp_path: Path
+    ):
+        """Whitelisting a configured-but-empty read store (the Gate 4.5
+        worker-store state) returns []."""
+        primary = tmp_path / "primary"
+        empty_r1 = tmp_path / "empty-r1"
+        self._seed(primary, "primary entry")
+        # empty_r1 is configured but never seeded.
+
+        client = MemoryClient(memory_dir=primary, read_stores=[empty_r1])
+        hits = client.search(
+            "entry", limit=20, source_store_filter={empty_r1}
+        )
+        assert hits == []
+
+    def test_source_store_filter_composes_with_tag_filter(
+        self, tmp_path: Path
+    ):
+        """`source_store_filter` and `tag_filter` apply independently —
+        a hit must satisfy both to survive."""
+        primary = tmp_path / "primary"
+        r1 = tmp_path / "r1"
+        MemoryClient(memory_dir=primary).store(
+            "primary keep entry", tags=["keep"]
+        )
+        MemoryClient(memory_dir=primary).store(
+            "primary drop entry", tags=["drop"]
+        )
+        MemoryClient(memory_dir=r1).store("r1 keep entry", tags=["keep"])
+
+        client = MemoryClient(memory_dir=primary, read_stores=[r1])
+        hits = client.search(
+            "entry",
+            limit=20,
+            tag_filter="keep",
+            source_store_filter={primary},
+        )
+        # tag_filter drops "primary drop"; source_store_filter drops
+        # "r1 keep" — only "primary keep" satisfies both.
+        assert [h.text for h in hits] == ["primary keep entry"]
+
+    def test_list_respects_source_store_filter(self, tmp_path: Path):
+        primary = tmp_path / "primary"
+        r1 = tmp_path / "r1"
+        MemoryClient(memory_dir=primary).store("primary entry", tags=["t"])
+        MemoryClient(memory_dir=r1).store("r1 entry", tags=["t"])
+
+        client = MemoryClient(memory_dir=primary, read_stores=[r1])
+        hits = client.list(
+            tag_filter="t", limit=20, source_store_filter={r1}
+        )
+        assert len(hits) == 1
+        assert hits[0].source_store == r1
+        assert hits[0].text == "r1 entry"
+
+
+@pytest.mark.integration
+class TestSourceStoreFilterNoOpInvariant:
+    """Load-bearing regression guard: `source_store_filter=None` is a
+    pure no-op — `search` / `list` results are byte-identical to a
+    call without the kwarg. The filter ships with no production caller
+    (D1 — `_lookup_memory` is not wired this slice), so a silent
+    regression in the no-op semantics would otherwise surface only
+    when the post-Gate-4.5 wiring slice exercises the production path.
+
+    Third instance of the explicit byte-identical-when-absent pin,
+    after item 8's `TestDefaultKeyInvariant` and the recommend-prompt
+    wiring slice's `test_empty_agent_identity_user_prompt_byte_identical`
+    (DECISIONS D71 transferable pattern)."""
+
+    def _seed(self, path: Path, text: str) -> str:
+        return MemoryClient(memory_dir=path).store(
+            text, tags=["test-fixture"], source="seed"
+        )
+
+    def test_search_no_source_store_filter_byte_identical(
+        self, tmp_path: Path
+    ):
+        primary = tmp_path / "primary"
+        r1 = tmp_path / "r1"
+        r2 = tmp_path / "r2"
+        self._seed(primary, "primary entry on shared topic")
+        self._seed(r1, "r1 entry on shared topic")
+        self._seed(r2, "r2 entry on shared topic")
+
+        client = MemoryClient(memory_dir=primary, read_stores=[r1, r2])
+        without_kwarg = client.search("shared topic", limit=20)
+        with_none = client.search(
+            "shared topic", limit=20, source_store_filter=None
+        )
+        assert with_none == without_kwarg
+        # Guard against an empty-fixture false pass.
+        assert len(without_kwarg) == 3
+
+    def test_list_no_source_store_filter_byte_identical(
+        self, tmp_path: Path
+    ):
+        primary = tmp_path / "primary"
+        r1 = tmp_path / "r1"
+        self._seed(primary, "primary list entry")
+        self._seed(r1, "r1 list entry")
+
+        client = MemoryClient(memory_dir=primary, read_stores=[r1])
+        without_kwarg = client.list(tag_filter="test-fixture", limit=20)
+        with_none = client.list(
+            tag_filter="test-fixture", limit=20, source_store_filter=None
+        )
+        assert with_none == without_kwarg
+        assert len(without_kwarg) == 2

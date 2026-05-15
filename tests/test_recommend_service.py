@@ -44,6 +44,12 @@ class FakeMemory:
     raise_on_search: bool = False
     error_msg: str = "chromadb init failed: disk is on fire"
     search_calls: int = 0
+    # Memory-filter slice: `MemoryClient.search` gained an optional
+    # `source_store_filter` kwarg. The double tracks the real contract
+    # so a future slice that wires `_lookup_memory` to pass a filter
+    # can't have the kwarg silently rejected — captured here for
+    # assertion. `_lookup_memory` does not pass it today (D1).
+    last_source_store_filter: Optional[set] = None
     # Identity notes (Fix Day 3 Task 7) — stand-in follows the same
     # shape as MemoryClient: identity_get returns current text ("" if
     # none); raise_on_identity forces the outage path.
@@ -61,8 +67,15 @@ class FakeMemory:
     identity_get_agent_calls: int = 0
     last_identity_get_agent_arg: Optional[str] = None
 
-    def search(self, query: str, *, limit: int = 5):
+    def search(
+        self,
+        query: str,
+        *,
+        source_store_filter: Optional[set] = None,
+        limit: int = 5,
+    ):
         self.search_calls += 1
+        self.last_source_store_filter = source_store_filter
         if self.raise_on_search:
             raise MemoryUnavailableError(self.error_msg)
         return list(self.hits)
