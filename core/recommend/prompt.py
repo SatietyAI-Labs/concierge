@@ -360,6 +360,33 @@ def _render_agent_id(agent_id: Optional[str]) -> str:
     return agent_id.strip()
 
 
+def _render_agent_identity_section(agent_identity: Optional[str]) -> str:
+    """Render the per-agent identity section for the user prompt, or "".
+
+    The calling agent's migrated identity notes (Stage 1A item 8 —
+    `MemoryClient.identity_get_agent`, populated by the identity-notes
+    migration) render as a `# Calling agent identity` section between
+    the `# Context` block and `# Available tools`, expanding on the
+    `- Calling agent:` line with the agent's own role/identity prose.
+
+    Returns `""` when `agent_identity` is None, empty, or
+    whitespace-only — the section collapses entirely (header
+    included), so the user prompt stays byte-identical to a call
+    without per-agent identity. A populated value renders the header,
+    the stripped content, and a trailing blank-line separator so the
+    section slots cleanly before `# Available tools`.
+
+    Distinct from `_render_identity_block` (the operator tool-prefs
+    note): that block lives in the *system* prompt and is identical
+    for every caller; this section lives in the *user* prompt and
+    varies by `agent_id`, so it must stay out of the agent-agnostic
+    system prompt.
+    """
+    if not agent_identity or not agent_identity.strip():
+        return ""
+    return f"# Calling agent identity\n\n{agent_identity.strip()}\n\n"
+
+
 # ---- Public composition API ----------------------------------------------
 
 
@@ -400,6 +427,7 @@ def compose_recommendation_prompt(
     active_tools: Optional[list[str]] = None,
     identity: Optional[str] = None,
     agent_id: Optional[str] = None,
+    agent_identity: Optional[str] = None,
 ) -> ComposedPrompt:
     """Compose the full system + user prompts for one recommendation.
 
@@ -422,10 +450,20 @@ def compose_recommendation_prompt(
     hint, and active tools) so Opus sees who the caller is. When
     absent or whitespace-only, the line still renders with the
     sentinel `(no caller-provided agent identifier)` — symmetric
-    with cwd/task_hint/active_tools. Identity-collection lookup by
-    `agent_id` and memory-search filtering are out of scope here;
-    today this field is signal-only at the prompt layer per
-    DECISIONS Stage 1A item 3.
+    with cwd/task_hint/active_tools.
+
+    `agent_identity` (Stage 1A recommend-prompt wiring slice) is the
+    calling agent's migrated identity notes — the text returned by
+    `MemoryClient.identity_get_agent(agent_id)`. When set and
+    non-empty, it renders as a `# Calling agent identity` section
+    between the `# Context` block and `# Available tools`, expanding
+    on the `- Calling agent:` line with the agent's own role/identity
+    prose. Absent/empty `agent_identity` is a no-op — the section
+    collapses entirely and the user prompt stays byte-identical to a
+    call without per-agent identity. The service passes this only
+    when the request carries an `agent_id`; per-agent identity is a
+    user-prompt concern (it varies by caller) and never enters the
+    agent-agnostic system prompt.
     """
     system_blocks = [CONCIERGE_ADAPTER_PREAMBLE]
     identity_block = _render_identity_block(identity)
@@ -455,6 +493,7 @@ def compose_recommendation_prompt(
         f"- Active tools: {_render_active_tools(active_tools)}\n"
         f"- Calling agent: {_render_agent_id(agent_id)}\n"
         "\n"
+        f"{_render_agent_identity_section(agent_identity)}"
         "# Available tools\n"
         f"{_render_catalog(catalog)}\n"
         "\n"

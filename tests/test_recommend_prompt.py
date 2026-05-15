@@ -265,6 +265,26 @@ class TestUserMessage:
         assert p.user.index("# Task") < p.user.index("# Context")
         assert p.user.index("# Context") < p.user.index("# Available tools")
         assert p.user.index("# Available tools") < p.user.index("# Relevant memory")
+        # Ordering chain extended for the recommend-prompt wiring slice:
+        # when per-agent identity is present, the `# Calling agent
+        # identity` section slots between `# Context` and `# Available
+        # tools`. Positive-ordering assertion (not a closed-set
+        # exhaustiveness guard — the user-prompt section set has no
+        # exhaustive consumer; see DECISIONS item-8 D24 judgment).
+        p_ident = compose_recommendation_prompt(
+            task="T",
+            catalog=[],
+            memory_hits=None,
+            agent_id="scout",
+            agent_identity="Scout — content-prep worker.",
+        )
+        assert (
+            p_ident.user.index("# Task")
+            < p_ident.user.index("# Context")
+            < p_ident.user.index("# Calling agent identity")
+            < p_ident.user.index("# Available tools")
+            < p_ident.user.index("# Relevant memory")
+        )
 
     def test_state_annotations_for_all_four_states(self):
         p = compose_recommendation_prompt(
@@ -825,3 +845,173 @@ class TestAgentIdContext:
             task="t", catalog=[], memory_hits=None, agent_id="scout"
         )
         assert "scout" not in p.system
+
+
+# ---- Recommend-prompt wiring slice — per-agent identity section ----------
+
+
+class TestAgentIdentitySection:
+    """`agent_identity` renders as a `# Calling agent identity` section
+    in the user prompt, between `# Context` and `# Available tools`.
+
+    This is the calling agent's migrated identity notes — the text
+    `MemoryClient.identity_get_agent(agent_id)` returns. It differs
+    from the operator-identity block (`identity`) in two ways:
+
+    - It lives in the *user* prompt, not the system prompt: it varies
+      by `agent_id`, and the system prompt is the agent-agnostic
+      protocol surface (`test_*_does_not_leak_into_system_prompt`).
+    - Absent/empty `agent_identity` collapses the section *entirely*
+      (header included) — the user prompt is byte-identical to a call
+      without per-agent identity. This is the load-bearing invariant
+      (`test_empty_agent_identity_user_prompt_byte_identical`).
+    """
+
+    _IDENTITY = (
+        "Scout — content-prep worker. Drafts LinkedIn posts; hands "
+        "finished drafts to Dispatch. Prefers ripgrep for code search."
+    )
+
+    def test_agent_identity_renders_section(self):
+        p = compose_recommendation_prompt(
+            task="t",
+            catalog=[],
+            memory_hits=None,
+            agent_id="scout",
+            agent_identity=self._IDENTITY,
+        )
+        assert "# Calling agent identity" in p.user
+        assert self._IDENTITY in p.user
+
+    def test_agent_identity_positioned_between_context_and_available_tools(
+        self,
+    ):
+        """Position invariant: the section sits after the `# Context`
+        block and before `# Available tools` — it expands on the
+        `- Calling agent:` line.
+        """
+        p = compose_recommendation_prompt(
+            task="t",
+            catalog=[],
+            memory_hits=None,
+            agent_id="bridge",
+            agent_identity=self._IDENTITY,
+        )
+        ctx_pos = p.user.index("# Context")
+        calling_agent_pos = p.user.index("- Calling agent:")
+        section_pos = p.user.index("# Calling agent identity")
+        avail_pos = p.user.index("# Available tools")
+        assert ctx_pos < calling_agent_pos < section_pos < avail_pos
+
+    def test_agent_identity_none_collapses_section(self):
+        p = compose_recommendation_prompt(
+            task="t", catalog=[], memory_hits=None, agent_identity=None
+        )
+        assert "# Calling agent identity" not in p.user
+
+    def test_agent_identity_empty_string_collapses_section(self):
+        p = compose_recommendation_prompt(
+            task="t", catalog=[], memory_hits=None, agent_identity=""
+        )
+        assert "# Calling agent identity" not in p.user
+
+    def test_agent_identity_whitespace_only_collapses_section(self):
+        """Defensive: a whitespace-only `agent_identity` collapses the
+        section rather than rendering an empty header — same posture
+        as `_render_identity_block` / `_render_agent_id`.
+        """
+        p = compose_recommendation_prompt(
+            task="t",
+            catalog=[],
+            memory_hits=None,
+            agent_identity="   \n\t  ",
+        )
+        assert "# Calling agent identity" not in p.user
+
+    def test_agent_identity_stripped_when_padded(self):
+        """A padded `agent_identity` renders the stripped content — no
+        leading/trailing whitespace leaks into the section body.
+        """
+        p = compose_recommendation_prompt(
+            task="t",
+            catalog=[],
+            memory_hits=None,
+            agent_id="scout",
+            agent_identity="  Scout — content-prep worker.  ",
+        )
+        assert (
+            "# Calling agent identity\n\nScout — content-prep worker.\n\n"
+            in p.user
+        )
+
+    def test_empty_agent_identity_user_prompt_byte_identical(self):
+        """LOAD-BEARING INVARIANT. When `agent_identity` is absent /
+        None / empty / whitespace-only, the composed user prompt is
+        byte-identical to a call that never passed the kwarg, and the
+        system prompt is unconditionally unchanged. This is what
+        guarantees the wiring is a pure no-op until per-agent identity
+        actually exists — mirrors the operator-identity path's
+        `test_empty_identity_prompt_byte_identical_to_pre_identity_composition`.
+        """
+        baseline = compose_recommendation_prompt(
+            task="t",
+            catalog=_sample_catalog(),
+            memory_hits=None,
+            cwd="/home/lewie",
+            task_hint="data-analysis",
+            active_tools=["pandas"],
+            agent_id="scout",
+        )
+        for collapsed in (None, "", "   \n\t  "):
+            p = compose_recommendation_prompt(
+                task="t",
+                catalog=_sample_catalog(),
+                memory_hits=None,
+                cwd="/home/lewie",
+                task_hint="data-analysis",
+                active_tools=["pandas"],
+                agent_id="scout",
+                agent_identity=collapsed,
+            )
+            assert p.user == baseline.user, (
+                f"agent_identity={collapsed!r} must leave the user "
+                f"prompt byte-identical"
+            )
+            assert p.system == baseline.system
+
+    def test_agent_identity_does_not_leak_into_system_prompt(self):
+        """Per-agent identity is caller-specific — it belongs in the
+        user message. A populated `agent_identity` must leave the
+        system prompt byte-identical to a call without it.
+        """
+        p_with = compose_recommendation_prompt(
+            task="t",
+            catalog=[],
+            memory_hits=None,
+            agent_id="scout",
+            agent_identity=self._IDENTITY,
+        )
+        p_without = compose_recommendation_prompt(
+            task="t", catalog=[], memory_hits=None, agent_id="scout"
+        )
+        assert self._IDENTITY not in p_with.system
+        assert p_with.system == p_without.system
+
+    def test_agent_identity_determinism_across_calls(self):
+        """Byte-equality of both prompts across two identical-input
+        calls including `agent_identity` — the determinism contract
+        extends to the new param.
+        """
+        catalog = _sample_catalog()
+        kwargs = dict(
+            task="analyze this CSV",
+            catalog=catalog,
+            memory_hits=None,
+            cwd="/home/lewie",
+            agent_id="scout",
+            agent_identity=self._IDENTITY,
+        )
+        a = compose_recommendation_prompt(**kwargs)
+        b = compose_recommendation_prompt(**kwargs)
+        assert a.system == b.system
+        assert a.user == b.user

@@ -116,17 +116,38 @@ class RecommendationService:
             req.task, request_id=request_id, short=short
         )
 
-        # 1b. Operator identity — Fix Day 3 Fork 4. Same graceful-
+        # 1b. Identity context — two surfaces, same graceful-
         # degradation posture as memory_hits: on outage we pass None
-        # (block collapses); on healthy empty we pass "" (also
-        # collapses); on populated we inject between preamble and X3.
+        # (block collapses); on healthy-empty we pass "" (also
+        # collapses); on populated we inject.
+        #
+        #   - `identity` — the operator tool-prefs note (key="default",
+        #     Fix Day 3 Fork 4); injected into the *system* prompt
+        #     between preamble and X3; identical for every caller.
+        #   - `agent_identity` — the calling agent's migrated identity
+        #     notes (`identity_get_agent`, Stage 1A item 8); injected
+        #     into the *user* prompt as a `# Calling agent identity`
+        #     section; varies by `agent_id`.
+        #
+        # Both reads hit the same ChromaDB identity collection, so one
+        # try block covers both — an outage that drops one drops the
+        # other. `identity_get_agent` is consulted only when the
+        # request carries a non-blank `agent_id`: its signature takes
+        # a required str (a blank value would be a wasted query), and
+        # the stripped value is what the migration stores as the
+        # `agent_id` metadata, so the lookup strips to match.
         identity: Optional[str] = None
+        agent_identity: Optional[str] = None
         try:
             identity = self.memory.identity_get()
+            if req.agent_id and req.agent_id.strip():
+                agent_identity = self.memory.identity_get_agent(
+                    req.agent_id.strip()
+                )
         except MemoryUnavailableError as exc:
             logger.warning(
                 "recommend.identity_unavailable request_id=%s reason=%s: %s "
-                "— serving without identity block",
+                "— serving without identity context",
                 short, type(exc).__name__, exc,
             )
 
@@ -143,6 +164,7 @@ class RecommendationService:
             active_tools=req.active_tools,
             identity=identity,
             agent_id=req.agent_id,
+            agent_identity=agent_identity,
         )
         system_hash = _hash(composed.system)
         user_hash = _hash(composed.user)
@@ -255,7 +277,7 @@ class RecommendationService:
             "memory_hit_count=%d model=%s effort=%s stop_reason=%s "
             "latency_ms_total=%d latency_ms_memory=%d latency_ms_model=%d "
             "latency_ms_parse=%d tokens_in=%d tokens_out=%d rec_count=%d "
-            "agent_id=%s",
+            "agent_id=%s agent_identity_chars=%d",
             short,
             req.task[:80].replace('"', "'"),
             memory_available,
@@ -271,6 +293,7 @@ class RecommendationService:
             call.tokens_out,
             len(recommendations),
             req.agent_id,
+            len(agent_identity) if agent_identity else 0,
         )
 
         # 7. Response
