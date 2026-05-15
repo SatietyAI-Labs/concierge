@@ -32,10 +32,12 @@ class TestRecommendRequest:
             cwd="/home/lewie/work",
             task_hint="data-analysis",
             active_tools=["pandas", "matplotlib"],
+            agent_id="scout",
         )
         assert req.cwd == "/home/lewie/work"
         assert req.task_hint == "data-analysis"
         assert req.active_tools == ["pandas", "matplotlib"]
+        assert req.agent_id == "scout"
 
     def test_empty_task_rejected(self):
         with pytest.raises(ValidationError):
@@ -44,6 +46,30 @@ class TestRecommendRequest:
     def test_task_required(self):
         with pytest.raises(ValidationError):
             RecommendRequest()  # type: ignore[call-arg]
+
+    def test_agent_id_optional(self):
+        """Stage 1A item 3 — `agent_id` defaults to None when omitted.
+
+        Minimal `RecommendRequest(task=...)` construction must keep
+        working unchanged; this is the contract the 30+ existing
+        kwarg-only test fixture sites depend on.
+        """
+        req = RecommendRequest(task="t")
+        assert req.agent_id is None
+
+    def test_agent_id_str_accepted(self):
+        """Stage 1A item 3 — free-text `agent_id` per the platform-
+        agnostic schema contract. No enum constraint; the adapter
+        layer maps native agent identity onto this field.
+        """
+        req = RecommendRequest(task="t", agent_id="scout")
+        assert req.agent_id == "scout"
+
+        # Round-trip through JSON serialization (FastAPI does this on
+        # the wire); ensures pydantic doesn't drop the field at the
+        # serialization boundary.
+        round_trip = RecommendRequest.model_validate_json(req.model_dump_json())
+        assert round_trip.agent_id == "scout"
 
 
 class TestToolRecommendation:

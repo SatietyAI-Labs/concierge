@@ -142,6 +142,7 @@ class RecommendationService:
             task_hint=req.task_hint,
             active_tools=req.active_tools,
             identity=identity,
+            agent_id=req.agent_id,
         )
         system_hash = _hash(composed.system)
         user_hash = _hash(composed.user)
@@ -253,7 +254,8 @@ class RecommendationService:
             'recommend.request request_id=%s task="%s" memory_available=%s '
             "memory_hit_count=%d model=%s effort=%s stop_reason=%s "
             "latency_ms_total=%d latency_ms_memory=%d latency_ms_model=%d "
-            "latency_ms_parse=%d tokens_in=%d tokens_out=%d rec_count=%d",
+            "latency_ms_parse=%d tokens_in=%d tokens_out=%d rec_count=%d "
+            "agent_id=%s",
             short,
             req.task[:80].replace('"', "'"),
             memory_available,
@@ -268,6 +270,7 @@ class RecommendationService:
             call.tokens_in,
             call.tokens_out,
             len(recommendations),
+            req.agent_id,
         )
 
         # 7. Response

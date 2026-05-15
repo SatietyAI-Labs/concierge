@@ -346,6 +346,20 @@ def _render_active_tools(active_tools: Optional[list[str]]) -> str:
     return ", ".join(sorted(active_tools))
 
 
+def _render_agent_id(agent_id: Optional[str]) -> str:
+    """Render the caller-agent identifier line (Stage 1A item 3).
+
+    Always returns a string so the `# Context` block renders a fourth
+    line unconditionally — matches the sentinel pattern used by
+    `cwd` / `task_hint` / `active_tools` above. Strips whitespace
+    defensively; a whitespace-only `agent_id` collapses to the
+    sentinel rather than rendering as an empty value.
+    """
+    if not agent_id or not agent_id.strip():
+        return "(no caller-provided agent identifier)"
+    return agent_id.strip()
+
+
 # ---- Public composition API ----------------------------------------------
 
 
@@ -385,6 +399,7 @@ def compose_recommendation_prompt(
     task_hint: Optional[str] = None,
     active_tools: Optional[list[str]] = None,
     identity: Optional[str] = None,
+    agent_id: Optional[str] = None,
 ) -> ComposedPrompt:
     """Compose the full system + user prompts for one recommendation.
 
@@ -400,6 +415,17 @@ def compose_recommendation_prompt(
     behavioral protocols. Absent/empty identity is a no-op — the
     block collapses entirely and the surrounding blocks stay
     byte-identical to the pre-identity composition.
+
+    `agent_id` (Stage 1A item 3) is an optional caller-agent
+    identifier. When set, it renders as a fourth line in the user
+    prompt's `# Context` block (alongside working directory, task
+    hint, and active tools) so Opus sees who the caller is. When
+    absent or whitespace-only, the line still renders with the
+    sentinel `(no caller-provided agent identifier)` — symmetric
+    with cwd/task_hint/active_tools. Identity-collection lookup by
+    `agent_id` and memory-search filtering are out of scope here;
+    today this field is signal-only at the prompt layer per
+    DECISIONS Stage 1A item 3.
     """
     system_blocks = [CONCIERGE_ADAPTER_PREAMBLE]
     identity_block = _render_identity_block(identity)
@@ -427,6 +453,7 @@ def compose_recommendation_prompt(
         f"- Working directory: {cwd_line}\n"
         f"- Task hint: {hint_line}\n"
         f"- Active tools: {_render_active_tools(active_tools)}\n"
+        f"- Calling agent: {_render_agent_id(agent_id)}\n"
         "\n"
         "# Available tools\n"
         f"{_render_catalog(catalog)}\n"

@@ -455,6 +455,69 @@ class TestContextPropagation:
         assert "pandas" in anthropic.last_user
         assert "csvstat" in anthropic.last_user
 
+    def test_agent_id_flows_from_request_to_prompt(self):
+        """Stage 1A item 3 — `agent_id` plumbs from the request into
+        the composed user prompt's `# Context` block. Asserts the
+        observable signal lands in the user message the Anthropic
+        wrapper receives (parallel to `test_cwd_and_task_hint_reach_prompt`).
+        """
+        memory = FakeMemory(hits=[])
+        anthropic = FakeAnthropic(content=_good_response_json())
+        svc = _service(memory, anthropic)
+        svc.recommend(RecommendRequest(task="t", agent_id="scout"))
+        assert anthropic.last_user is not None
+        assert "- Calling agent: scout" in anthropic.last_user
+
+    def test_agent_id_absent_renders_sentinel_in_prompt(self):
+        """When the request omits agent_id, the prompt still renders
+        the Calling-agent line with the sentinel — same shape as
+        cwd/task_hint defaults. The line is always present so the
+        rendered prompt structure stays constant across calls.
+        """
+        memory = FakeMemory(hits=[])
+        anthropic = FakeAnthropic(content=_good_response_json())
+        svc = _service(memory, anthropic)
+        svc.recommend(RecommendRequest(task="t"))
+        assert anthropic.last_user is not None
+        assert (
+            "- Calling agent: (no caller-provided agent identifier)"
+            in anthropic.last_user
+        )
+
+    def test_agent_id_appears_in_info_request_log(self, caplog):
+        """Stage 1A item 3 — `agent_id` token surfaces on the
+        `recommend.request` INFO line so soak logs attribute calls
+        per agent without re-running the request. Operational-first
+        per DECISIONS [2026-04-21 18:00].
+        """
+        memory = FakeMemory(hits=[])
+        anthropic = FakeAnthropic(content=_good_response_json())
+        svc = _service(memory, anthropic)
+        with caplog.at_level(logging.INFO, logger="core.recommend.service"):
+            svc.recommend(RecommendRequest(task="t", agent_id="scout"))
+        request_lines = [
+            r for r in caplog.records if "recommend.request" in r.message
+        ]
+        assert len(request_lines) == 1
+        assert "agent_id=scout" in request_lines[0].message
+
+    def test_agent_id_none_logs_as_none(self, caplog):
+        """Omitted agent_id logs as `agent_id=None` — keeps the log
+        token shape constant across calls (parses identically to
+        e.g. `session_id`). A soak log reader looking at the
+        recommend.request line knows the slot is always present.
+        """
+        memory = FakeMemory(hits=[])
+        anthropic = FakeAnthropic(content=_good_response_json())
+        svc = _service(memory, anthropic)
+        with caplog.at_level(logging.INFO, logger="core.recommend.service"):
+            svc.recommend(RecommendRequest(task="t"))
+        request_lines = [
+            r for r in caplog.records if "recommend.request" in r.message
+        ]
+        assert len(request_lines) == 1
+        assert "agent_id=None" in request_lines[0].message
+
 
 # ---- Usage-telemetry wiring (Fix Day 3 Task 2) --------------------------
 
