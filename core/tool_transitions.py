@@ -136,8 +136,14 @@ _TRANSITIONS: dict[str, frozenset[str]] = {
     "used": frozenset({"discovered", "loaded-on-boot", "retired"}),
     # From loaded-on-boot — always-on. Can demote to `used` (no
     # longer auto-loaded but still exercised), fully unload to
-    # `discovered`, or retire outright.
-    "loaded-on-boot": frozenset({"used", "discovered", "retired"}),
+    # `discovered`, retire outright, or move to `pending-decision`
+    # when the operator re-opens evaluation of a currently-active
+    # tool without unloading it (the Stripe/Cloudflare "we have it
+    # but its future is uncertain" case — edge added 2026-05-15,
+    # Stage-0 re-scope bundle).
+    "loaded-on-boot": frozenset(
+        {"used", "discovered", "retired", "pending-decision"}
+    ),
     # From retired — operator-demoted. The ONLY legal exit is
     # `discovered`, forcing explicit reinstatement before any other
     # transition. This preserves the audit trail: a retired tool
