@@ -679,6 +679,47 @@ class MemoryClient:
         except Exception as exc:
             raise MemoryUnavailableError(f"memory.stats failed: {exc}") from exc
 
+    def prewarm(self) -> None:
+        """Pay the ChromaDB-client + sentence-transformers warmup tax
+        in a controlled moment — service startup — so an agent's first
+        real `search` / `recommend` call hits an already-warm client
+        instead of hanging on the cold-start tax (§VIII.2 / D88).
+
+        Forces the full primary-store lazy-init chain (`_get_client`
+        → `_get_embedding_fn` → `_get_memories_collection`) and then
+        runs one throwaway embedding forward pass. **The forward pass
+        is load-bearing:** an empty primary store lets `search()` skip
+        `_query_store` entirely, which would initialize ChromaDB
+        without ever exercising the sentence-transformers model — and
+        the model load is the bulk of the 34–55s tax. Embedding a
+        probe string directly makes the warmup store-state-independent.
+
+        Read-only — touches no stored entry and writes nothing.
+
+        Read stores are not warmed here: primary-only per the pre-warm
+        slice scope (`read_stores` is empty pre-Gate-4.5; read-store
+        pre-warm is a Gate-4.5 forward-carry, and read stores share
+        this primary's embedding function regardless).
+
+        Raises:
+            MemoryUnavailableError: on backing-store failure —
+            consistent with every other public method. The
+            service-startup caller (`core.app._prewarm_memory`)
+            catches it so a memory failure never crashes startup.
+        """
+        try:
+            # Forces _get_client + _get_embedding_fn + collection init.
+            self._get_memories_collection()
+            # One throwaway forward pass — the model's first inference,
+            # the part an empty-store search() would never reach.
+            self._get_embedding_fn()(["concierge prewarm probe"])
+        except MemoryUnavailableError:
+            raise
+        except Exception as exc:
+            raise MemoryUnavailableError(
+                f"memory.prewarm failed: {exc}"
+            ) from exc
+
     # ---- Identity notes (Fix Day 3 Task 7) ----------------------------
 
     def identity_get(self, *, key: str = IDENTITY_DEFAULT_KEY) -> str:

@@ -44,6 +44,15 @@ class Settings(BaseSettings):
     def _expand_read_store_paths(cls, v: list[Path]) -> list[Path]:
         return [p.expanduser() for p in v]
 
+    # Cold-start pre-warm (§VIII.2 / D88). When true, the service
+    # schedules a background `MemoryClient.prewarm()` at startup so the
+    # ChromaDB + sentence-transformers warmup tax (34–55s) is paid in a
+    # controlled moment rather than on an agent's first /recommend
+    # call. The test suite sets `CONCIERGE_PREWARM_ON_STARTUP=false`
+    # (tests/conftest.py) so app-construction tests don't load the
+    # embedding model; production inherits the default-on.
+    prewarm_on_startup: bool = True
+
     # Root dir under which the three Claude skills-layout subdirs
     # (`public`, `user`, `examples`) live. Default is the Anthropic-
     # hosted path (Claude.ai / sandboxed-managed harness) — local
