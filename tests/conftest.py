@@ -7,6 +7,8 @@ import os
 # opt back in explicitly by overriding `core.app.get_settings`.
 os.environ.setdefault("CONCIERGE_PREWARM_ON_STARTUP", "false")
 
+import logging
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -17,6 +19,31 @@ from core.app import create_app
 from core.db.base import Base
 from core.db import models  # noqa: F401 — ensure models register on Base.metadata
 from core.db.session import get_db
+
+
+@pytest.fixture(autouse=True)
+def _restore_concierge_logger_families():
+    """Snapshot and restore the `concierge` and `core` family loggers
+    around every test.
+
+    `configure_logging()` — run by the app lifespan in
+    `test_app_lifespan.py` and `test_scanner_endpoint.py` — sets
+    `propagate = False` on both family loggers (so they are immune to
+    Alembic's `fileConfig` reconfiguring the root logger). Without this
+    fixture that leaks into later `caplog`-based tests: `caplog`
+    captures at the *root* logger, so a family logger left at
+    `propagate = False` is no longer observed and those tests fail
+    spuriously depending on collection order.
+    """
+    families = [logging.getLogger(n) for n in ("concierge", "core")]
+    saved = [(lg, lg.level, lg.propagate, lg.handlers[:]) for lg in families]
+    try:
+        yield
+    finally:
+        for lg, level, propagate, handlers in saved:
+            lg.setLevel(level)
+            lg.propagate = propagate
+            lg.handlers[:] = handlers
 
 
 @pytest.fixture
