@@ -971,3 +971,73 @@ def ingest_manifest(source: Path, session: Session) -> ManifestIngestStats:
 
     session.commit()
     return stats
+
+
+# ---- DB export -----------------------------------------------------------
+
+
+def tool_to_manifest_row(tool: Tool) -> ManifestRow:
+    """Reconstruct a ManifestRow from a persisted Tool row — the inverse
+    of the row construction in `ingest_manifest`.
+
+    The DB stores parser-canonical values verbatim (the parser
+    normalizes at parse time; `ingest_manifest` writes without
+    re-touching), so the reconstruction is a plain field copy: no
+    re-normalization is needed here, and `equivalent()` re-applies the
+    idempotent Category-I normalizations on comparison regardless.
+
+    Carries exactly the ManifestRow field set — the Tool columns the
+    parser populates. The remaining Tool columns (id, pack_id, category,
+    install_method, path, ambient_loading, succeeded_by, created_at,
+    updated_at) are DB-managed or out of the manifest's scope and are
+    not represented on ManifestRow. `succeeded_by` in particular is
+    never a manifest field (the parser never sets it; D79) — it is
+    intentionally absent from the round-trip.
+    """
+    return ManifestRow(
+        name=tool.name,
+        slug=tool.slug,
+        tool_type=tool.tool_type,
+        description=tool.description,
+        lifecycle_state=tool.lifecycle_state,
+        is_active=tool.is_active,
+        is_in_manifest=tool.is_in_manifest,
+        agent_owner=tool.agent_owner,
+        best_for=tool.best_for,
+        limitation=tool.limitation,
+        prefix=tool.prefix,
+        transport=tool.transport,
+        auth=tool.auth,
+    )
+
+
+def export_manifest(session: Session) -> str:
+    """Render the SQLite catalog back to canonical manifest markdown —
+    the DB-grounded inverse of `ingest_manifest`.
+
+    Reads every `Tool` row with `is_in_manifest=True` (the rows that
+    originate from a TOOL-MANIFEST.md ingest; catalog/skills-sourced
+    rows and operator-added rows that never appeared in a manifest are
+    excluded), reconstructs ManifestRows, and emits markdown via
+    `dump_manifest`. Rows are ordered by `Tool.id` for deterministic
+    output.
+
+    The emitted markdown is parseable by `iter_manifest_rows()` and
+    round-trips under `equivalent()`. It is NOT a byte-faithful copy of
+    a source manifest: only the tool-bearing sections (ALFRED / AD-HOC /
+    BUILDABLE) are emitted — the worker cross-reference section and the
+    passthrough H2s (FLEET OVERVIEW, SHARED INFRASTRUCTURE, How to Use
+    This Manifest, etc.) carry no DB rows and are intentionally not
+    reconstructed. Round-trip fidelity is asserted over the tool rows
+    via `equivalent()`, not by a raw-text diff of the whole file.
+    """
+    rows = [
+        tool_to_manifest_row(tool)
+        for tool in (
+            session.query(Tool)
+            .filter_by(is_in_manifest=True)
+            .order_by(Tool.id)
+            .all()
+        )
+    ]
+    return dump_manifest(rows)

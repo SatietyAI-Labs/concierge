@@ -89,10 +89,12 @@ from core.ingest.manifest import (
     dump_manifest,
     dump_tool_entry,
     equivalent,
+    export_manifest,
     ingest_manifest,
     iter_manifest_rows,
     parse_compound_status_line,
     resolve_cross_references,
+    tool_to_manifest_row,
 )
 
 
@@ -1081,3 +1083,239 @@ class TestFixtureSanitization:
             f"fixture contains sensitive patterns that must be removed:\n"
             + "\n".join(f"  {p}: {m}" for p, m in leaks)
         )
+
+
+# =========================================================================
+# 13. TestToolToManifestRow — DB row → ManifestRow reconstruction
+# =========================================================================
+
+
+class TestToolToManifestRow:
+    """`tool_to_manifest_row` reconstructs a ManifestRow from a persisted
+    Tool — the inverse of `ingest_manifest`'s row construction. The DB
+    stores parser-canonical values verbatim, so reconstruction is a
+    plain field copy."""
+
+    def test_reconstructs_every_manifestrow_field(self, session: Session):
+        """A fully-populated Tool reconstructs to a ManifestRow whose
+        every field equals the source column."""
+        tool = Tool(
+            slug="firefox-devtools",
+            name="Firefox DevTools",
+            description="Browser automation MCP.",
+            tool_type="mcp",
+            is_in_manifest=True,
+            is_active=True,
+            lifecycle_state="loaded-on-boot",
+            agent_owner="alfred",
+            best_for="Web scraping and form automation.",
+            limitation="Single-tab; no parallel sessions.",
+            prefix="firefox_*",
+            transport="stdio (npx)",
+            auth="none",
+        )
+        session.add(tool)
+        session.commit()
+
+        row = tool_to_manifest_row(tool)
+        assert row.name == "Firefox DevTools"
+        assert row.slug == "firefox-devtools"
+        assert row.tool_type == "mcp"
+        assert row.description == "Browser automation MCP."
+        assert row.lifecycle_state == "loaded-on-boot"
+        assert row.is_active is True
+        assert row.is_in_manifest is True
+        assert row.agent_owner == "alfred"
+        assert row.best_for == "Web scraping and form automation."
+        assert row.limitation == "Single-tab; no parallel sessions."
+        assert row.prefix == "firefox_*"
+        assert row.transport == "stdio (npx)"
+        assert row.auth == "none"
+
+    def test_buildable_tool_type_none_reconstructs(self, session: Session):
+        """A buildable row (tool_type=None) reconstructs with tool_type
+        None — load-bearing for dump_manifest's BUILDABLE bucketing."""
+        tool = Tool(
+            slug="cron-scheduling",
+            name="Cron Scheduling",
+            tool_type=None,
+            is_in_manifest=True,
+            is_active=False,
+            lifecycle_state="pending-decision",
+        )
+        session.add(tool)
+        session.commit()
+        row = tool_to_manifest_row(tool)
+        assert row.tool_type is None
+        assert row.lifecycle_state == "pending-decision"
+        assert row.is_active is False
+
+    def test_null_optional_columns_stay_none(self, session: Session):
+        """Tool optional columns left NULL reconstruct as None on the
+        ManifestRow — no spurious empty strings."""
+        tool = Tool(
+            slug="bare-tool",
+            name="BareTool",
+            tool_type="cli",
+            is_in_manifest=True,
+            is_active=True,
+            lifecycle_state="loaded-on-boot",
+        )
+        session.add(tool)
+        session.commit()
+        row = tool_to_manifest_row(tool)
+        for field_name in (
+            "description", "agent_owner", "best_for", "limitation",
+            "prefix", "transport", "auth",
+        ):
+            assert getattr(row, field_name) is None, field_name
+
+    def test_succeeded_by_not_carried_onto_manifestrow(
+        self, session: Session
+    ):
+        """succeeded_by is not a ManifestRow field — even a Tool with
+        succeeded_by set reconstructs to a row with no such attribute.
+        Pins D79: succeeded_by is outside the manifest round-trip
+        entirely (the parser never sets it; the export never reads it)."""
+        tool = Tool(
+            slug="mailerlite",
+            name="MailerLite",
+            tool_type="mcp",
+            is_in_manifest=True,
+            is_active=False,
+            lifecycle_state="retired",
+            succeeded_by="ghl",
+        )
+        session.add(tool)
+        session.commit()
+        row = tool_to_manifest_row(tool)
+        assert not hasattr(row, "succeeded_by")
+
+
+# =========================================================================
+# 14. TestExportManifest — SQLite catalog → markdown
+# =========================================================================
+
+
+class TestExportManifest:
+    """`export_manifest(session)` renders is_in_manifest=True Tool rows
+    to canonical manifest markdown via dump_manifest."""
+
+    def test_empty_catalog_exports_empty(self, session: Session):
+        """No Tool rows → dump_manifest([]) → a lone newline."""
+        assert export_manifest(session) == "\n"
+
+    def test_excludes_is_in_manifest_false_rows(self, session: Session):
+        """A Tool with is_in_manifest=False is NOT exported — only
+        manifest-sourced rows round-trip; catalog/skills-sourced and
+        operator-added rows are excluded."""
+        session.add(Tool(
+            slug="catalog-only", name="CatalogOnly", tool_type="mcp",
+            is_in_manifest=False, is_active=True,
+            lifecycle_state="loaded-on-boot",
+        ))
+        session.add(Tool(
+            slug="from-manifest", name="FromManifest", tool_type="mcp",
+            is_in_manifest=True, is_active=True,
+            lifecycle_state="loaded-on-boot",
+        ))
+        session.commit()
+        out = export_manifest(session)
+        assert "FromManifest" in out
+        assert "CatalogOnly" not in out
+
+    def test_exported_markdown_reparses_to_the_source_rows(
+        self, session: Session
+    ):
+        """export_manifest output is parseable by iter_manifest_rows and
+        yields exactly the exported rows. The slug is re-derived from
+        the name on re-parse (it is not stored in the markdown), so the
+        row's name and slug are kept consistent here — as every
+        ingest_manifest-written row already is (slug = slugify(name))."""
+        session.add(Tool(
+            slug="reparse-me", name="Reparse Me", tool_type="mcp",
+            is_in_manifest=True, is_active=True,
+            lifecycle_state="loaded-on-boot",
+        ))
+        session.commit()
+        rows, _, _ = iter_manifest_rows(export_manifest(session))
+        assert [r.slug for r in rows] == ["reparse-me"]
+        assert [r.name for r in rows] == ["Reparse Me"]
+
+
+# =========================================================================
+# 15. TestDbRoundTrip — the DB-grounded round-trip (Gate 2 fidelity claim)
+# =========================================================================
+
+
+class TestDbRoundTrip:
+    """The DB-grounded round-trip: ingest_manifest → DB → export_manifest
+    → re-parse must yield rows equivalent to the originals.
+
+    Distinct from TestCapstoneRoundTrip's parse/emit round-trip — this
+    one exercises the SQLite write+read layer, which is the actual
+    fidelity claim Stage 1B Gate 2 exists to verify (the master plan
+    risk register's "catalog ingest loses metadata from TOOL-MANIFEST.md
+    → round-trip diff validation at Gate 2"). A text→parse→emit→reparse
+    round-trip never touches the DB and so cannot catch a metadata-loss
+    bug in the persistence layer."""
+
+    def test_fixture_db_round_trip_equivalent(self, session: Session):
+        """Every fixture row survives ingest → DB → export → re-parse
+        under equivalent(). The DB analogue of
+        test_full_fixture_parse_emit_reparse_equivalent."""
+        rows_a, _, _ = iter_manifest_rows(
+            FIXTURE_PATH.read_text(encoding="utf-8")
+        )
+        ingest_manifest(FIXTURE_PATH, session)
+        rows_b, _, _ = iter_manifest_rows(export_manifest(session))
+        by_slug_a = {r.slug: r for r in rows_a}
+        by_slug_b = {r.slug: r for r in rows_b}
+        assert set(by_slug_a) == set(by_slug_b)
+        for slug in by_slug_a:
+            assert equivalent(by_slug_a[slug], by_slug_b[slug]), (
+                f"DB round-trip failed for {slug!r}:\n"
+                f"  before: {by_slug_a[slug]}\n"
+                f"  after:  {by_slug_b[slug]}"
+            )
+
+    def test_db_round_trip_count_and_slug_set_preserved(
+        self, session: Session
+    ):
+        """No row dropped or added through the DB round-trip; slug set
+        identical. Pins the no-row-lost invariant against the
+        persistence layer specifically."""
+        rows_a, _, _ = iter_manifest_rows(
+            FIXTURE_PATH.read_text(encoding="utf-8")
+        )
+        ingest_manifest(FIXTURE_PATH, session)
+        rows_b, _, _ = iter_manifest_rows(export_manifest(session))
+        assert len(rows_b) == len(rows_a) == 9
+        assert {r.slug for r in rows_b} == {r.slug for r in rows_a}
+
+    def test_db_round_trip_preserves_catalog_metadata(
+        self, session: Session
+    ):
+        """The catalog-metadata fields survive the SQLite layer
+        specifically — the metadata-loss risk Gate 2's round-trip diff
+        exists to catch. AuthedService carries the richest metadata in
+        the fixture: description, best_for, agent_owner, prefix,
+        transport, auth."""
+        ingest_manifest(FIXTURE_PATH, session)
+        tool = session.query(Tool).filter_by(name="AuthedService").one()
+        # Ingest populated the metadata columns from the manifest.
+        assert tool.agent_owner == "alfred"
+        assert tool.auth == "api key (synthetic)"
+        assert tool.transport == "stdio (uvx)"
+        assert tool.prefix == "authed_*"
+        assert tool.best_for is not None
+        assert tool.description is not None
+        # Export → re-parse preserves every one of them.
+        rows_b, _, _ = iter_manifest_rows(export_manifest(session))
+        reparsed = {r.slug: r for r in rows_b}[tool.slug]
+        assert reparsed.agent_owner == tool.agent_owner
+        assert reparsed.auth == tool.auth
+        assert reparsed.transport == tool.transport
+        assert reparsed.prefix == tool.prefix
+        assert reparsed.best_for == tool.best_for
+        assert reparsed.description == tool.description
