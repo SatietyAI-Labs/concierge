@@ -320,8 +320,11 @@ class TestPendingDecisionTransitions:
     semantics:
 
     - Incoming from `discovered` (operator picks up a known-but-not-loaded
-      row for active evaluation) or from `pending` (a request that needs
-      operator deliberation before approve/deny).
+      row for active evaluation), from `pending` (a request that needs
+      operator deliberation before approve/deny), or from `loaded-on-boot`
+      (operator re-opens evaluation of a currently-active tool without
+      unloading it — the Stripe/Cloudflare case; edge added 2026-05-15,
+      Stage-0 re-scope bundle).
     - Outgoing: approve → `used` or `loaded-on-boot`; deny → `retired`;
       park the evaluation → `discovered`.
 
@@ -339,6 +342,16 @@ class TestPendingDecisionTransitions:
 
     def test_pending_to_pending_decision_legal(self, session: Session):
         t = _seed(session, slug="cloudflare", lifecycle_state="pending")
+        transition_tool_lifecycle(session, t, "pending-decision")
+        session.refresh(t)
+        assert t.lifecycle_state == "pending-decision"
+
+    def test_loaded_on_boot_to_pending_decision_legal(self, session: Session):
+        """A currently-active (`loaded-on-boot`) tool can move directly to
+        `pending-decision` — the operator re-opens evaluation without
+        unloading it. Edge added 2026-05-15 (Stage-0 re-scope bundle); the
+        Stripe/Cloudflare "we have it but its future is uncertain" case."""
+        t = _seed(session, slug="stripe", lifecycle_state="loaded-on-boot")
         transition_tool_lifecycle(session, t, "pending-decision")
         session.refresh(t)
         assert t.lifecycle_state == "pending-decision"
