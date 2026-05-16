@@ -469,3 +469,93 @@ class TestIdentityPerAgent:
         client.identity_set("alfred identity", key="agent:alfred:identity",
                             agent_id="alfred")
         assert client.identity_get() == "the default note"
+
+
+@pytest.mark.integration
+class TestPrewarm:
+    """`MemoryClient.prewarm()` — §VIII.2 / D88 cold-start pre-warm.
+
+    Loads sentence-transformers on first run (same cost profile as
+    TestRoundtrip). Verifies prewarm forces the lazy-init chain, is a
+    no-op on store contents, is idempotent, and raises on backing-store
+    failure consistent with the rest of the public surface.
+    """
+
+    def test_prewarm_initializes_client_and_embedding_fn(
+        self, tmp_path: Path
+    ):
+        """prewarm() forces the full primary-store lazy-init chain:
+        ChromaDB client, embedding function, and memories collection
+        all move from None to populated."""
+        client = MemoryClient(memory_dir=tmp_path / "store")
+        assert client._client is None
+        assert client._embedding_fn is None
+        assert client._memories is None
+
+        client.prewarm()
+
+        assert client._client is not None
+        assert client._embedding_fn is not None
+        assert client._memories is not None
+
+    def test_prewarm_does_not_mutate_store_contents(self, tmp_path: Path):
+        """D71/D76 no-op invariant — prewarm() is read-only: it touches
+        no stored entry, adds nothing, removes nothing. Pinned with a
+        dedicated named test per the established byte-identical /
+        no-op discipline (item 8 `TestDefaultKeyInvariant`, the
+        recommend-prompt and memory-filter slices).
+
+        prewarm() embeds a throwaway probe string against the live
+        model, but that forward pass never reaches the `memories`
+        collection — this test is the guard that proves it.
+        """
+        client = MemoryClient(memory_dir=tmp_path / "store")
+        seeded_id = client.store(
+            "prewarm-invariant-entry", tags=["prewarm-test"], source="test"
+        )
+        before = client.list(limit=100)
+        before_ids = {h.id for h in before}
+        assert seeded_id in before_ids
+
+        client.prewarm()
+
+        after = client.list(limit=100)
+        after_ids = {h.id for h in after}
+        assert after_ids == before_ids
+        assert len(after) == len(before)
+        assert client.stats()["total_memories"] == len(before)
+
+    def test_prewarm_is_idempotent(self, tmp_path: Path):
+        """Calling prewarm() twice is safe — the second call is a
+        cheap no-op against already-initialized lazy state."""
+        client = MemoryClient(memory_dir=tmp_path / "store")
+        client.prewarm()
+        client.prewarm()  # must not raise
+        assert client._embedding_fn is not None
+
+    def test_prewarm_warms_a_store_that_can_still_search(
+        self, tmp_path: Path
+    ):
+        """After prewarm(), the client is fully functional — a
+        subsequent store + search round-trips normally. Confirms
+        prewarm() leaves the client in a usable, not a half-built,
+        state."""
+        client = MemoryClient(memory_dir=tmp_path / "store")
+        client.prewarm()
+        client.store("ripgrep is a fast code search tool", tags=["tool"])
+        hits = client.search("search code quickly", limit=5)
+        assert any("ripgrep" in h.text for h in hits)
+
+    def test_prewarm_raises_memory_unavailable_on_bad_store(
+        self, tmp_path: Path
+    ):
+        """prewarm() raises MemoryUnavailableError on backing-store
+        failure — consistent with search/store/list/stats. The
+        service-startup caller catches this so a memory failure never
+        crashes startup. Here the store's parent is a regular file, so
+        ChromaDB's `mkdir(parents=True)` fails at client init."""
+        blocker = tmp_path / "blocker"
+        blocker.write_text("not a directory")
+        client = MemoryClient(memory_dir=blocker / "store")
+        with pytest.raises(MemoryUnavailableError):
+            client.prewarm()

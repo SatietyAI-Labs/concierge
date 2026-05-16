@@ -1,4 +1,5 @@
 """FastAPI application factory."""
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -23,6 +24,7 @@ from core.events import EventBroker
 from core.lifecycle_scanner import run_once as scanner_run_once
 from core.lifecycle_store.store import reconcile as reconcile_lifecycle
 from core.logging import configure_logging
+from core.memory import MemoryUnavailableError, get_memory_client
 from core.recommend.counters import log_shutdown_summary
 
 logger = logging.getLogger("concierge")
@@ -93,6 +95,27 @@ async def lifespan(app: FastAPI):
     app.state.scheduler = scheduler
     logger.info("scheduler.started weekly_scanner=concierge.weekly_scanner")
 
+    # §VIII.2 / D88 — cold-start pre-warm. Schedule a background task
+    # that pays the ChromaDB + sentence-transformers warmup tax
+    # (~34–55s) off the request path, so an agent's first /recommend
+    # call hits an already-warm memory client instead of hanging.
+    # Non-blocking: lifespan yields immediately and /health stays
+    # responsive while warmup runs in a worker thread. The §VIII.2
+    # literal "no-op /memory/search call ~10s after uvicorn comes up"
+    # is errata — there is no /memory/* HTTP endpoint (D84 F1); the
+    # in-process MemoryClient call here is the correct mechanism, and
+    # a background task scheduled at lifespan-yield is already "after
+    # uvicorn comes up" with no artificial delay needed. Disabled via
+    # CONCIERGE_PREWARM_ON_STARTUP=false (the test suite sets this).
+    if settings.prewarm_on_startup:
+        # Strong reference on app.state — asyncio holds only a weak
+        # ref to tasks; without this the task could be GC'd mid-warmup.
+        app.state.prewarm_task = asyncio.create_task(_prewarm_memory())
+        logger.info("memory.prewarm.scheduled")
+    else:
+        app.state.prewarm_task = None
+        logger.info("memory.prewarm.disabled")
+
     yield
 
     # Teardown — stop the scheduler before the event loop winds down
@@ -103,6 +126,15 @@ async def lifespan(app: FastAPI):
         logger.info("scheduler.stopped")
     except Exception as exc:  # pragma: no cover — defensive
         logger.warning("scheduler.shutdown_failed error=%s", exc)
+
+    # Cancel an in-flight pre-warm task — relevant for short-lived
+    # lifespans (e.g. test TestClient contexts) that exit before
+    # warmup completes, so the task does not outlive the event loop
+    # as a dangling pending task.
+    prewarm_task = getattr(app.state, "prewarm_task", None)
+    if prewarm_task is not None and not prewarm_task.done():
+        prewarm_task.cancel()
+        logger.info("memory.prewarm.cancelled")
 
     # Session-level recommendation summary — load-bearing for the
     # 48h operational-shakedown gate per DECISIONS [2026-04-21 18:00].
@@ -140,6 +172,38 @@ def _run_scheduled_scan(app: FastAPI) -> None:
         session.rollback()
     finally:
         session.close()
+
+
+async def _prewarm_memory() -> None:
+    """Background task — pays the MemoryClient warmup tax off the
+    request path (§VIII.2 / D88).
+
+    Warms the `get_memory_client()` process singleton — the exact
+    instance the `/recommend` endpoint resolves via DI — so Scout's
+    first `concierge_recommend` call at Gate 4 hits a warm client.
+    The blocking `prewarm()` runs in a worker thread so the event
+    loop keeps serving requests during the ~34–55s warmup.
+
+    Failure is swallowed with a WARN: a memory-store problem must
+    never crash service startup. The `/recommend` path has its own
+    graceful degradation (`MemoryUnavailableError` → recommendation
+    without memory context), so a failed pre-warm is no worse than
+    the pre-D88 status quo — it just means the tax is paid later, on
+    a real call, exactly as it was before this hook existed.
+    """
+    try:
+        client = get_memory_client()
+        await asyncio.to_thread(client.prewarm)
+        logger.info("memory.prewarm.done")
+    except MemoryUnavailableError as exc:
+        logger.warning("memory.prewarm.unavailable error=%s", exc)
+    except asyncio.CancelledError:
+        # Lifespan teardown cancelled an in-flight warmup — expected
+        # for short-lived lifespans; re-raise so the task settles as
+        # cancelled rather than as a swallowed error.
+        raise
+    except Exception as exc:  # pragma: no cover — defensive
+        logger.warning("memory.prewarm.unexpected_error error=%s", exc)
 
 
 def create_app() -> FastAPI:

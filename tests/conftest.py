@@ -1,3 +1,12 @@
+import os
+
+# Disable the §VIII.2 / D88 cold-start pre-warm for the test suite —
+# app-construction tests that run the lifespan must not load the
+# sentence-transformers model. Set before `get_settings()`'s lru_cache
+# is first populated. The dedicated pre-warm tests (test_app_lifespan.py)
+# opt back in explicitly by overriding `core.app.get_settings`.
+os.environ.setdefault("CONCIERGE_PREWARM_ON_STARTUP", "false")
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
