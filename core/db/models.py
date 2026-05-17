@@ -101,12 +101,12 @@ demotion is a fresh decision (D77). It is meaningful only for
 inertly.
 
 Like `LIFECYCLE_STATE_VALUES` / `TOOL_TYPE_VALUES`, this value set is
-enforced Python-side only: the SQLAlchemy `Enum` built from it renders
-as a plain `VARCHAR` in SQLite with **no CHECK constraint**
-(`create_constraint` defaults False, not overridden). A dedicated
-follow-on slice hardens all three Enum columns with
-`create_constraint=True` together (see the Stage 1B reconciliation +
-pin-status DECISIONS bundle).
+enforced both Python-side (the SQLAlchemy `Enum` type) and at the DB
+level: all three `tools` Enum columns carry `create_constraint=True`
+as of the Stage 1B Enum CHECK-constraint hardening slice (DECISIONS
+D110), so SQLite renders each as `VARCHAR(N)` + a `CONSTRAINT
+<enum-name> CHECK (col IN (...))` and rejects an off-list write at
+the door.
 """
 
 
@@ -158,7 +158,7 @@ class Tool(Base):
     name: Mapped[str] = mapped_column(String(256))
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     tool_type: Mapped[Optional[str]] = mapped_column(
-        Enum(*TOOL_TYPE_VALUES, name="tool_type"),
+        Enum(*TOOL_TYPE_VALUES, name="tool_type", create_constraint=True),
         nullable=True,
         index=True,
     )
@@ -173,7 +173,7 @@ class Tool(Base):
     # `*_drop_tools_is_active` migration. `ACTIVE_LIFECYCLE_STATES` /
     # `DORMANT_LIFECYCLE_STATES` above carry the catalog classification.
     lifecycle_state: Mapped[str] = mapped_column(
-        Enum(*LIFECYCLE_STATE_VALUES, name="lifecycle_state"),
+        Enum(*LIFECYCLE_STATE_VALUES, name="lifecycle_state", create_constraint=True),
         nullable=False,
         default="discovered",
         server_default="discovered",
@@ -184,11 +184,11 @@ class Tool(Base):
     # `auto-managed` default inertly. NOT-NULL with a server_default
     # so the column has a value on every row including the existing
     # catalog (the add-column migration backfills via the default).
-    # `Enum`-typed at the model layer but — like `lifecycle_state` /
-    # `tool_type` — enforced Python-side only: no DB CHECK constraint
-    # until the dedicated Enum-hardening follow-on slice.
+    # `Enum`-typed with a DB-level CHECK constraint — like
+    # `lifecycle_state` / `tool_type`, hardened by the Stage 1B Enum
+    # CHECK-constraint slice (DECISIONS D110).
     pin_status: Mapped[str] = mapped_column(
-        Enum(*PIN_STATUS_VALUES, name="pin_status"),
+        Enum(*PIN_STATUS_VALUES, name="pin_status", create_constraint=True),
         nullable=False,
         default="auto-managed",
         server_default="auto-managed",
