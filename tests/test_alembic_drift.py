@@ -12,11 +12,17 @@ Alembic path against a fresh SQLite, reflects the resulting schema, and
 compares against `Base.metadata.create_all()`'s output.
 
 It compares table set, per-table columns (name + normalized type), per-table
-indexes (name + columns + uniqueness), and per-table FKs (constrained
-columns → referred table + columns). Enum types compile to
-`VARCHAR(N)` + CHECK in SQLite; both paths produce the same VARCHAR so the
-normalized-type comparison stays stable. The `alembic_version` bookkeeping
-table is excluded since it only exists on the migration path.
+indexes (name + columns + uniqueness), per-table FKs (constrained
+columns → referred table + columns), and per-table CHECK constraints (name +
+whitespace-normalized SQL text). Enum types compile to `VARCHAR(N)` + a CHECK
+constraint in SQLite when `create_constraint=True` — the three `tools` Enum
+columns, since the Stage 1B Enum CHECK-hardening slice (DECISIONS D110); both
+paths produce the same VARCHAR and the same CHECK, so the comparison stays
+stable. (Before D110 the Enum columns were plain `VARCHAR` with no CHECK and
+this comparator ignored CHECK constraints entirely — a blind spot the D110
+slice closed, since a migration that forgot a CHECK would otherwise pass.)
+The `alembic_version` bookkeeping table is excluded since it only exists on
+the migration path.
 """
 from __future__ import annotations
 
@@ -34,6 +40,18 @@ from core.db import models  # noqa: F401 — register models on Base.metadata
 
 def _normalize_type(col_type) -> str:
     return str(col_type).upper()
+
+
+def _normalize_check_sql(sqltext: str | None) -> str:
+    """Normalize a reflected CHECK constraint's SQL text for comparison.
+
+    SQLite renders CHECK SQL with cosmetic variation — whitespace around
+    operators and after commas. Collapsing every run of whitespace makes
+    the comparison robust to that rendering noise while staying sensitive
+    to a real difference: a changed value list, operator, or column name
+    survives normalization and is still caught.
+    """
+    return "".join((sqltext or "").split())
 
 
 def _reflect_schema(engine) -> dict[str, dict]:
@@ -58,7 +76,16 @@ def _reflect_schema(engine) -> dict[str, dict]:
             )
             for fk in inspector.get_foreign_keys(table_name)
         )
-        schema[table_name] = {"columns": columns, "indexes": indexes, "fks": fks}
+        checks = frozenset(
+            (ck["name"], _normalize_check_sql(ck["sqltext"]))
+            for ck in inspector.get_check_constraints(table_name)
+        )
+        schema[table_name] = {
+            "columns": columns,
+            "indexes": indexes,
+            "fks": fks,
+            "checks": checks,
+        }
     return schema
 
 
@@ -130,6 +157,15 @@ def _assert_schemas_equal(
             f"  Alembic: {sorted(a['fks'])}\n"
             f"  models: {sorted(m['fks'])}"
         )
+
+        if a["checks"] != m["checks"]:
+            only_a = a["checks"] - m["checks"]
+            only_m = m["checks"] - a["checks"]
+            raise AssertionError(
+                f"CHECK-constraint drift on '{table}':\n"
+                f"  only in Alembic path: {sorted(only_a)}\n"
+                f"  only in models.py: {sorted(only_m)}"
+            )
 
 
 def test_alembic_matches_metadata_create_all(
@@ -558,3 +594,234 @@ def test_alembic_drift_detector_catches_injected_column(
 
     with pytest.raises(AssertionError, match="phantom_drift_column"):
         _assert_schemas_equal(alembic_schema, metadata_schema)
+
+
+def test_enum_check_hardening_migration_round_trips(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stage 1B Enum CHECK-constraint hardening slice (D110) — pin the
+    migration round-trip for `103a85689166_harden_tools_enum_columns_
+    with_check_constraints`, exercised against a POPULATED `tools` table.
+
+    The risk this slice exists for is a CHECK added over a populated
+    table: SQLite has no `ADD CONSTRAINT`, so the batch rebuild creates a
+    new `tools`, copies every row through `INSERT ... SELECT`, and the
+    new CHECK is enforced on that copy. An empty-table upgrade cannot
+    surface a copy-step failure — so this test seeds seven conforming
+    boundary rows BEFORE the upgrade: every `lifecycle_state` value, every
+    `tool_type` (including `NULL` — the CHECK is `tool_type IN (...)`,
+    which `NULL` passes), and both `pin_status` values.
+
+    Upgrades to `103a85689166` and downgrades to `771ddc8fcccf` (its
+    down_revision) by explicit revision name — never relative `-1`/`head`
+    — so the round-trip stays pinned regardless of later migrations.
+
+    Asserts: the seven rows survive the rebuild intact in every
+    direction; the three named CHECK constraints are present after
+    upgrade and absent after downgrade, with the exact value lists; the
+    `tools` schema round-trips byte-for-byte (the Phase A manual DDL
+    check, now a committed assertion).
+    """
+    db = tmp_path / "alembic_enum_check_roundtrip.db"
+
+    # (slug, lifecycle_state, tool_type, pin_status) — conforming rows
+    # covering every boundary value. `tool_type=None` is the NULL probe.
+    seed_rows = [
+        ("rt-discovered", "discovered", None, "auto-managed"),
+        ("rt-pending", "pending", "mcp", "auto-managed"),
+        ("rt-used", "used", "cli", "auto-managed"),
+        ("rt-loaded", "loaded-on-boot", "http", "always-pinned"),
+        ("rt-retired", "retired", "skill", "auto-managed"),
+        ("rt-pending-decision", "pending-decision", "mcp", "auto-managed"),
+        ("rt-on-demand", "on-demand", "cli", "auto-managed"),
+    ]
+    expected_rows = {slug: (lcs, tt, ps) for slug, lcs, tt, ps in seed_rows}
+
+    def _snapshot_rows(database: Path) -> dict:
+        eng = create_engine(f"sqlite:///{database}")
+        try:
+            with eng.connect() as conn:
+                return {
+                    row[0]: (row[1], row[2], row[3])
+                    for row in conn.execute(
+                        text(
+                            "SELECT slug, lifecycle_state, tool_type, "
+                            "pin_status FROM tools ORDER BY slug"
+                        )
+                    ).all()
+                }
+        finally:
+            eng.dispose()
+
+    monkeypatch.setenv("CONCIERGE_DATABASE_PATH", str(db))
+    get_settings.cache_clear()
+    try:
+        settings = get_settings()
+        cfg = Config(str(settings.project_root / "alembic.ini"))
+
+        # Upgrade to the down_revision — `tools` exists, no CHECKs yet —
+        # then seed the boundary rows the migration's rebuild must copy.
+        command.upgrade(cfg, "771ddc8fcccf")
+        engine = create_engine(f"sqlite:///{db}")
+        try:
+            with engine.begin() as conn:
+                for slug, lcs, tt, ps in seed_rows:
+                    conn.execute(
+                        text(
+                            "INSERT INTO tools "
+                            "(slug, name, is_in_manifest, lifecycle_state, "
+                            "tool_type, pin_status) "
+                            "VALUES (:slug, :slug, 1, :lcs, :tt, :ps)"
+                        ),
+                        {"slug": slug, "lcs": lcs, "tt": tt, "ps": ps},
+                    )
+        finally:
+            engine.dispose()
+
+        # Upgrade to the revision under test — the CHECK lands over the
+        # seven populated rows via the batch rebuild's move-and-copy.
+        command.upgrade(cfg, "103a85689166")
+        engine = create_engine(f"sqlite:///{db}")
+        try:
+            after_upgrade = _reflect_schema(engine)
+        finally:
+            engine.dispose()
+        rows_after_upgrade = _snapshot_rows(db)
+
+        # Downgrade to the down_revision by explicit name.
+        command.downgrade(cfg, "771ddc8fcccf")
+        engine = create_engine(f"sqlite:///{db}")
+        try:
+            after_downgrade = _reflect_schema(engine)
+        finally:
+            engine.dispose()
+        rows_after_downgrade = _snapshot_rows(db)
+
+        # Re-upgrade — must land at the same schema as the first upgrade.
+        command.upgrade(cfg, "103a85689166")
+        engine = create_engine(f"sqlite:///{db}")
+        try:
+            after_second_upgrade = _reflect_schema(engine)
+        finally:
+            engine.dispose()
+        rows_after_second_upgrade = _snapshot_rows(db)
+    finally:
+        get_settings.cache_clear()
+
+    # The seven boundary rows survived the batch rebuild's move-and-copy
+    # intact, in every direction — the populated-table risk the slice
+    # exists for. The NULL `tool_type` row in particular was not rejected
+    # by the `tool_type` CHECK.
+    assert rows_after_upgrade == expected_rows
+    assert rows_after_downgrade == expected_rows
+    assert rows_after_second_upgrade == expected_rows
+
+    # The three named CHECK constraints are present after upgrade ...
+    checks_after_upgrade = dict(after_upgrade["tools"]["checks"])
+    assert set(checks_after_upgrade) == {
+        "tool_type",
+        "lifecycle_state",
+        "pin_status",
+    }
+    # ... with the exact value lists (the D124 "assert the headline
+    # claim directly" discipline — not merely that a CHECK exists).
+    assert checks_after_upgrade["tool_type"] == _normalize_check_sql(
+        "tool_type IN ('mcp', 'cli', 'http', 'skill')"
+    )
+    assert checks_after_upgrade["lifecycle_state"] == _normalize_check_sql(
+        "lifecycle_state IN ('discovered', 'pending', 'used', "
+        "'loaded-on-boot', 'retired', 'pending-decision', 'on-demand')"
+    )
+    assert checks_after_upgrade["pin_status"] == _normalize_check_sql(
+        "pin_status IN ('always-pinned', 'auto-managed')"
+    )
+    # ... and absent after downgrade.
+    assert after_downgrade["tools"]["checks"] == frozenset()
+
+    # Symmetry: second upgrade matches first upgrade. With _reflect_schema
+    # capturing CHECK constraints, this equality covers the CHECK clauses
+    # too — the Phase A byte-identical DDL check, now committed.
+    assert after_upgrade == after_second_upgrade, (
+        "Migration round-trip drift detected. Inspect 103a85689166 "
+        "for asymmetric up/down."
+    )
+
+
+def test_alembic_drift_detector_catches_check_constraint_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Meta-test: proves the comparator rejects CHECK-constraint drift.
+
+    The Enum CHECK-hardening slice (D110) made CHECK constraints
+    load-bearing schema and extended `_reflect_schema` to capture them.
+    Before that the comparator ignored CHECKs entirely — a migration
+    that forgot one would pass the drift test. This proves the extension
+    bites: drop one CHECK from a matching schema pair and the comparator
+    must raise. If this test ever starts passing, the CHECK comparison
+    has been weakened and a missing-CHECK migration could slip through.
+    """
+    alembic_db = tmp_path / "alembic.db"
+    metadata_db = tmp_path / "metadata.db"
+
+    monkeypatch.setenv("CONCIERGE_DATABASE_PATH", str(alembic_db))
+    get_settings.cache_clear()
+    try:
+        settings = get_settings()
+        cfg = Config(str(settings.project_root / "alembic.ini"))
+        command.upgrade(cfg, "head")
+
+        alembic_engine = create_engine(f"sqlite:///{alembic_db}")
+        try:
+            alembic_schema = _reflect_schema(alembic_engine)
+        finally:
+            alembic_engine.dispose()
+    finally:
+        get_settings.cache_clear()
+
+    metadata_engine = create_engine(f"sqlite:///{metadata_db}")
+    try:
+        Base.metadata.create_all(metadata_engine)
+        metadata_schema = _reflect_schema(metadata_engine)
+    finally:
+        metadata_engine.dispose()
+
+    # Sanity: the matching pair has the three `tools` CHECKs and compares
+    # equal — the comparator does not false-positive on identical schemas.
+    assert {name for name, _ in alembic_schema["tools"]["checks"]} == {
+        "tool_type",
+        "lifecycle_state",
+        "pin_status",
+    }
+    _assert_schemas_equal(alembic_schema, metadata_schema)
+
+    # Drop the `lifecycle_state` CHECK from one side — the exact shape of
+    # a migration that hardened the model but forgot the CHECK.
+    metadata_schema["tools"]["checks"] = frozenset(
+        c for c in metadata_schema["tools"]["checks"] if c[0] != "lifecycle_state"
+    )
+    with pytest.raises(AssertionError, match="CHECK-constraint drift"):
+        _assert_schemas_equal(alembic_schema, metadata_schema)
+
+
+def test_check_sql_normalization_ignores_cosmetic_rendering() -> None:
+    """`_normalize_check_sql` collapses cosmetic SQLite rendering noise
+    (whitespace around operators / after commas) so the same constraint
+    compares equal across the Alembic and `create_all` paths — while a
+    real difference (a changed value list) still survives normalization
+    and is caught.
+    """
+    spaced = "lifecycle_state IN ('discovered', 'pending', 'used')"
+    tight = "lifecycle_state IN ('discovered','pending','used')"
+    extra = "lifecycle_state  IN  ( 'discovered' , 'pending' , 'used' )"
+    assert (
+        _normalize_check_sql(spaced)
+        == _normalize_check_sql(tight)
+        == _normalize_check_sql(extra)
+    )
+
+    # A genuine difference — one value dropped — is NOT normalized away.
+    shorter = "lifecycle_state IN ('discovered', 'pending')"
+    assert _normalize_check_sql(spaced) != _normalize_check_sql(shorter)
+
+    # Defensive: a None sqltext normalizes without raising.
+    assert _normalize_check_sql(None) == ""
