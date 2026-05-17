@@ -255,11 +255,13 @@ main.container {
 }
 
 /* Lifecycle state badges (Tool Registry cards) */
-.badge-discovered      { background-color: #e0e7ff; color: #3730a3; }
-.badge-pending         { background-color: #fef3c7; color: #92400e; }
-.badge-used            { background-color: #d1fae5; color: #065f46; }
-.badge-loaded-on-boot  { background-color: #cffafe; color: #155e75; }
-.badge-retired         { background-color: #f3f4f6; color: #4b5563; }
+.badge-discovered       { background-color: #e0e7ff; color: #3730a3; }
+.badge-pending          { background-color: #fef3c7; color: #92400e; }
+.badge-used             { background-color: #d1fae5; color: #065f46; }
+.badge-loaded-on-boot   { background-color: #cffafe; color: #155e75; }
+.badge-retired          { background-color: #f3f4f6; color: #4b5563; }
+.badge-pending-decision { background-color: #ffedd5; color: #9a3412; }
+.badge-on-demand        { background-color: #ccfbf1; color: #115e59; }
 
 /* Confidence badges (Pending Inbox cards) */
 .badge-confidence-high   { background-color: #d1fae5; color: #065f46; }

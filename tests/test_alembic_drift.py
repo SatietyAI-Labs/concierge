@@ -25,7 +25,7 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, text
 
 from core.config import get_settings
 from core.db.base import Base
@@ -165,6 +165,14 @@ def test_request_escalation_target_migration_round_trips(
     that drifts the up/down inverse relationship — same shape as
     items-4+7's lifecycle_state migration round-trip discipline
     pinned implicitly at items-4+7 close.
+
+    Downgrades to `fa46ebdf05b9` (e17b8137cade's down_revision) by
+    explicit name rather than the relative `-1`: once later
+    migrations stack on top of e17b8137cade, `-1` from head no
+    longer targets this migration. Targeting the down_revision by
+    name keeps the round-trip pinned on e17b8137cade regardless of
+    how many revisions follow it (the Stage 1B reconciliation slice
+    added the first such follow-on, `c9d2f7a4e10b`).
     """
     db = tmp_path / "alembic_roundtrip.db"
 
@@ -182,8 +190,9 @@ def test_request_escalation_target_migration_round_trips(
         finally:
             engine.dispose()
 
-        # Downgrade one revision (undo item 5's migration).
-        command.downgrade(cfg, "-1")
+        # Downgrade to e17b8137cade's down_revision — undoes item 5's
+        # migration (and any revisions stacked above it).
+        command.downgrade(cfg, "fa46ebdf05b9")
         engine = create_engine(f"sqlite:///{db}")
         try:
             after_downgrade = _reflect_schema(engine)
@@ -218,6 +227,102 @@ def test_request_escalation_target_migration_round_trips(
         "after downgrade-then-upgrade to match the schema after the "
         "first upgrade. Inspect e17b8137cade for asymmetric up/down."
     )
+
+
+def test_on_demand_lifecycle_state_migration_round_trips(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stage 1B reconciliation slice, Phase A0 — pin the migration
+    round-trip for `c9d2f7a4e10b_add_on_demand_lifecycle_state` and
+    exercise its downgrade demotion guard with a real row.
+
+    The Concierge `Enum` columns carry no DB-level CHECK constraint
+    (SQLAlchemy 2.x `Enum` defaults to `create_constraint=False`;
+    `lifecycle_state` is a plain `VARCHAR(16)` — see the c9d2f7a4e10b
+    docstring). So the migration's `upgrade()` is a schema-level no-op
+    on SQLite, and the reflected schema is identical at head and at
+    the down_revision — asserted below as the round-trip invariant.
+
+    The one observable effect is `downgrade()`'s data-hygiene UPDATE:
+    a seeded `on-demand` row is demoted to `discovered` so no row
+    carries a value the code-at-that-revision no longer knows. This
+    test seeds such a row and confirms the demotion — the first real
+    exercise of the `on-demand` downgrade guard.
+
+    Downgrades to `e17b8137cade` (this migration's down_revision) by
+    explicit name, not relative `-1`, so a later migration stacked on
+    top (Phase A's pin_status column) does not silently re-target it.
+    """
+    db = tmp_path / "alembic_on_demand_roundtrip.db"
+
+    monkeypatch.setenv("CONCIERGE_DATABASE_PATH", str(db))
+    get_settings.cache_clear()
+    try:
+        settings = get_settings()
+        cfg = Config(str(settings.project_root / "alembic.ini"))
+
+        # First upgrade to head — the 7-value Enum model is in place.
+        command.upgrade(cfg, "head")
+        engine = create_engine(f"sqlite:///{db}")
+        try:
+            after_first_upgrade = _reflect_schema(engine)
+            # Seed a real on-demand row so the downgrade guard has
+            # something to demote.
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "INSERT INTO tools "
+                        "(slug, name, lifecycle_state, is_in_manifest, is_active) "
+                        "VALUES ('od-probe', 'od-probe', 'on-demand', 1, 0)"
+                    )
+                )
+        finally:
+            engine.dispose()
+
+        # Downgrade to this migration's down_revision by name.
+        command.downgrade(cfg, "e17b8137cade")
+        engine = create_engine(f"sqlite:///{db}")
+        try:
+            after_downgrade = _reflect_schema(engine)
+            with engine.connect() as conn:
+                probe_state_after_downgrade = conn.execute(
+                    text(
+                        "SELECT lifecycle_state FROM tools "
+                        "WHERE slug = 'od-probe'"
+                    )
+                ).scalar()
+        finally:
+            engine.dispose()
+
+        # Re-upgrade to head — should land at the same schema as the
+        # first upgrade.
+        command.upgrade(cfg, "head")
+        engine = create_engine(f"sqlite:///{db}")
+        try:
+            after_second_upgrade = _reflect_schema(engine)
+        finally:
+            engine.dispose()
+    finally:
+        get_settings.cache_clear()
+
+    # The downgrade's data-hygiene guard demoted the seeded `on-demand`
+    # row to `discovered` — the row no longer carries a value the
+    # reverted (6-value) code knows nothing about.
+    assert probe_state_after_downgrade == "discovered"
+
+    # Symmetry: second upgrade matches first upgrade — the `tools`
+    # schema round-trips through downgrade-then-upgrade.
+    assert after_first_upgrade == after_second_upgrade, (
+        "Migration round-trip drift detected. Inspect c9d2f7a4e10b "
+        "for asymmetric up/down."
+    )
+    # The migration is schema-invisible on SQLite (the Enum carries no
+    # CHECK; `lifecycle_state` stays `VARCHAR(16)` — `pending-decision`
+    # remains the longest value). The reflected schema at the
+    # down_revision is therefore identical to head; pinning that here
+    # documents the no-op and would catch a future edit that made the
+    # migration accidentally schema-affecting.
+    assert after_downgrade == after_first_upgrade
 
 
 def test_alembic_drift_detector_catches_injected_column(

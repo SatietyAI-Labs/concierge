@@ -5,10 +5,11 @@ state machine. Per blueprint-v2 §D audit and DECISIONS
 `[2026-04-25 Fix Day 2]`, the `Tool.lifecycle_state` column is the
 **third** state machine in the Concierge data model (distinct from
 Request folder state and Request status field). Its vocabulary
-(`discovered` / `pending` / `used` / `loaded-on-boot` / `retired`)
-captures how a catalog entry moves from candidacy through usage to
-retirement; this module defines the legal transitions between those
-states and enforces them on every ORM write.
+(`discovered` / `pending` / `used` / `loaded-on-boot` / `retired` /
+`pending-decision` / `on-demand`) captures how a catalog entry moves
+from candidacy through usage to retirement; this module defines the
+legal transitions between those states and enforces them on every
+ORM write.
 
 **Enforcement strategy — hybrid (per Fix Day 3 Fork 1 ruling):**
 
@@ -117,32 +118,43 @@ _TRANSITIONS: dict[str, frozenset[str]] = {
     # From discovered — known to the catalog, not yet in play. Any
     # downstream state is reachable as a first move, including
     # `pending-decision` when the operator picks the row up for
-    # active evaluation.
+    # active evaluation, and `on-demand` when the operator settles a
+    # catalogued tool as kept-but-not-boot-loaded. (The
+    # `test_every_state_reachable_from_discovered` invariant requires
+    # every state be reachable from `discovered`.)
     "discovered": frozenset(
-        {"pending", "used", "loaded-on-boot", "retired", "pending-decision"}
+        {"pending", "used", "loaded-on-boot", "retired", "pending-decision",
+         "on-demand"}
     ),
     # From pending — request is in-flight. Approval outcomes are
-    # `used` or `loaded-on-boot`; denial sends the row back to
+    # `used`, `loaded-on-boot`, or `on-demand` (approved + installed
+    # but deliberately not boot-loaded); denial sends the row back to
     # `discovered` (tool still known, just not installed) or to
     # `retired` if the denial is a considered demotion. A request
     # that needs further operator evaluation before approve/deny can
     # also move to `pending-decision`.
     "pending": frozenset(
-        {"discovered", "used", "loaded-on-boot", "retired", "pending-decision"}
+        {"discovered", "used", "loaded-on-boot", "retired", "pending-decision",
+         "on-demand"}
     ),
     # From used — actively exercised. Promotion path is
     # `loaded-on-boot`; demotion paths are `discovered` (usage fell
-    # off) or `retired` (explicit demotion).
+    # off) or `retired` (explicit demotion). `used → on-demand` is
+    # intentionally NOT modelled — `used` is kept deliberately narrow
+    # (mirrors the deliberate exclusion of `used → pending-decision`,
+    # D82); a future micro-edit adds it if a real case appears.
     "used": frozenset({"discovered", "loaded-on-boot", "retired"}),
     # From loaded-on-boot — always-on. Can demote to `used` (no
     # longer auto-loaded but still exercised), fully unload to
-    # `discovered`, retire outright, or move to `pending-decision`
-    # when the operator re-opens evaluation of a currently-active
-    # tool without unloading it (the Stripe/Cloudflare "we have it
-    # but its future is uncertain" case — edge added 2026-05-15,
-    # Stage-0 re-scope bundle).
+    # `discovered`, retire outright, move to `pending-decision` when
+    # the operator re-opens evaluation of a currently-active tool
+    # without unloading it (the Stripe/Cloudflare "we have it but its
+    # future is uncertain" case — edge added 2026-05-15, Stage-0
+    # re-scope bundle), or move to `on-demand` — keep the tool but
+    # drop it off the boot context budget (the ElevenLabs case;
+    # edge added 2026-05-16, Stage-1B reconciliation slice).
     "loaded-on-boot": frozenset(
-        {"used", "discovered", "retired", "pending-decision"}
+        {"used", "discovered", "retired", "pending-decision", "on-demand"}
     ),
     # From retired — operator-demoted. The ONLY legal exit is
     # `discovered`, forcing explicit reinstatement before any other
@@ -153,11 +165,26 @@ _TRANSITIONS: dict[str, frozenset[str]] = {
     # From pending-decision — operator is actively evaluating the
     # tool (typically a Buildable manifest entry or a Stripe/
     # Cloudflare-style "we have it but don't know yet"). Approval
-    # outcomes are `used` (session-loaded) or `loaded-on-boot`
-    # (auto-loaded); denial outcome is `retired`; parking the
-    # evaluation sends the row back to `discovered`.
+    # outcomes are `used` (session-loaded), `loaded-on-boot`
+    # (auto-loaded), or `on-demand` (kept but not boot-loaded);
+    # denial outcome is `retired`; parking the evaluation sends the
+    # row back to `discovered`.
     "pending-decision": frozenset(
-        {"discovered", "used", "loaded-on-boot", "retired"}
+        {"discovered", "used", "loaded-on-boot", "retired", "on-demand"}
+    ),
+    # From on-demand — a settled state: the tool is installed and
+    # usable but deliberately kept off the boot context budget. Peer
+    # to `loaded-on-boot` (the other settled-active state). Can
+    # promote to `loaded-on-boot` (operator decides it belongs at
+    # boot after all — without this edge `on-demand` is a one-way
+    # trap), fully unload to `discovered`, retire outright, or move
+    # to `pending-decision` when the operator re-opens evaluation of
+    # a kept tool. `on-demand → used` is not modelled (`on-demand`
+    # is already non-boot-usable; the demote slot points at
+    # `loaded-on-boot`); `on-demand → pending` is not modelled (a
+    # catalogued kept tool is not in the request pipeline).
+    "on-demand": frozenset(
+        {"loaded-on-boot", "discovered", "retired", "pending-decision"}
     ),
 }
 

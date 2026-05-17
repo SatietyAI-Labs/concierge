@@ -137,12 +137,14 @@ def test_tool_lifecycle_state_defaults_to_discovered(db_session: Session):
     assert tool.lifecycle_state == "discovered"
 
 
-def test_tool_lifecycle_state_accepts_all_six_values(db_session: Session):
-    """All six lifecycle states (the original five plus `pending-decision`
-    from Stage 1A item 4) are persistable as Tool.lifecycle_state values.
-    The assertion derives the expected set from LIFECYCLE_STATE_VALUES so
-    a seventh state landing later doesn't need a parallel test rewrite —
-    just renaming this test."""
+def test_tool_lifecycle_state_accepts_all_seven_values(db_session: Session):
+    """All seven lifecycle states (the original five, plus `pending-decision`
+    from Stage 1A item 4 and `on-demand` from the Stage 1B reconciliation
+    slice) are persistable as Tool.lifecycle_state values. The assertion
+    derives the expected set from LIFECYCLE_STATE_VALUES so an eighth state
+    landing later doesn't need a parallel test rewrite — just renaming this
+    test (the D24 forward-update pattern: this rename is the guard working
+    as designed)."""
     for i, state in enumerate(models.LIFECYCLE_STATE_VALUES):
         db_session.add(
             models.Tool(slug=f"ls-{i}", name=f"ls-{i}", lifecycle_state=state)
