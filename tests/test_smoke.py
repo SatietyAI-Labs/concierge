@@ -1,5 +1,8 @@
-def test_health_endpoint(client):
-    response = client.get("/health")
+def test_health_endpoint(client_with_db):
+    # D111 — routed through `client_with_db` (overridden `get_db` → in-memory
+    # session) rather than a bare `TestClient(create_app())`, so this smoke
+    # check never reads the production catalog DB via the real engine.
+    response = client_with_db.get("/health")
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
