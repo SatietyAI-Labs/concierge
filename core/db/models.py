@@ -55,6 +55,39 @@ Transition validation lives in `core/tool_transitions.py`.
 """
 
 
+PIN_STATUS_VALUES = (
+    "always-pinned",
+    "auto-managed",
+)
+"""Operator-pin authority class for a tool's residence in
+`loaded-on-boot` (DECISIONS D77).
+
+- `always-pinned` — stays in `loaded-on-boot` regardless of usage
+  telemetry. Concierge's autonomous lifecycle logic may not demote it,
+  flag it for retirement on a usage signal, or transition it out of
+  `loaded-on-boot`. Only the operator removes the pin. The canonical
+  case is a tool whose value is invisible to usage telemetry (e.g.
+  Alfred's semantic-memory MCP — always used by necessity, never
+  tripping usage counters).
+- `auto-managed` — in `loaded-on-boot` but Concierge-managed; usage
+  telemetry drives its fate. The default for every row.
+
+Pin status is a property of the tool's *current residence* in
+`loaded-on-boot`, not a permanent property — re-promotion after a
+demotion is a fresh decision (D77). It is meaningful only for
+`loaded-on-boot` rows; non-boot rows carry the `auto-managed` default
+inertly.
+
+Like `LIFECYCLE_STATE_VALUES` / `TOOL_TYPE_VALUES`, this value set is
+enforced Python-side only: the SQLAlchemy `Enum` built from it renders
+as a plain `VARCHAR` in SQLite with **no CHECK constraint**
+(`create_constraint` defaults False, not overridden). A dedicated
+follow-on slice hardens all three Enum columns with
+`create_constraint=True` together (see the Stage 1B reconciliation +
+pin-status DECISIONS bundle).
+"""
+
+
 USAGE_EVENT_TYPE_VALUES = (
     "recommended",
     "installed",
@@ -119,6 +152,21 @@ class Tool(Base):
         nullable=False,
         default="discovered",
         server_default="discovered",
+        index=True,
+    )
+    # Operator-pin authority class (DECISIONS D77). Meaningful for
+    # rows residing in `loaded-on-boot`; every other row carries the
+    # `auto-managed` default inertly. NOT-NULL with a server_default
+    # so the column has a value on every row including the existing
+    # catalog (the add-column migration backfills via the default).
+    # `Enum`-typed at the model layer but — like `lifecycle_state` /
+    # `tool_type` — enforced Python-side only: no DB CHECK constraint
+    # until the dedicated Enum-hardening follow-on slice.
+    pin_status: Mapped[str] = mapped_column(
+        Enum(*PIN_STATUS_VALUES, name="pin_status"),
+        nullable=False,
+        default="auto-managed",
+        server_default="auto-managed",
         index=True,
     )
     # Skills-specific fields (tool_type='skill'). Both nullable for

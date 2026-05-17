@@ -39,6 +39,14 @@
                         <header>
                             <strong>{{ tool.name }}</strong>
                             <span class="badge badge-{{ tool.lifecycle_state }}">{{ tool.lifecycle_state }}</span>
+                            {# Pin status (D77) is meaningful only for a tool
+                               residing in loaded-on-boot — the at-a-glance
+                               operator-reserved vs. Concierge-managed
+                               distinction. Shown only there; every other row
+                               carries the auto-managed default inertly. #}
+                            {% if tool.lifecycle_state == 'loaded-on-boot' %}
+                                <span class="badge badge-pin-{{ tool.pin_status }}">{{ tool.pin_status }}</span>
+                            {% endif %}
                         </header>
                         <dl>
                             <dt>Type</dt><dd>{{ tool.tool_type or '—' }}</dd>

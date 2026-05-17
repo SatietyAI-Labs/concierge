@@ -249,9 +249,12 @@ def test_on_demand_lifecycle_state_migration_round_trips(
     test seeds such a row and confirms the demotion — the first real
     exercise of the `on-demand` downgrade guard.
 
-    Downgrades to `e17b8137cade` (this migration's down_revision) by
-    explicit name, not relative `-1`, so a later migration stacked on
-    top (Phase A's pin_status column) does not silently re-target it.
+    Upgrades to `c9d2f7a4e10b` explicitly (the revision under test —
+    not `head`) and downgrades to `e17b8137cade` (its down_revision)
+    by name. Targeting both endpoints by revision rather than `head` /
+    `-1` isolates this one migration's round-trip regardless of how
+    many revisions stack on top of it — Phase A's `d8a3f0b62c14`
+    pin_status migration is the first such follow-on.
     """
     db = tmp_path / "alembic_on_demand_roundtrip.db"
 
@@ -261,8 +264,9 @@ def test_on_demand_lifecycle_state_migration_round_trips(
         settings = get_settings()
         cfg = Config(str(settings.project_root / "alembic.ini"))
 
-        # First upgrade to head — the 7-value Enum model is in place.
-        command.upgrade(cfg, "head")
+        # First upgrade to the revision under test — the 7-value Enum
+        # model is in place.
+        command.upgrade(cfg, "c9d2f7a4e10b")
         engine = create_engine(f"sqlite:///{db}")
         try:
             after_first_upgrade = _reflect_schema(engine)
@@ -294,9 +298,9 @@ def test_on_demand_lifecycle_state_migration_round_trips(
         finally:
             engine.dispose()
 
-        # Re-upgrade to head — should land at the same schema as the
-        # first upgrade.
-        command.upgrade(cfg, "head")
+        # Re-upgrade to the revision under test — should land at the
+        # same schema as the first upgrade.
+        command.upgrade(cfg, "c9d2f7a4e10b")
         engine = create_engine(f"sqlite:///{db}")
         try:
             after_second_upgrade = _reflect_schema(engine)
@@ -323,6 +327,74 @@ def test_on_demand_lifecycle_state_migration_round_trips(
     # documents the no-op and would catch a future edit that made the
     # migration accidentally schema-affecting.
     assert after_downgrade == after_first_upgrade
+
+
+def test_pin_status_migration_round_trips(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stage 1B reconciliation slice, Phase A — pin the migration
+    round-trip for `d8a3f0b62c14_add_tool_pin_status`.
+
+    Unlike the `on-demand` migration (a schema-level no-op — an Enum
+    value-set change with no CHECK), this one is a real schema change:
+    it adds the `pin_status` column and the `ix_tools_pin_status`
+    index. The downgrade is the inverse (drop index, drop column) and
+    the second upgrade must land at the same schema as the first.
+
+    Upgrades to `d8a3f0b62c14` and downgrades to `c9d2f7a4e10b` (its
+    down_revision) by explicit revision name — stable regardless of
+    later migrations stacking on top.
+    """
+    db = tmp_path / "alembic_pin_status_roundtrip.db"
+
+    monkeypatch.setenv("CONCIERGE_DATABASE_PATH", str(db))
+    get_settings.cache_clear()
+    try:
+        settings = get_settings()
+        cfg = Config(str(settings.project_root / "alembic.ini"))
+
+        command.upgrade(cfg, "d8a3f0b62c14")
+        engine = create_engine(f"sqlite:///{db}")
+        try:
+            after_first_upgrade = _reflect_schema(engine)
+        finally:
+            engine.dispose()
+
+        command.downgrade(cfg, "c9d2f7a4e10b")
+        engine = create_engine(f"sqlite:///{db}")
+        try:
+            after_downgrade = _reflect_schema(engine)
+        finally:
+            engine.dispose()
+
+        command.upgrade(cfg, "d8a3f0b62c14")
+        engine = create_engine(f"sqlite:///{db}")
+        try:
+            after_second_upgrade = _reflect_schema(engine)
+        finally:
+            engine.dispose()
+    finally:
+        get_settings.cache_clear()
+
+    # Upgrade added the column; downgrade removed it.
+    assert "pin_status" in after_first_upgrade["tools"]["columns"]
+    assert "pin_status" not in after_downgrade["tools"]["columns"]
+    # Upgrade added the index; downgrade removed it.
+    after_upgrade_index_names = {
+        idx[0] for idx in after_first_upgrade["tools"]["indexes"]
+    }
+    after_downgrade_index_names = {
+        idx[0] for idx in after_downgrade["tools"]["indexes"]
+    }
+    assert "ix_tools_pin_status" in after_upgrade_index_names
+    assert "ix_tools_pin_status" not in after_downgrade_index_names
+
+    # Symmetry: second upgrade matches first upgrade — the `tools`
+    # table schema round-trips byte-for-byte.
+    assert after_first_upgrade == after_second_upgrade, (
+        "Migration round-trip drift detected. Inspect d8a3f0b62c14 "
+        "for asymmetric up/down."
+    )
 
 
 def test_alembic_drift_detector_catches_injected_column(
