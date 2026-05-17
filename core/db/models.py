@@ -27,6 +27,7 @@ LIFECYCLE_STATE_VALUES = (
     "loaded-on-boot",
     "retired",
     "pending-decision",
+    "on-demand",
 )
 """Tool-level lifecycle states per TOOL-CONCIERGE-OVERVIEW §Tool Lifecycle
 Management and the blueprint-v2 §D audit (third state machine; distinct
@@ -38,6 +39,17 @@ active evaluation). Originates from the TOOL-MANIFEST.md "BUILDABLE"
 section ("NOT YET BUILT" / "PARTIALLY BUILT" statuses) at ingest, or
 from explicit operator action elsewhere. Transitions out: approve into
 `loaded-on-boot` / `used`, deny into `retired`, park back to `discovered`.
+
+`on-demand` is for a tool deliberately kept but NOT boot-loaded —
+installed and usable, reachable on demand, deliberately off the boot
+context budget (cf. master plan §IX context-weight philosophy). A
+*settled* state, distinct from `pending-decision` ("fate undecided"):
+`on-demand` says "we have decided to keep this, just not at boot."
+The autonomous promotion scanner does not auto-promote `on-demand`
+tools (`core/lifecycle_scanner._classify_promotion`) — `on-demand →
+loaded-on-boot` stays a legal *manual* transition, but autonomous
+promotion would silently undo the operator's deliberate off-boot
+decision and is skipped.
 
 Transition validation lives in `core/tool_transitions.py`.
 """

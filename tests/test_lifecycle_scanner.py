@@ -242,6 +242,64 @@ class TestPromotionClassification:
         assert tool.lifecycle_state == "loaded-on-boot"
 
 
+class TestOnDemandPromotionSkip:
+    """SD-1 — `on-demand` is a settled "keep it, but not at boot"
+    operator decision; the autonomous scanner must never promote it
+    back to `loaded-on-boot` (promotion auto-fires — unlike demotion
+    it is not flag-only — so without the skip the decision would be
+    silently undone).
+
+    The two tests below are a deliberate *non-vacuous* pair: the
+    `on-demand` tool and the contrast `used` tool carry an identical
+    promotion profile (same install age, same event count, same event
+    recency) — the only difference is `lifecycle_state`. A bare
+    "on-demand tool not promoted" assertion would pass even if the
+    tool were never promotion-eligible to begin with; the contrast
+    proves the different outcome is the `_classify_promotion` skip at
+    work, not an ineligible profile.
+    """
+
+    def test_on_demand_tool_otherwise_eligible_is_not_auto_promoted(
+        self, db_session
+    ):
+        tool = _seed_tool(
+            db_session, slug="kept-off-boot", created_days_ago=60,
+            lifecycle_state="on-demand",
+        )
+        _seed_usage_events(
+            db_session, tool=tool, count=PROMOTION_MIN_USES, days_ago=3,
+        )
+        summary = run_once(db_session, now=NOW)
+        # Meets the event threshold, so it IS surfaced as a candidate
+        # (the operator can still manually promote) ...
+        assert len(summary.promotion_candidates) == 1
+        assert summary.promotion_candidates[0].slug == "kept-off-boot"
+        assert summary.promotion_candidates[0].reason == "on_demand_settled"
+        # ... but is NOT auto-promoted, and its state is untouched.
+        assert summary.auto_promoted == []
+        db_session.refresh(tool)
+        assert tool.lifecycle_state == "on-demand"
+
+    def test_identical_profile_used_tool_is_auto_promoted(self, db_session):
+        """The contrast — identical install age / event count / event
+        recency, only `lifecycle_state` differs. A `used` tool with
+        this exact profile auto-promotes, proving the `on-demand`
+        outcome above is the skip, not an ineligible profile.
+        """
+        tool = _seed_tool(
+            db_session, slug="ripe-used", created_days_ago=60,
+            lifecycle_state="used",
+        )
+        _seed_usage_events(
+            db_session, tool=tool, count=PROMOTION_MIN_USES, days_ago=3,
+        )
+        summary = run_once(db_session, now=NOW)
+        assert summary.auto_promoted == ["ripe-used"]
+        assert summary.promotion_candidates[0].reason == "auto_promoted"
+        db_session.refresh(tool)
+        assert tool.lifecycle_state == "loaded-on-boot"
+
+
 # ---- Demotion pass ------------------------------------------------------
 
 

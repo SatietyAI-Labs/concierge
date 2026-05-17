@@ -13,8 +13,8 @@ One `run_once(session, *, memory=None, broker=None)` pass:
    (5) events of type `recommended` / `loaded` / `used` in the
    last `PROMOTION_WINDOW_DAYS` (30) days.
    - **Auto-promote** if install age ≥ 30 days AND not already
-     `loaded-on-boot` AND not `retired`. The scanner calls
-     `transition_tool_lifecycle` with the
+     `loaded-on-boot` AND not `retired` AND not `on-demand`. The
+     scanner calls `transition_tool_lifecycle` with the
      `refresh_identity_on_loaded_on_boot_change` hook so identity
      refresh fires automatically (Fix Day 3 Fork 5 wiring).
    - **Flag as ambiguous** if install age < 30 days (too fresh —
@@ -24,6 +24,12 @@ One `run_once(session, *, memory=None, broker=None)` pass:
    - **Skip** if already `loaded-on-boot` (idempotent re-runs).
    - **Skip** if `retired` (only path out of retired is
      `retired → discovered` per lifecycle transitions table).
+   - **Skip** if `on-demand`. `on-demand` is a *settled* operator
+     decision — the tool is deliberately kept off the boot context
+     budget. Autonomous promotion would silently undo that decision,
+     so the scanner never auto-promotes an `on-demand` tool.
+     `on-demand → loaded-on-boot` remains a legal *manual*
+     transition; only the autonomous path is skipped.
 
 2. **Demotion candidates** — tools in state `loaded-on-boot` whose
    most recent `tool_usage_events.timestamp` is older than
@@ -112,7 +118,7 @@ class PromotionCandidate:
     window_days: int
     install_age_days: Optional[int]
     current_state: str
-    reason: str  # "auto_promoted" | "install_age_below_threshold" | "retired_cannot_promote" | "already_loaded_on_boot"
+    reason: str  # "auto_promoted" | "install_age_below_threshold" | "retired_cannot_promote" | "already_loaded_on_boot" | "on_demand_settled"
 
 
 @dataclass(frozen=True)
@@ -336,6 +342,14 @@ def _classify_promotion(
         return ("already_loaded_on_boot", False)
     if current_state == "retired":
         return ("retired_cannot_promote", False)
+    if current_state == "on-demand":
+        # `on-demand` is a settled "keep it, but not at boot" operator
+        # decision. Autonomous promotion would silently undo it, so the
+        # scanner never auto-promotes an `on-demand` tool. The tool
+        # still surfaces as a promotion *candidate* (the operator can
+        # manually promote via `on-demand → loaded-on-boot`, a legal
+        # transition) — only the autonomous transition is skipped.
+        return ("on_demand_settled", False)
     if install_age_days is None or install_age_days < AUTO_PROMOTE_MIN_INSTALL_AGE_DAYS:
         return ("install_age_below_threshold", False)
     return ("auto_promoted", True)
