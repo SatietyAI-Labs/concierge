@@ -43,6 +43,7 @@ def _seed_tool(
     slug: str,
     lifecycle_state: str = "discovered",
     created_days_ago: int = 60,
+    pin_status: str = "auto-managed",
 ) -> Tool:
     created_at = NOW - timedelta(days=created_days_ago)
     t = Tool(
@@ -50,6 +51,7 @@ def _seed_tool(
         name=slug,
         tool_type="cli",
         lifecycle_state=lifecycle_state,
+        pin_status=pin_status,
         created_at=created_at,
     )
     db.add(t)
@@ -354,6 +356,47 @@ class TestDemotionFlagging:
         )
         summary = run_once(db_session, now=NOW)
         assert summary.demotion_candidates == []
+
+
+class TestAlwaysPinnedDemotionExemption:
+    """OD-5 / D77 — an `always-pinned` `loaded-on-boot` tool is exempt
+    from autonomous demotion: the scanner never flags it as a demotion
+    candidate, regardless of usage telemetry.
+
+    A deliberate *non-vacuous* pair: the pinned tool and the contrast
+    `auto-managed` tool carry an identical demotion profile —
+    `loaded-on-boot`, zero usage events ever (the strongest demotion
+    signal, sentinel inactivity). The only difference is `pin_status`.
+    A bare "pinned tool not flagged" assertion would pass even if the
+    tool were not demotion-eligible to begin with; the contrast proves
+    the different outcome is the `pin_status` exemption filter.
+    """
+
+    def test_always_pinned_tool_is_exempt_from_demotion_flagging(
+        self, db_session
+    ):
+        _seed_tool(
+            db_session, slug="semantic-memory-chromadb",
+            lifecycle_state="loaded-on-boot", pin_status="always-pinned",
+        )
+        summary = run_once(db_session, now=NOW)
+        flagged = [c.slug for c in summary.demotion_candidates]
+        assert "semantic-memory-chromadb" not in flagged
+
+    def test_identical_auto_managed_tool_is_flagged_for_demotion(
+        self, db_session
+    ):
+        """The contrast — same `loaded-on-boot` state, same (zero)
+        usage; only `pin_status` differs. The `auto-managed` tool IS
+        flagged, proving the exemption above is the pin filter at work,
+        not a non-demotable profile."""
+        _seed_tool(
+            db_session, slug="auto-managed-boot-tool",
+            lifecycle_state="loaded-on-boot", pin_status="auto-managed",
+        )
+        summary = run_once(db_session, now=NOW)
+        flagged = [c.slug for c in summary.demotion_candidates]
+        assert "auto-managed-boot-tool" in flagged
 
 
 # ---- Stale pending ------------------------------------------------------
