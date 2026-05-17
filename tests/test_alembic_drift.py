@@ -62,6 +62,23 @@ def _reflect_schema(engine) -> dict[str, dict]:
     return schema
 
 
+def _column_ddl(engine, table: str, column: str) -> dict | None:
+    """Reflected DDL shape of one column — normalized type, nullability,
+    and server default. `_reflect_schema` captures only name→type; this
+    is the finer-grained view needed to assert a migration restored a
+    column to a specific DDL (not merely that the column is present).
+    Returns None when the column is absent.
+    """
+    for col in inspect(engine).get_columns(table):
+        if col["name"] == column:
+            return {
+                "type": _normalize_type(col["type"]),
+                "nullable": col["nullable"],
+                "server_default": col["default"],
+            }
+    return None
+
+
 def _assert_schemas_equal(
     alembic_schema: dict[str, dict], metadata_schema: dict[str, dict]
 ) -> None:
@@ -393,6 +410,113 @@ def test_pin_status_migration_round_trips(
     # table schema round-trips byte-for-byte.
     assert after_first_upgrade == after_second_upgrade, (
         "Migration round-trip drift detected. Inspect d8a3f0b62c14 "
+        "for asymmetric up/down."
+    )
+
+
+def test_drop_is_active_migration_round_trips(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stage 1B `is_active`-retirement slice, Phase B — pin the migration
+    round-trip for `771ddc8fcccf_drop_tools_is_active_column`.
+
+    The inverse of the pin_status migration: upgrade DROPS the
+    `is_active` column and the `ix_tools_is_active` index; downgrade
+    re-adds both and backfills
+    `is_active = (lifecycle_state == 'loaded-on-boot')` — the manifest.py
+    derivation, the only principled one (the downgrade is documented as
+    lossy: it cannot recover the original inconsistently-minted values).
+
+    Upgrades to `771ddc8fcccf` and downgrades to `d8a3f0b62c14` (its
+    down_revision) by explicit revision name — never relative -1/head —
+    so the test is stable regardless of later migrations stacking on top.
+    """
+    db = tmp_path / "alembic_drop_is_active_roundtrip.db"
+
+    monkeypatch.setenv("CONCIERGE_DATABASE_PATH", str(db))
+    get_settings.cache_clear()
+    try:
+        settings = get_settings()
+        cfg = Config(str(settings.project_root / "alembic.ini"))
+
+        # Upgrade to the revision under test — is_active is gone.
+        command.upgrade(cfg, "771ddc8fcccf")
+        engine = create_engine(f"sqlite:///{db}")
+        try:
+            after_first_upgrade = _reflect_schema(engine)
+            # Seed two rows carrying only `lifecycle_state` — the column
+            # under test no longer exists to set — so the downgrade
+            # backfill has a loaded-on-boot row and a non-boot row to
+            # derive `is_active` for.
+            with engine.begin() as conn:
+                conn.execute(text(
+                    "INSERT INTO tools "
+                    "(slug, name, lifecycle_state, is_in_manifest) VALUES "
+                    "('boot-probe', 'boot-probe', 'loaded-on-boot', 1), "
+                    "('retired-probe', 'retired-probe', 'retired', 1)"
+                ))
+        finally:
+            engine.dispose()
+
+        # Downgrade to the down_revision by explicit name.
+        command.downgrade(cfg, "d8a3f0b62c14")
+        engine = create_engine(f"sqlite:///{db}")
+        try:
+            after_downgrade = _reflect_schema(engine)
+            downgraded_is_active_ddl = _column_ddl(engine, "tools", "is_active")
+            with engine.connect() as conn:
+                backfilled = dict(conn.execute(text(
+                    "SELECT slug, is_active FROM tools ORDER BY slug"
+                )).all())
+        finally:
+            engine.dispose()
+
+        # Re-upgrade — must land at the same schema as the first upgrade.
+        command.upgrade(cfg, "771ddc8fcccf")
+        engine = create_engine(f"sqlite:///{db}")
+        try:
+            after_second_upgrade = _reflect_schema(engine)
+        finally:
+            engine.dispose()
+    finally:
+        get_settings.cache_clear()
+
+    # Upgrade dropped the column; downgrade restored it.
+    assert "is_active" not in after_first_upgrade["tools"]["columns"]
+    assert "is_active" in after_downgrade["tools"]["columns"]
+    # Upgrade dropped the index; downgrade restored it.
+    after_upgrade_index_names = {
+        idx[0] for idx in after_first_upgrade["tools"]["indexes"]
+    }
+    after_downgrade_index_names = {
+        idx[0] for idx in after_downgrade["tools"]["indexes"]
+    }
+    assert "ix_tools_is_active" not in after_upgrade_index_names
+    assert "ix_tools_is_active" in after_downgrade_index_names
+
+    # Downgrade backfill: `is_active` is re-derived from `lifecycle_state`
+    # — loaded-on-boot → 1, every other state → 0 (the manifest.py rule).
+    assert backfilled["boot-probe"] == 1
+    assert backfilled["retired-probe"] == 0
+
+    # Downgrade DDL-fidelity — the migration's headline claim. The
+    # downgrade re-adds `is_active` via add-NULLABLE → backfill →
+    # flip-NOT-NULL precisely to land the baseline (4ff5b5898f71) DDL:
+    # `sa.Column("is_active", sa.Boolean(), nullable=False)` — BOOLEAN,
+    # NOT NULL, no server default. This is the ONLY coverage of that
+    # three-step sequence; it goes red if the downgrade leaves the
+    # column NULLABLE (flip step lost) or leaves a residual
+    # server_default (e.g. an add-column-with-server_default rewrite).
+    assert downgraded_is_active_ddl == {
+        "type": "BOOLEAN",
+        "nullable": False,
+        "server_default": None,
+    }
+
+    # Symmetry: second upgrade matches first upgrade — the `tools`
+    # table schema round-trips byte-for-byte.
+    assert after_first_upgrade == after_second_upgrade, (
+        "Migration round-trip drift detected. Inspect 771ddc8fcccf "
         "for asymmetric up/down."
     )
 

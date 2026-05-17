@@ -168,7 +168,10 @@ class Tool(Base):
         String(64), nullable=True, index=True
     )
     is_in_manifest: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    # NOTE: the legacy `is_active` column was retired (DECISIONS D112) —
+    # `lifecycle_state` is the canonical authority. See the
+    # `*_drop_tools_is_active` migration. `ACTIVE_LIFECYCLE_STATES` /
+    # `DORMANT_LIFECYCLE_STATES` above carry the catalog classification.
     lifecycle_state: Mapped[str] = mapped_column(
         Enum(*LIFECYCLE_STATE_VALUES, name="lifecycle_state"),
         nullable=False,
