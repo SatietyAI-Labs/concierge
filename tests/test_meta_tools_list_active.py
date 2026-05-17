@@ -54,7 +54,7 @@ class TestListActiveHandler:
         _install_mock_transport(mock_handler)
         await handle_list_active({})
 
-        assert received_params.get("is_active") == "true"
+        assert received_params.get("active") == "true"
         assert "dormant" not in received_params
 
     @pytest.mark.asyncio
@@ -69,7 +69,7 @@ class TestListActiveHandler:
         await handle_list_active({"dormant": True})
 
         assert received_params.get("dormant") == "true"
-        assert "is_active" not in received_params
+        assert "active" not in received_params
 
     @pytest.mark.asyncio
     async def test_pack_grouped_rendering(self):
@@ -84,7 +84,6 @@ class TestListActiveHandler:
                             "name": "csvstat",
                             "description": "Column statistics for CSVs.",
                             "is_in_manifest": True,
-                            "is_active": True,
                             "pack_slug": "csvkit",
                             "pack_name": "csvkit",
                             "created_at": "2026-04-21T00:00:00Z",
@@ -96,7 +95,6 @@ class TestListActiveHandler:
                             "name": "pandas",
                             "description": "DataFrame toolkit.",
                             "is_in_manifest": True,
-                            "is_active": True,
                             "pack_slug": "data-processing",
                             "pack_name": "Data processing",
                             "created_at": "2026-04-21T00:00:00Z",
@@ -132,7 +130,6 @@ class TestListActiveHandler:
                             "name": "standalone-cli",
                             "description": "a loner",
                             "is_in_manifest": True,
-                            "is_active": True,
                             "pack_slug": None,
                             "pack_name": None,
                             "created_at": "2026-04-21T00:00:00Z",
@@ -214,7 +211,6 @@ class TestListActiveHandler:
                             "tool_type": "cli",
                             "lifecycle_state": "loaded-on-boot",
                             "is_in_manifest": True,
-                            "is_active": True,
                             "pack_slug": "csvkit",
                             "pack_name": "csvkit",
                             "created_at": "2026-04-21T00:00:00Z",
@@ -228,7 +224,6 @@ class TestListActiveHandler:
                             "tool_type": "skill",
                             "lifecycle_state": "discovered",
                             "is_in_manifest": True,
-                            "is_active": True,
                             "pack_slug": None,
                             "pack_name": None,
                             "path": "/mnt/skills/public/update-config/SKILL.md",
@@ -268,7 +263,6 @@ class TestListActiveHandler:
                             "name": "legacy-tool",
                             "description": "pre-enrichment row",
                             "is_in_manifest": True,
-                            "is_active": True,
                             "pack_slug": None,
                             "pack_name": None,
                             "created_at": "2026-04-21T00:00:00Z",

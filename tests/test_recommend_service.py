@@ -144,7 +144,6 @@ def _sample_catalog() -> list[CatalogToolView]:
             category="data",
             pack_slug="csvkit",
             is_in_manifest=True,
-            is_active=True,
             lifecycle_state="loaded-on-boot",
         ),
         CatalogToolView(
@@ -154,8 +153,7 @@ def _sample_catalog() -> list[CatalogToolView]:
             category="data",
             pack_slug=None,
             is_in_manifest=True,
-            is_active=False,  # dormant
-            lifecycle_state="discovered",
+            lifecycle_state="discovered",  # dormant
         ),
     ]
 

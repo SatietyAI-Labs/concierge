@@ -75,13 +75,13 @@ def seeded_client(db_session):
                 name="csvstat",
                 pack_id=pack.id,
                 is_in_manifest=True,
-                is_active=True,
+                lifecycle_state="loaded-on-boot",  # active
             ),
             Tool(
                 slug="pandas",
                 name="pandas",
                 is_in_manifest=True,
-                is_active=False,  # dormant
+                lifecycle_state="discovered",  # dormant — activation candidate
             ),
         ]
     )

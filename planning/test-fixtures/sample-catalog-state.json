@@ -25,7 +25,7 @@
       "install_method": "pip-user",
       "pack_slug": "csvkit",
       "is_in_manifest": true,
-      "is_active": true
+      "lifecycle_state": "loaded-on-boot"
     },
     {
       "slug": "csvsort",
@@ -35,7 +35,7 @@
       "install_method": "pip-user",
       "pack_slug": "csvkit",
       "is_in_manifest": true,
-      "is_active": true
+      "lifecycle_state": "loaded-on-boot"
     },
     {
       "slug": "csvgrep",
@@ -45,7 +45,7 @@
       "install_method": "pip-user",
       "pack_slug": "csvkit",
       "is_in_manifest": true,
-      "is_active": true
+      "lifecycle_state": "loaded-on-boot"
     },
     {
       "slug": "csvlook",
@@ -55,7 +55,7 @@
       "install_method": "pip-user",
       "pack_slug": "csvkit",
       "is_in_manifest": true,
-      "is_active": false
+      "lifecycle_state": "discovered"
     },
     {
       "slug": "pandas",
@@ -65,7 +65,7 @@
       "install_method": "pip-user",
       "pack_slug": "data-processing",
       "is_in_manifest": true,
-      "is_active": true
+      "lifecycle_state": "loaded-on-boot"
     }
   ]
 }

@@ -6,9 +6,11 @@ module). Its job is to give a Claude Code session visibility into
 the current Concierge catalog: what is active, what is dormant
 (in-manifest but not active), and how tools are grouped by pack.
 
-By default the handler filters to `is_active=True`. If the caller
-passes `dormant=true`, the filter flips to `is_in_manifest=True AND
-is_active=False` per the endpoint's `dormant` convenience filter.
+By default the handler filters to `active=true` (loaded-on-boot tools).
+If the caller passes `dormant=true`, the filter flips to the endpoint's
+`dormant` convenience filter — in-manifest activation candidates. The
+`active` / `dormant` filters resolve to `lifecycle_state`; the legacy
+`is_active` column was retired (DECISIONS D112).
 
 Error-class mapping mirrors `concierge_recommend`.
 """
@@ -61,7 +63,7 @@ def _build_query_params(args: dict[str, Any]) -> dict[str, Any]:
     if args.get("dormant") is True:
         params["dormant"] = "true"
     else:
-        params["is_active"] = "true"
+        params["active"] = "true"
     if args.get("category"):
         params["category"] = args["category"]
     if args.get("pack_slug"):

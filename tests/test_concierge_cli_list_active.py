@@ -3,7 +3,7 @@
 Covers:
 
 - argparse surface: subcommand registered, flags advertised.
-- Query-param plumbing: default `is_active=true`, `--dormant` flip,
+- Query-param plumbing: default `active=true`, `--dormant` flip,
   `--category` / `--pack-slug` pass-through.
 - Render: group-by-pack shape, extended items-4+7 metadata columns,
   empty-result message, `--json` bypass.
@@ -40,7 +40,6 @@ def _tool(slug: str, **overrides) -> ToolOut:
         category=None,
         install_method=None,
         is_in_manifest=True,
-        is_active=True,
         lifecycle_state="installed",
         pin_status="auto-managed",
         path=None,
@@ -107,7 +106,7 @@ def test_list_active_help_lists_flags(capsys):
 
 
 def test_happy_path_default_filter_and_grouped_render(mock_http_client, capsys):
-    """Default invocation: filters to is_active=true, requests the full
+    """Default invocation: filters to active=true, requests the full
     set, and renders tools grouped by pack with unpacked tools last.
     """
     mock_http_client.get.return_value = _tool_list(
@@ -120,7 +119,7 @@ def test_happy_path_default_filter_and_grouped_render(mock_http_client, capsys):
     call = mock_http_client.get.call_args
     assert call.args[0] == "/tools"
     params = call.kwargs["params"]
-    assert params["is_active"] == "true"
+    assert params["active"] == "true"
     assert "dormant" not in params
     assert params["limit"] == 1000
 
@@ -137,7 +136,7 @@ def test_dormant_flag_flips_filter(mock_http_client):
     main(["list-active", "--dormant"])
     params = mock_http_client.get.call_args.kwargs["params"]
     assert params["dormant"] == "true"
-    assert "is_active" not in params
+    assert "active" not in params
 
 
 def test_category_flag_plumbs_param(mock_http_client):

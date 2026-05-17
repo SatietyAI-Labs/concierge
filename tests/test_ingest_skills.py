@@ -207,7 +207,6 @@ def test_ingest_skills_full_flow(skills_root: Path, session: Session):
         assert r.path is not None
         assert r.path.endswith("/SKILL.md")
         assert r.is_in_manifest is True
-        assert r.is_active is True
         assert r.lifecycle_state == "discovered"  # server_default
 
 
@@ -268,14 +267,14 @@ def test_ingest_skills_preserves_operator_lifecycle_on_rerun(
 ):
     skills.ingest_skills(skills_root, session)
     tool = session.query(Tool).filter_by(slug="update-config").one()
-    # Operator marks it retired via direct DB edit
-    tool.is_active = False
+    # Operator marks it retired via direct DB edit. (`is_active` was a
+    # second operator field here before it was retired — DECISIONS D112;
+    # `lifecycle_state` is the canonical retire-decision now.)
     tool.lifecycle_state = "retired"
     session.commit()
     # Re-ingest must not clobber the retire-decision
     skills.ingest_skills(skills_root, session)
     session.refresh(tool)
-    assert tool.is_active is False
     assert tool.lifecycle_state == "retired"
     # But descriptive fields did refresh
     assert tool.tool_type == "skill"

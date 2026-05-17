@@ -16,7 +16,7 @@ def _seed(db):
             category="search",
             install_method="apt",
             is_in_manifest=True,
-            is_active=True,
+            lifecycle_state="loaded-on-boot",
         ),
         Tool(
             slug="csvkit",
@@ -24,7 +24,7 @@ def _seed(db):
             category="data-processing",
             install_method="pip-user",
             is_in_manifest=True,
-            is_active=False,
+            lifecycle_state="discovered",  # dormant — in-manifest candidate
         ),
         Tool(
             slug="firefox-navigate",
@@ -33,7 +33,7 @@ def _seed(db):
             install_method="mcp-server",
             pack=firefox,
             is_in_manifest=True,
-            is_active=True,
+            lifecycle_state="loaded-on-boot",
         ),
         Tool(
             slug="memory-store",
@@ -42,13 +42,13 @@ def _seed(db):
             install_method="mcp-server",
             pack=memory,
             is_in_manifest=True,
-            is_active=True,
+            lifecycle_state="loaded-on-boot",
         ),
         Tool(
             slug="retired-noop",
             name="noop",
             is_in_manifest=False,
-            is_active=False,
+            lifecycle_state="retired",
         ),
     ]
     db.add_all(tools)
@@ -73,13 +73,35 @@ def test_list_tools_returns_all(client_with_db, db_session):
     assert slugs == {"ripgrep", "csvkit", "firefox-navigate", "memory-store", "retired-noop"}
 
 
-def test_list_tools_filter_by_is_active(client_with_db, db_session):
+def test_list_tools_filter_by_active(client_with_db, db_session):
+    """`?active=true` → the loaded-on-boot set (replaced the retired
+    `?is_active=` filter — DECISIONS D112)."""
     _seed(db_session)
-    resp = client_with_db.get("/tools?is_active=true")
+    resp = client_with_db.get("/tools?active=true")
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 3
-    assert all(item["is_active"] for item in data["items"])
+    assert {item["slug"] for item in data["items"]} == {
+        "ripgrep",
+        "firefox-navigate",
+        "memory-store",
+    }
+    assert all(
+        item["lifecycle_state"] == "loaded-on-boot" for item in data["items"]
+    )
+
+
+def test_list_tools_filter_by_active_false(client_with_db, db_session):
+    """`?active=false` → every non-loaded-on-boot row."""
+    _seed(db_session)
+    resp = client_with_db.get("/tools?active=false")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 2
+    assert {item["slug"] for item in data["items"]} == {"csvkit", "retired-noop"}
+    assert all(
+        item["lifecycle_state"] != "loaded-on-boot" for item in data["items"]
+    )
 
 
 def test_list_tools_filter_by_category(client_with_db, db_session):
@@ -104,6 +126,10 @@ def test_list_tools_filter_by_pack_slug(client_with_db, db_session):
 
 
 def test_list_tools_dormant_filter(client_with_db, db_session):
+    """`?dormant=true` → in-manifest activation candidates: is_in_manifest
+    AND lifecycle_state in (discovered, pending, pending-decision). The
+    loaded-on-boot rows and the not-in-manifest `retired-noop` are
+    excluded (DECISIONS D112, locked OD-1b)."""
     _seed(db_session)
     resp = client_with_db.get("/tools?dormant=true")
     assert resp.status_code == 200
@@ -111,7 +137,7 @@ def test_list_tools_dormant_filter(client_with_db, db_session):
     assert data["total"] == 1
     assert data["items"][0]["slug"] == "csvkit"
     assert data["items"][0]["is_in_manifest"] is True
-    assert data["items"][0]["is_active"] is False
+    assert data["items"][0]["lifecycle_state"] == "discovered"
 
 
 def test_list_tools_by_slug(client_with_db, db_session):
@@ -172,7 +198,6 @@ def test_list_tools_filter_by_skill_tool_type_surfaces_path_and_ambient_loading(
             path="/mnt/skills/public/update-config/SKILL.md",
             ambient_loading=True,
             is_in_manifest=True,
-            is_active=True,
         )
     )
     db_session.commit()
@@ -199,4 +224,3 @@ def test_list_tools_non_skill_rows_report_null_path_and_ambient_loading(
     for item in data["items"]:
         assert item["path"] is None
         assert item["ambient_loading"] is None
-        assert item["lifecycle_state"] == "discovered"

@@ -151,7 +151,6 @@ def seeded_catalog(session_factory) -> None:
                 category="data-processing",
                 install_method="pip-user",
                 is_in_manifest=True,
-                is_active=True,
                 lifecycle_state="loaded-on-boot",
             )
         )
@@ -164,7 +163,6 @@ def seeded_catalog(session_factory) -> None:
                 category="data-processing",
                 install_method="binary",
                 is_in_manifest=True,
-                is_active=True,
                 lifecycle_state="loaded-on-boot",
             )
         )

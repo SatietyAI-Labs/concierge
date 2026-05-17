@@ -25,9 +25,9 @@ def _seed(db):
 
     db.add_all(
         [
-            Tool(slug="firefox-a", name="a", pack=firefox, is_in_manifest=True, is_active=True),
-            Tool(slug="firefox-b", name="b", pack=firefox, is_in_manifest=True, is_active=True),
-            Tool(slug="mem-a", name="ma", pack=memory, is_in_manifest=True, is_active=True),
+            Tool(slug="firefox-a", name="a", pack=firefox, is_in_manifest=True),
+            Tool(slug="firefox-b", name="b", pack=firefox, is_in_manifest=True),
+            Tool(slug="mem-a", name="ma", pack=memory, is_in_manifest=True),
         ]
     )
     db.commit()

@@ -55,7 +55,6 @@ def _catalog_view(tool: Tool) -> CatalogToolView:
         category=tool.category,
         pack_slug=tool.pack.slug if tool.pack else None,
         is_in_manifest=tool.is_in_manifest,
-        is_active=tool.is_active,
         tool_type=tool.tool_type,
         install_method=tool.install_method,
         path=tool.path,

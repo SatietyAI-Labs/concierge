@@ -348,7 +348,7 @@ def _catalog() -> list[CatalogToolView]:
             category="data",
             pack_slug="csvkit",
             is_in_manifest=True,
-            is_active=True,
+            lifecycle_state="loaded-on-boot",
         )
     ]
 

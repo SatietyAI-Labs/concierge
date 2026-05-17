@@ -55,6 +55,28 @@ Transition validation lives in `core/tool_transitions.py`.
 """
 
 
+# Catalog-classification state sets — the `lifecycle_state` values the
+# /health catalog counts and the /tools `?active=` / `?dormant=`
+# convenience filters resolve to. Introduced when the legacy `is_active`
+# column was retired (DECISIONS D112): `is_active` over-counted "active"
+# — it conflated `loaded-on-boot` with every skill and with rows left
+# stale after a transition. These sets make the classification explicit
+# and derive it from `lifecycle_state`, the canonical authority.
+ACTIVE_LIFECYCLE_STATES = ("loaded-on-boot",)
+"""\"Active\" = loaded into the fleet at boot. Backs /health `tools_active`
+and the /tools `?active=` filter."""
+
+DORMANT_LIFECYCLE_STATES = ("discovered", "pending", "pending-decision")
+"""\"Dormant\" = an activation candidate: in-manifest, genuinely not yet
+activated, not settled. Backs /health `tools_dormant` and the /tools
+`?dormant=` filter (each intersected with `is_in_manifest`). Excludes
+`loaded-on-boot` (that *is* active), `retired` and `on-demand` (settled
+states per D107 — deliberately removed / deliberately off-boot, neither
+an activation candidate), and `used` (already exercised — the "what
+could I enable" question does not point at it). See DECISIONS D112 and
+the is_active-retirement inspection §2.2 for the locked OD-1b mapping."""
+
+
 PIN_STATUS_VALUES = (
     "always-pinned",
     "auto-managed",

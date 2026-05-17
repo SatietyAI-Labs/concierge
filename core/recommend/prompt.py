@@ -171,35 +171,6 @@ Returning more than two observations is drift — pick the two most
 actionable and drop the rest."""
 
 
-# ---- State annotation for catalog rendering -----------------------------
-
-
-def _tool_state(is_in_manifest: bool, is_active: bool) -> str:
-    """**Deprecated** — derived four-state label from `(is_in_manifest, is_active)`.
-
-    Fix Day 3 Task 3 deprecated this in favor of the stored five-state
-    `Tool.lifecycle_state` column (the canonical authority per §D audit).
-    Kept as a fall-back path for rows where `lifecycle_state` is unset —
-    after Fix Day 2's backfill this should never fire in production, and
-    `_render_standard_row` emits a WARN log citing the tool slug when it
-    does, as a signal of either a row inserted without the column default
-    or a future migration that introduced a regression.
-
-    The fallback's four-state vocabulary (`active` / `dormant` / `pending`
-    / `retired`) does NOT match the stored five-state vocabulary
-    (`loaded-on-boot` / `discovered` / `pending` / `used` / `retired`).
-    Opus sees different labels in the fallback vs. canonical paths; the
-    WARN log exists precisely so the divergence is observable.
-    """
-    if is_in_manifest and is_active:
-        return "active"
-    if is_in_manifest and not is_active:
-        return "dormant"
-    if not is_in_manifest and is_active:
-        return "pending"
-    return "retired"
-
-
 # ---- Catalog and memory rendering (deterministic) ------------------------
 
 
@@ -230,16 +201,19 @@ class CatalogToolView:
     category: Optional[str]
     pack_slug: Optional[str]
     is_in_manifest: bool
-    is_active: bool
     tool_type: Optional[str] = None
     install_method: Optional[str] = None
     path: Optional[str] = None
     ambient_loading: Optional[bool] = None
-    # Canonical state per §D audit (Fix Day 3 Task 3). Preferred over
-    # the `_tool_state(is_in_manifest, is_active)` fallback derivation;
-    # if None, `_render_standard_row` falls back + logs a WARN naming
-    # the slug so the "should never fire in production" invariant is
-    # observable if it ever does.
+    # Canonical state per §D audit (Fix Day 3 Task 3) — the stored
+    # `Tool.lifecycle_state`. `Optional` only so a malformed view is
+    # still renderable: when None, `_render_standard_row` emits a WARN
+    # naming the slug and renders the literal `unknown` state. The
+    # `Tool.lifecycle_state` column is NOT-NULL, so this never fires for
+    # a DB-sourced view in production — the WARN is cheap detection for
+    # a directly-constructed view (a test) or a future regression. The
+    # legacy `(is_in_manifest, is_active)` fallback derivation was
+    # removed with the `is_active` column retirement (DECISIONS D112).
     lifecycle_state: Optional[str] = None
 
 
@@ -262,22 +236,24 @@ def _render_catalog(tools: Iterable[CatalogToolView]) -> str:
 def _render_standard_row(t: CatalogToolView) -> str:
     """MCP / CLI / HTTP rendering. Skills get a different shape below.
 
-    Uses the canonical stored `lifecycle_state` when set; falls back to
-    `_tool_state(is_in_manifest, is_active)` + WARN log when absent.
-    Per Fix Day 3 Fork 3, the fallback should never fire after Fix
-    Day 2's backfill — the WARN is cheap detection for an insert that
-    bypassed the column default or a future migration regression.
+    Uses the canonical stored `lifecycle_state`. The `Tool.lifecycle_state`
+    column is NOT-NULL, so a DB-sourced view always carries it; a `None`
+    here means a directly-constructed view (a test) or a future
+    regression — the WARN names the slug and the row renders the literal
+    `unknown` state so the anomaly is observable rather than crashing.
+    The legacy `(is_in_manifest, is_active)` fallback derivation was
+    removed with the `is_active` column retirement (DECISIONS D112).
     """
     if t.lifecycle_state is not None:
         state = t.lifecycle_state
     else:
         log.warning(
             "recommend.prompt.lifecycle_state_missing slug=%s "
-            "— falling back to derived _tool_state; this should never "
-            "fire in production after Fix Day 2 backfill",
+            "— rendering state=unknown; this should never fire for a "
+            "DB-sourced view (lifecycle_state is NOT-NULL)",
             t.slug,
         )
-        state = _tool_state(t.is_in_manifest, t.is_active)
+        state = "unknown"
     pack = f" (pack: {t.pack_slug})" if t.pack_slug else ""
     category = f" [{t.category}]" if t.category else ""
     tool_type = f" <{t.tool_type}>" if t.tool_type else ""

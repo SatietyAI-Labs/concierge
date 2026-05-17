@@ -141,7 +141,7 @@ def tool_registry_partial(
     tool_list = _core_list_tools(
         pack_id=None,
         pack_slug=pack_slug,
-        is_active=None,
+        active=None,
         is_in_manifest=None,
         dormant=None,
         category=category,

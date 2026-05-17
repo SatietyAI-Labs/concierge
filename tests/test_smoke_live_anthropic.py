@@ -66,7 +66,7 @@ def test_live_anthropic_recommendation_prefers_csvkit_over_pandas():
             category=t.get("category"),
             pack_slug=t.get("pack_slug"),
             is_in_manifest=t["is_in_manifest"],
-            is_active=t["is_active"],
+            lifecycle_state=t["lifecycle_state"],
         )
         for t in catalog_state["tools"]
     ]

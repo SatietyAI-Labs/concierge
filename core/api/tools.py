@@ -8,7 +8,11 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from core.api.schemas import ToolList, ToolOut
-from core.db.models import Tool
+from core.db.models import (
+    ACTIVE_LIFECYCLE_STATES,
+    DORMANT_LIFECYCLE_STATES,
+    Tool,
+)
 from core.db.session import get_db
 
 router = APIRouter(prefix="/tools", tags=["tools"])
@@ -33,7 +37,6 @@ def _to_out(tool: Tool) -> ToolOut:
         category=tool.category,
         install_method=tool.install_method,
         is_in_manifest=tool.is_in_manifest,
-        is_active=tool.is_active,
         lifecycle_state=tool.lifecycle_state,
         pin_status=tool.pin_status,
         path=tool.path,
@@ -57,11 +60,22 @@ def _to_out(tool: Tool) -> ToolOut:
 def list_tools(
     pack_id: Optional[int] = Query(None),
     pack_slug: Optional[str] = Query(None),
-    is_active: Optional[bool] = Query(None),
+    active: Optional[bool] = Query(
+        None,
+        description=(
+            "Convenience filter on `lifecycle_state`: true → loaded-on-boot "
+            "(active) tools; false → every other state. Replaced the retired "
+            "`is_active` column filter (DECISIONS D112)."
+        ),
+    ),
     is_in_manifest: Optional[bool] = Query(None),
     dormant: Optional[bool] = Query(
         None,
-        description="Convenience filter: is_in_manifest=True AND is_active=False",
+        description=(
+            "Convenience filter: in-manifest activation candidates — "
+            "is_in_manifest=True AND lifecycle_state in "
+            "(discovered, pending, pending-decision)."
+        ),
     ),
     category: Optional[str] = Query(None),
     tool_type: Optional[str] = Query(None),
@@ -87,17 +101,22 @@ def list_tools(
         from core.db.models import Pack
 
         query = query.join(Pack, Tool.pack_id == Pack.id).filter(Pack.slug == pack_slug)
-    if is_active is not None:
-        query = query.filter(Tool.is_active.is_(is_active))
+    if active is not None:
+        active_clause = Tool.lifecycle_state.in_(ACTIVE_LIFECYCLE_STATES)
+        query = query.filter(active_clause if active else ~active_clause)
     if is_in_manifest is not None:
         query = query.filter(Tool.is_in_manifest.is_(is_in_manifest))
     if dormant is True:
         query = query.filter(
-            Tool.is_in_manifest.is_(True), Tool.is_active.is_(False)
+            Tool.is_in_manifest.is_(True),
+            Tool.lifecycle_state.in_(DORMANT_LIFECYCLE_STATES),
         )
     elif dormant is False:
         query = query.filter(
-            ~(Tool.is_in_manifest.is_(True) & Tool.is_active.is_(False))
+            ~(
+                Tool.is_in_manifest.is_(True)
+                & Tool.lifecycle_state.in_(DORMANT_LIFECYCLE_STATES)
+            )
         )
     if category is not None:
         query = query.filter(Tool.category == category)
