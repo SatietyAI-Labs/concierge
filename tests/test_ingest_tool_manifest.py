@@ -518,7 +518,8 @@ class TestIngestEndToEnd:
         )
         # 5 Alfred MCPs + 1 mcporter = 6 active entries
         assert len(active) == 6
-        assert all(t.is_active is True for t in active)
+        # (The retired `is_active` cross-check was dropped here — D112;
+        # `lifecycle_state` is the canonical authority the filter uses.)
 
 
 # =========================================================================
@@ -1105,7 +1106,6 @@ class TestToolToManifestRow:
             description="Browser automation MCP.",
             tool_type="mcp",
             is_in_manifest=True,
-            is_active=True,
             lifecycle_state="loaded-on-boot",
             agent_owner="alfred",
             best_for="Web scraping and form automation.",
@@ -1123,6 +1123,9 @@ class TestToolToManifestRow:
         assert row.tool_type == "mcp"
         assert row.description == "Browser automation MCP."
         assert row.lifecycle_state == "loaded-on-boot"
+        # `is_active` is re-derived by tool_to_manifest_row from
+        # `lifecycle_state` (the `Tool.is_active` column was retired —
+        # D112); loaded-on-boot → True.
         assert row.is_active is True
         assert row.is_in_manifest is True
         assert row.agent_owner == "alfred"
@@ -1140,7 +1143,6 @@ class TestToolToManifestRow:
             name="Cron Scheduling",
             tool_type=None,
             is_in_manifest=True,
-            is_active=False,
             lifecycle_state="pending-decision",
         )
         session.add(tool)
@@ -1158,7 +1160,6 @@ class TestToolToManifestRow:
             name="BareTool",
             tool_type="cli",
             is_in_manifest=True,
-            is_active=True,
             lifecycle_state="loaded-on-boot",
         )
         session.add(tool)
@@ -1182,7 +1183,6 @@ class TestToolToManifestRow:
             name="MailerLite",
             tool_type="mcp",
             is_in_manifest=True,
-            is_active=False,
             lifecycle_state="retired",
             succeeded_by="ghl",
         )
@@ -1211,12 +1211,12 @@ class TestExportManifest:
         operator-added rows are excluded."""
         session.add(Tool(
             slug="catalog-only", name="CatalogOnly", tool_type="mcp",
-            is_in_manifest=False, is_active=True,
+            is_in_manifest=False,
             lifecycle_state="loaded-on-boot",
         ))
         session.add(Tool(
             slug="from-manifest", name="FromManifest", tool_type="mcp",
-            is_in_manifest=True, is_active=True,
+            is_in_manifest=True,
             lifecycle_state="loaded-on-boot",
         ))
         session.commit()
@@ -1234,7 +1234,7 @@ class TestExportManifest:
         ingest_manifest-written row already is (slug = slugify(name))."""
         session.add(Tool(
             slug="reparse-me", name="Reparse Me", tool_type="mcp",
-            is_in_manifest=True, is_active=True,
+            is_in_manifest=True,
             lifecycle_state="loaded-on-boot",
         ))
         session.commit()

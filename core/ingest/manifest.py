@@ -85,7 +85,9 @@ source; operator-managed fields are preserved:
   - `lifecycle_state` if it has moved away from `discovered`
   - `succeeded_by` if non-NULL (the parser never sets this; the
     Stage-0 reconciliation slice is the sole writer)
-  - `is_active`, `is_in_manifest` once initialized
+  - `is_in_manifest` once initialized
+(The legacy `is_active` column was retired — DECISIONS D112; this
+ingest no longer writes it.)
 
 Matches catalog.py / skills.py upsert discipline.
 
@@ -936,7 +938,6 @@ def ingest_manifest(source: Path, session: Session) -> ManifestIngestStats:
                     description=row.description,
                     tool_type=row.tool_type,
                     is_in_manifest=row.is_in_manifest,
-                    is_active=row.is_active,
                     lifecycle_state=row.lifecycle_state,
                     agent_owner=row.agent_owner,
                     best_for=row.best_for,
@@ -965,7 +966,6 @@ def ingest_manifest(source: Path, session: Session) -> ManifestIngestStats:
             # and DB say `discovered` (no operator decision yet).
             if existing.lifecycle_state == "discovered":
                 existing.lifecycle_state = row.lifecycle_state
-                existing.is_active = row.is_active
             # succeeded_by is never touched by the parser.
             stats.tools_updated += 1
 
@@ -1000,7 +1000,12 @@ def tool_to_manifest_row(tool: Tool) -> ManifestRow:
         tool_type=tool.tool_type,
         description=tool.description,
         lifecycle_state=tool.lifecycle_state,
-        is_active=tool.is_active,
+        # `ManifestRow.is_active` is an internal round-trip field derived
+        # from `lifecycle_state` (the parser sets it the same way at
+        # `_parse_*`). The `Tool.is_active` column was retired (D112), so
+        # re-derive here with the parser's identical formula — keeps
+        # `equivalent()` exact. See is_active-retirement inspection OD-3.
+        is_active=(tool.lifecycle_state == "loaded-on-boot"),
         is_in_manifest=tool.is_in_manifest,
         agent_owner=tool.agent_owner,
         best_for=tool.best_for,

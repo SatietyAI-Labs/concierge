@@ -47,7 +47,7 @@ def _tool(
     category: str | None = None,
     pack_slug: str | None = None,
     is_in_manifest: bool = True,
-    is_active: bool = True,
+    lifecycle_state: str | None = "loaded-on-boot",
 ) -> CatalogToolView:
     return CatalogToolView(
         slug=slug,
@@ -56,7 +56,7 @@ def _tool(
         category=category,
         pack_slug=pack_slug,
         is_in_manifest=is_in_manifest,
-        is_active=is_active,
+        lifecycle_state=lifecycle_state,
     )
 
 
@@ -75,20 +75,20 @@ def _sample_catalog() -> list[CatalogToolView]:
             description="Data analysis library",
             category="data",
             is_in_manifest=True,
-            is_active=False,  # dormant
+            lifecycle_state="discovered",  # dormant
         ),
         _tool(
             "ripgrep",
             "ripgrep",
             category="search",
             is_in_manifest=False,
-            is_active=False,  # retired
+            lifecycle_state="retired",
         ),
         _tool(
             "duckdb",
             "DuckDB",
             is_in_manifest=False,
-            is_active=True,  # pending (not in manifest, actively loaded)
+            lifecycle_state="pending",
         ),
     ]
 
@@ -286,12 +286,15 @@ class TestUserMessage:
             < p_ident.user.index("# Relevant memory")
         )
 
-    def test_state_annotations_for_all_four_states(self):
+    def test_state_annotations_render_canonical_lifecycle_state(self):
+        # `_sample_catalog` sets each view's canonical `lifecycle_state`;
+        # the row renders `[<lifecycle_state>]`. The legacy four-state
+        # `_tool_state` derivation was removed with `is_active` (D112).
         p = compose_recommendation_prompt(
             task="t", catalog=_sample_catalog(), memory_hits=None
         )
-        assert "[active]" in p.user
-        assert "[dormant]" in p.user
+        assert "[loaded-on-boot]" in p.user
+        assert "[discovered]" in p.user
         assert "[pending]" in p.user
         assert "[retired]" in p.user
 
@@ -363,7 +366,6 @@ class TestSkillsCatalogRendering:
             category=None,
             pack_slug=None,
             is_in_manifest=True,
-            is_active=True,
             tool_type="skill",
             install_method=None,
             path=path,
@@ -424,9 +426,9 @@ class TestSkillsCatalogRendering:
             category="ai-services",
             pack_slug="memory-mcp",
             is_in_manifest=True,
-            is_active=True,
             tool_type="mcp",
             install_method="mcp-server",
+            lifecycle_state="loaded-on-boot",
         )
         p = compose_recommendation_prompt(
             task="t",
@@ -511,10 +513,13 @@ class TestIdentityBlockPosition:
 
 class TestLifecycleStateRendering:
     """Fix Day 3 Task 3: stored `lifecycle_state` is the canonical state
-    label for MCP/CLI/HTTP rendering; `_tool_state(is_in_manifest,
-    is_active)` is the deprecated fallback that logs WARN when it
-    fires. After Fix Day 2 backfill the fallback should never fire in
-    production; the WARN is cheap detection if it ever does."""
+    label for MCP/CLI/HTTP rendering. When a view carries no
+    `lifecycle_state` (None), `_render_standard_row` logs a WARN naming
+    the slug and renders the literal `[unknown]` state. The
+    `Tool.lifecycle_state` column is NOT-NULL so a DB-sourced view
+    always carries it; the WARN is cheap detection for a malformed
+    directly-constructed view. The legacy `(is_in_manifest, is_active)`
+    `_tool_state` fallback was removed with `is_active` (DECISIONS D112)."""
 
     def _row(self, slug: str, *, lifecycle_state=None) -> CatalogToolView:
         return CatalogToolView(
@@ -524,7 +529,6 @@ class TestLifecycleStateRendering:
             category=None,
             pack_slug=None,
             is_in_manifest=True,
-            is_active=True,
             tool_type="cli",
             lifecycle_state=lifecycle_state,
         )
@@ -555,7 +559,7 @@ class TestLifecycleStateRendering:
         ):
             assert f"[{state}]" in p.user, f"missing [{state}] in output"
 
-    def test_fallback_fires_and_logs_warn_when_lifecycle_state_missing(
+    def test_missing_lifecycle_state_renders_unknown_and_logs_warn(
         self, caplog: pytest.LogCaptureFixture
     ):
         row = self._row("legacy-row", lifecycle_state=None)
@@ -563,8 +567,8 @@ class TestLifecycleStateRendering:
             p = compose_recommendation_prompt(
                 task="t", catalog=[row], memory_hits=None
             )
-        # Fallback produces the old four-state vocabulary label
-        assert "[active]" in p.user  # is_in_manifest=True & is_active=True
+        # No lifecycle_state → the literal `[unknown]` state label
+        assert "[unknown]" in p.user
         # WARN log fires naming the slug
         warns = [
             r for r in caplog.records
@@ -585,7 +589,7 @@ class TestLifecycleStateRendering:
                 task="t", catalog=catalog, memory_hits=None
             )
         assert "[loaded-on-boot]" in p.user  # canonical
-        assert "[active]" in p.user  # fallback
+        assert "[unknown]" in p.user  # missing-lifecycle_state path
         warns = [
             r for r in caplog.records
             if "lifecycle_state_missing" in r.message

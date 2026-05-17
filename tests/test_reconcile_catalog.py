@@ -125,9 +125,10 @@ class TestGhlRow:
         assert ghl is not None
         assert ghl.slug == "ghl"
         assert ghl.tool_type == "mcp"
-        # Created at loaded-on-boot (D40: GHL "active").
+        # Created at loaded-on-boot (D40: GHL "active"). `lifecycle_state`
+        # is the canonical authority — the `is_active` cross-check was
+        # dropped when that column was retired (DECISIONS D112).
         assert ghl.lifecycle_state == "loaded-on-boot"
-        assert ghl.is_active is True
         # Absent from TOOL-MANIFEST.md — a manifest-update to add it is
         # a separate operator step (D40).
         assert ghl.is_in_manifest is False

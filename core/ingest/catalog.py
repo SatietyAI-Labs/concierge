@@ -4,18 +4,18 @@ Ingests three peer categories per blueprint-v2 §Five Core Capabilities
 item #1:
 
 - MCP Servers → Pack + pack-representative Tool row (`tool_type=mcp`)
-- CLI Tools → one Tool per row (`tool_type=cli`), Installed vs
-  Not-Installed maps to `is_active` True/False
+- CLI Tools → one Tool per row (`tool_type=cli`)
 - Paid Services → one Tool per row (`tool_type=http`)
 
 Skills as a fourth peer category are Fix Day 2 work (separate ingest
 path at `core/ingest/skills.py`, not this module).
 
 Idempotent: upsert by slug. Descriptive fields (name, description,
-tool_type, install_method) are refreshed from source. Operator-managed
-lifecycle fields (`is_active`, `is_in_manifest`) are preserved on
-existing rows so repeated ingest doesn't clobber hand-set state —
-they're seeded from source only on first insert.
+tool_type, install_method) are refreshed from source. The
+operator-managed lifecycle field `is_in_manifest` is preserved on
+existing rows so repeated ingest doesn't clobber hand-set state — it's
+seeded from source only on first insert. The legacy `is_active` column
+was retired (DECISIONS D112); this module no longer derives it.
 """
 from __future__ import annotations
 
@@ -38,7 +38,6 @@ class CatalogRow:
     description: str | None = None
     install_method: str | None = None
     category: str | None = None
-    is_active: bool = True
     is_in_manifest: bool = True
     pack_slug: str | None = None
     pack_name: str | None = None
@@ -86,7 +85,7 @@ def parse_mcp_section(body: str) -> Iterable[CatalogRow]:
     for cells in _iter_table_rows(body):
         if len(cells) != 6:
             continue
-        name, _count, status, _agent, what, _invoke = cells
+        name, _count, _status, _agent, what, _invoke = cells
         if not name:
             continue
         pack_slug = slugify(name)
@@ -96,7 +95,6 @@ def parse_mcp_section(body: str) -> Iterable[CatalogRow]:
             tool_type="mcp",
             description=what or None,
             install_method="mcp-server",
-            is_active=(status.lower() == "loaded"),
             is_in_manifest=True,
             pack_slug=pack_slug,
             pack_name=name,
@@ -130,7 +128,6 @@ def parse_cli_section(body: str, *, installed: bool) -> Iterable[CatalogRow]:
             tool_type="cli",
             description=description or None,
             install_method=install_method,
-            is_active=installed,
             is_in_manifest=True,
         )
 
@@ -150,7 +147,6 @@ def parse_paid_services_section(body: str) -> Iterable[CatalogRow]:
             description=what_for or None,
             install_method=None,
             category=f"cost:{cost}" if cost else None,
-            is_active=True,
             is_in_manifest=True,
         )
 
@@ -258,7 +254,6 @@ def ingest_catalog(source: Path, session: Session) -> IngestStats:
                     category=row.category,
                     install_method=row.install_method,
                     is_in_manifest=row.is_in_manifest,
-                    is_active=row.is_active,
                     pack_id=pack_id,
                 )
             )

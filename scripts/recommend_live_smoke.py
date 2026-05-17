@@ -83,7 +83,7 @@ def main() -> int:
             category="data",
             pack_slug="csvkit",
             is_in_manifest=True,
-            is_active=True,
+            lifecycle_state="loaded-on-boot",
         ),
         CatalogToolView(
             slug="pandas",
@@ -92,7 +92,7 @@ def main() -> int:
             category="data",
             pack_slug=None,
             is_in_manifest=True,
-            is_active=False,  # dormant
+            lifecycle_state="discovered",  # dormant — activation candidate
         ),
         CatalogToolView(
             slug="duckdb",
@@ -101,7 +101,7 @@ def main() -> int:
             category="data",
             pack_slug=None,
             is_in_manifest=False,
-            is_active=True,  # pending
+            lifecycle_state="pending",  # not in manifest, actively loaded
         ),
     ]
 

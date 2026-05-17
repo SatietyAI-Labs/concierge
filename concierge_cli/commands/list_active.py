@@ -1,9 +1,11 @@
 """`concierge list-active` subcommand — Stage 1A item 1b.
 
 GETs `/tools` and renders the catalog as a quick inventory grouped by
-pack. By default it filters to `is_active=true`; `--dormant` flips the
-filter to in-manifest-but-inactive tools (activation candidates), per
-the `/tools` endpoint's `dormant` convenience filter.
+pack. By default it filters to `active=true` (loaded-on-boot tools);
+`--dormant` flips the filter to in-manifest activation candidates, per
+the `/tools` endpoint's `dormant` convenience filter. Both filters
+resolve to `lifecycle_state` — the legacy `is_active` column was
+retired (DECISIONS D112).
 
 This is the one item-1b subcommand that is a genuine HTTP shim — the
 catalog lives in the service's database. `enable` / `disable` are the
@@ -76,15 +78,17 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 def _build_params(args: argparse.Namespace) -> dict[str, object]:
     """Translate argparse Namespace into `/tools` query parameters.
 
-    `--dormant` and the default `is_active=true` are mutually
-    exclusive: dormant means is_in_manifest=True AND is_active=False,
-    so sending `is_active=true` alongside would contradict it.
+    `--dormant` and the default `active=true` are mutually exclusive:
+    dormant is the in-manifest activation-candidate set (lifecycle_state
+    in discovered/pending/pending-decision), disjoint from the
+    loaded-on-boot `active` set, so sending `active=true` alongside
+    would contradict it.
     """
     params: dict[str, object] = {}
     if args.dormant:
         params["dormant"] = "true"
     else:
-        params["is_active"] = "true"
+        params["active"] = "true"
     if args.category is not None:
         params["category"] = args.category
     if args.pack_slug is not None:

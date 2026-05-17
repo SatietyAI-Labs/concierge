@@ -17,10 +17,10 @@ fields are ignored (not load-bearing in this ingest). Per-skill slug is
 
 **Idempotency** — upsert by slug. Descriptive fields are refreshed from
 source on every run; operator-managed lifecycle fields
-(`is_active`, `is_in_manifest`, `lifecycle_state`) are preserved on
-existing rows so repeated ingest doesn't clobber hand-set state. The
-only skill-specific fields set on upsert are `path` and
-`ambient_loading=True`.
+(`is_in_manifest`, `lifecycle_state`) are preserved on existing rows so
+repeated ingest doesn't clobber hand-set state. The only skill-specific
+fields set on upsert are `path` and `ambient_loading=True`. (The legacy
+`is_active` column was retired — DECISIONS D112.)
 
 **Collision handling** — when the same slug appears in more than one
 subtree (e.g. a `public` skill and a user-supplied `user` skill with
@@ -217,7 +217,6 @@ def ingest_skills(
                     path=row.path,
                     ambient_loading=True,
                     is_in_manifest=True,
-                    is_active=True,
                 )
             )
             stats.tools_created += 1

@@ -125,7 +125,7 @@ class TestNonEmptyBranch:
                 Tool(
                     slug="ripgrep", name="ripgrep",
                     pack_id=cli_pack.id, tool_type="cli",
-                    is_in_manifest=True, is_active=True,
+                    is_in_manifest=True,
                     install_method="brew",
                 ),
                 Tool(

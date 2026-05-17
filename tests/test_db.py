@@ -43,7 +43,7 @@ def test_tool_pack_relationship(db_session: Session):
         install_method="mcp-server",
         pack=pack,
         is_in_manifest=True,
-        is_active=True,
+        lifecycle_state="loaded-on-boot",
     )
     db_session.add(tool)
     db_session.commit()
@@ -51,23 +51,39 @@ def test_tool_pack_relationship(db_session: Session):
     fetched_pack = db_session.query(models.Pack).filter_by(slug="memory-mcp").one()
     assert len(fetched_pack.tools) == 1
     assert fetched_pack.tools[0].slug == "memory-store"
-    assert fetched_pack.tools[0].is_active is True
+    assert fetched_pack.tools[0].lifecycle_state == "loaded-on-boot"
     assert fetched_pack.tools[0].pack_id == fetched_pack.id
 
 
 def test_dormant_tool_query(db_session: Session):
+    """Dormant = in-manifest activation candidates: is_in_manifest AND
+    lifecycle_state in DORMANT_LIFECYCLE_STATES. The legacy `is_active`
+    column was retired — the predicate is now lifecycle_state-based
+    (DECISIONS D112, locked OD-1b)."""
     db_session.add_all(
         [
-            models.Tool(slug="ripgrep", name="ripgrep", is_in_manifest=True, is_active=True),
-            models.Tool(slug="csvkit", name="csvkit", is_in_manifest=True, is_active=False),
-            models.Tool(slug="pandoc", name="pandoc", is_in_manifest=False, is_active=False),
+            models.Tool(
+                slug="ripgrep", name="ripgrep", is_in_manifest=True,
+                lifecycle_state="loaded-on-boot",
+            ),
+            models.Tool(
+                slug="csvkit", name="csvkit", is_in_manifest=True,
+                lifecycle_state="discovered",
+            ),
+            models.Tool(
+                slug="pandoc", name="pandoc", is_in_manifest=False,
+                lifecycle_state="discovered",
+            ),
         ]
     )
     db_session.commit()
 
     dormants = (
         db_session.query(models.Tool)
-        .filter(models.Tool.is_in_manifest.is_(True), models.Tool.is_active.is_(False))
+        .filter(
+            models.Tool.is_in_manifest.is_(True),
+            models.Tool.lifecycle_state.in_(models.DORMANT_LIFECYCLE_STATES),
+        )
         .all()
     )
     assert [t.slug for t in dormants] == ["csvkit"]

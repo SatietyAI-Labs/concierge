@@ -173,7 +173,7 @@ def _load_catalog() -> list[CatalogToolView]:
             category=t.get("category"),
             pack_slug=t.get("pack_slug"),
             is_in_manifest=t["is_in_manifest"],
-            is_active=t["is_active"],
+            lifecycle_state=t["lifecycle_state"],
         )
         for t in state["tools"]
     ]

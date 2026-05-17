@@ -27,7 +27,13 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from core.config import Settings, get_settings
-from core.db.models import Pack, Request as RequestRow, Tool
+from core.db.models import (
+    ACTIVE_LIFECYCLE_STATES,
+    DORMANT_LIFECYCLE_STATES,
+    Pack,
+    Request as RequestRow,
+    Tool,
+)
 from core.db.session import get_db
 from core.lifecycle_store.service import get_counters as get_lifecycle_counters
 from core.recommend.counters import get_counters as get_recommend_counters
@@ -40,12 +46,19 @@ def _catalog_counts(db: Session) -> dict[str, int]:
     return {
         "packs": db.query(func.count(Pack.id)).scalar() or 0,
         "tools": db.query(func.count(Tool.id)).scalar() or 0,
+        # "active" / "dormant" derive from `lifecycle_state` — the
+        # canonical authority — since the legacy `is_active` column was
+        # retired (D112). `tools_active` = loaded-on-boot; `tools_dormant`
+        # = in-manifest activation candidates. See core/db/models.py.
         "tools_active": db.query(func.count(Tool.id))
-        .filter(Tool.is_active.is_(True))
+        .filter(Tool.lifecycle_state.in_(ACTIVE_LIFECYCLE_STATES))
         .scalar()
         or 0,
         "tools_dormant": db.query(func.count(Tool.id))
-        .filter(Tool.is_in_manifest.is_(True), Tool.is_active.is_(False))
+        .filter(
+            Tool.is_in_manifest.is_(True),
+            Tool.lifecycle_state.in_(DORMANT_LIFECYCLE_STATES),
+        )
         .scalar()
         or 0,
     }

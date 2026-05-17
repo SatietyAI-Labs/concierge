@@ -98,7 +98,6 @@ GHL_ROW: dict[str, object] = {
     ),
     "tool_type": "mcp",
     "lifecycle_state": "loaded-on-boot",
-    "is_active": True,
     "is_in_manifest": False,
 }
 

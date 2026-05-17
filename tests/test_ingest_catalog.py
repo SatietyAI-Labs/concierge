@@ -42,19 +42,14 @@ def test_parse_mcp_section_basic():
     assert rows[0].slug == "firefox-devtools-pack"
     assert rows[0].tool_type == "mcp"
     assert rows[0].install_method == "mcp-server"
-    assert rows[0].is_active is True  # "loaded"
     assert rows[0].pack_slug == "firefox-devtools"
     assert rows[0].pack_transport == "stdio"
 
 
-def test_parse_mcp_section_dormant_status():
-    body = (
-        "| Name | Tools | Status | Agent | What it does | Invoke |\n"
-        "|---|---|---|---|---|---|\n"
-        "| SomeTool | 5 | dormant | Alfred | descr | `x_*` |\n"
-    )
-    rows = list(catalog.parse_mcp_section(body))
-    assert rows[0].is_active is False
+# `test_parse_mcp_section_dormant_status` was removed with the `is_active`
+# retirement (DECISIONS D112): catalog.py no longer derives any state
+# from the table's Status word, so there is no status→is_active mapping
+# left to assert. The status column is parsed into `_status` and dropped.
 
 
 def test_parse_cli_section_not_installed():
@@ -70,7 +65,6 @@ def test_parse_cli_section_not_installed():
     assert rows[0].slug == "ripgrep-rg"
     assert rows[0].tool_type == "cli"
     assert rows[0].install_method == "apt"
-    assert rows[0].is_active is False
     assert rows[1].install_method == "pip-user"
 
 
@@ -83,7 +77,6 @@ def test_parse_cli_section_installed_four_col():
     rows = list(catalog.parse_cli_section(body, installed=True))
     assert len(rows) == 1
     assert rows[0].slug == "jq"
-    assert rows[0].is_active is True
     assert rows[0].description == "JSON processor"
 
 
@@ -192,14 +185,18 @@ def test_ingest_catalog_preserves_operator_lifecycle_fields(session, tmp_path):
     )
     catalog.ingest_catalog(source, session)
     tool = session.query(Tool).filter_by(slug="ripgrep").one()
-    assert tool.is_active is True  # installed section → active
-    # Operator manually marks it dormant
-    tool.is_active = False
+    # catalog.py does not set `lifecycle_state` on insert — a fresh
+    # catalog row carries the model default.
+    assert tool.lifecycle_state == "discovered"
+    # Operator promotes it into the boot set.
+    tool.lifecycle_state = "loaded-on-boot"
     session.commit()
-    # Re-ingest should NOT clobber the operator-set flag
+    # Re-ingest must NOT clobber the operator-set lifecycle state — the
+    # catalog upsert refreshes only descriptive fields. (`is_active` was
+    # the original subject here; it was retired — DECISIONS D112.)
     catalog.ingest_catalog(source, session)
     session.refresh(tool)
-    assert tool.is_active is False
+    assert tool.lifecycle_state == "loaded-on-boot"
 
 
 def test_ingest_real_legacy_source(session):

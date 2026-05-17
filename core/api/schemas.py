@@ -18,7 +18,6 @@ class ToolOut(BaseModel):
     category: Optional[str] = None
     install_method: Optional[str] = None
     is_in_manifest: bool
-    is_active: bool
     lifecycle_state: str
     # Operator-pin authority class (D77). NOT-NULL on the model —
     # every row carries it (`auto-managed` default); not Optional.

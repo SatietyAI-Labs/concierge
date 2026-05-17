@@ -209,9 +209,10 @@ class TestLongProseRoundTrip:
 
 
 class TestCoexistenceWithExistingColumns:
-    """The seven new columns must coexist with the prior Tool surface
-    without unexpected side-effects: lifecycle_state, is_active,
-    is_in_manifest, install_method, category, path, ambient_loading."""
+    """The new columns must coexist with the prior Tool surface
+    without unexpected side-effects: lifecycle_state, is_in_manifest,
+    install_method, category, path, ambient_loading. (`is_active` was
+    part of this surface before it was retired — DECISIONS D112.)"""
 
     def test_all_tool_columns_settable_in_one_insert(self, db_session: Session):
         pack = Pack(slug="elevenlabs", name="ElevenLabs", transport="stdio")
@@ -224,7 +225,6 @@ class TestCoexistenceWithExistingColumns:
             install_method="mcp-server",
             install_method_provenance="mcp-server",
             is_in_manifest=True,
-            is_active=True,
             lifecycle_state="loaded-on-boot",
             pack=pack,
             # Skills-specific (NULL for non-skill rows)
@@ -244,7 +244,6 @@ class TestCoexistenceWithExistingColumns:
         fetched = db_session.query(Tool).filter_by(slug="elevenlabs-tts").one()
         assert fetched.tool_type == "mcp"
         assert fetched.lifecycle_state == "loaded-on-boot"
-        assert fetched.is_active is True
         assert fetched.agent_owner == "alfred"
         assert fetched.transport == "stdio (uvx→python)"
         assert fetched.auth == "api_key"
