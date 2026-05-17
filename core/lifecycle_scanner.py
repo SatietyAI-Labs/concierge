@@ -36,6 +36,12 @@ One `run_once(session, *, memory=None, broker=None)` pass:
    `DEMOTION_INACTIVITY_DAYS` (90) days (or no events at all). Per
    close-the-gap plan's Fork F, flag-only; no auto-demote. Operator
    reviews and manually transitions if appropriate.
+   - **`always-pinned` tools are exempt** (D77 operator-pin
+     authority): a tool the operator has pinned to `loaded-on-boot`
+     is never flagged for demotion, regardless of usage telemetry.
+     Pinned tools are typically the ones whose value is invisible to
+     usage counters (e.g. a semantic-memory MCP) — exactly the rows
+     the inactivity heuristic would otherwise mis-flag every pass.
 
 3. **Stale pending** — `requests` rows in folder `pending` with
    `created_at` older than `STALE_PENDING_DAYS` (7) days.
@@ -385,6 +391,12 @@ def _collect_demotions(
     """Flag tools in `loaded-on-boot` whose most recent usage event
     is older than `DEMOTION_INACTIVITY_DAYS` — or tools that never
     had an event at all.
+
+    `always-pinned` tools are exempt (D77): the operator has pinned
+    them to `loaded-on-boot`, so the autonomous scanner must not flag
+    them for demotion regardless of usage telemetry. The exemption is
+    a `pin_status != 'always-pinned'` filter on the candidate query —
+    pinned rows never enter the candidate set.
     """
     inactivity_cutoff = now - timedelta(days=DEMOTION_INACTIVITY_DAYS)
 
@@ -401,6 +413,10 @@ def _collect_demotions(
         session.query(Tool.slug, last_event_subq.c.last_event_at)
         .outerjoin(last_event_subq, last_event_subq.c.tool_id == Tool.id)
         .filter(Tool.lifecycle_state == "loaded-on-boot")
+        # D77 — `always-pinned` tools are exempt from autonomous
+        # demotion. `pin_status` is NOT NULL, so this excludes nothing
+        # spuriously: every row is `always-pinned` or `auto-managed`.
+        .filter(Tool.pin_status != "always-pinned")
         .all()
     )
 
