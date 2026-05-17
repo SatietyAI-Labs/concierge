@@ -263,6 +263,10 @@ main.container {
 .badge-pending-decision { background-color: #ffedd5; color: #9a3412; }
 .badge-on-demand        { background-color: #ccfbf1; color: #115e59; }
 
+/* Pin-status badges (Tool Registry cards — shown for loaded-on-boot tools) */
+.badge-pin-always-pinned { background-color: #fef9c3; color: #854d0e; }
+.badge-pin-auto-managed  { background-color: #f1f5f9; color: #475569; }
+
 /* Confidence badges (Pending Inbox cards) */
 .badge-confidence-high   { background-color: #d1fae5; color: #065f46; }
 .badge-confidence-medium { background-color: #fef3c7; color: #92400e; }

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from core.db.models import Pack, Tool
+from core.db.models import PIN_STATUS_VALUES, Pack, Tool
 
 
 # ---- Per-column round-trip ----------------------------------------------
@@ -289,3 +289,54 @@ class TestCoexistenceWithExistingColumns:
         fetched = db_session.query(Tool).filter_by(slug="some-active").one()
         assert fetched.lifecycle_state == "used"
         assert fetched.succeeded_by == "future-replacement"
+
+
+# ---- pin_status (Stage 1B reconciliation slice, Phase A — D77) ----------
+
+
+class TestPinStatus:
+    """`pin_status` — the operator-pin authority class (D77).
+    `always-pinned` / `auto-managed`; NOT-NULL, defaults to
+    `auto-managed`."""
+
+    def test_pin_status_defaults_to_auto_managed(self, db_session: Session):
+        """A row created without an explicit pin_status gets
+        `auto-managed` — the Concierge-managed default. This is what
+        the add-column migration's server_default backfills the
+        existing catalog to."""
+        t = Tool(slug="defaulted", name="Defaulted")
+        db_session.add(t)
+        db_session.commit()
+        fetched = db_session.query(Tool).filter_by(slug="defaulted").one()
+        assert fetched.pin_status == "auto-managed"
+
+    def test_pin_status_round_trips_always_pinned(self, db_session: Session):
+        """`always-pinned` persists byte-equal — the value the Stage 1B
+        reconciliation sets on Alfred's semantic-memory MCP."""
+        t = Tool(
+            slug="semantic-memory-chromadb",
+            name="semantic-memory-chromadb",
+            lifecycle_state="loaded-on-boot",
+            pin_status="always-pinned",
+        )
+        db_session.add(t)
+        db_session.commit()
+        fetched = (
+            db_session.query(Tool)
+            .filter_by(slug="semantic-memory-chromadb")
+            .one()
+        )
+        assert fetched.pin_status == "always-pinned"
+
+    def test_pin_status_values_constant_is_the_locked_pair(self):
+        """Defensive-D24 values-pinning guard (D56): the D77-locked
+        pair. A future edit changing the set trips this — the D24
+        green-signal mechanic, requiring a deliberate forward-update."""
+        assert PIN_STATUS_VALUES == ("always-pinned", "auto-managed")
+
+    def test_pin_status_column_enum_built_from_constant(self):
+        """Lock-step: the `pin_status` column's Enum is built from
+        exactly `PIN_STATUS_VALUES` — the constant and the column
+        cannot drift apart."""
+        enum_values = tuple(Tool.__table__.c.pin_status.type.enums)
+        assert enum_values == PIN_STATUS_VALUES

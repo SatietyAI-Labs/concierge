@@ -207,3 +207,69 @@ class TestNonEmptyBranch:
         assert "ripgrep" in body
         assert "fd" in body
         assert "brave-search" in body
+
+
+# ---- Pin-status badge (Stage 1B reconciliation slice, Phase A — D77) -----
+
+
+class TestPinStatusBadge:
+    """The pin-status badge (D77) renders alongside the lifecycle
+    badge — but only for tools residing in `loaded-on-boot`, where
+    pin status is meaningful (the at-a-glance operator-reserved vs.
+    Concierge-managed distinction). Non-boot rows carry the
+    `auto-managed` default inertly and show no pin badge.
+    """
+
+    def test_always_pinned_badge_shown_for_loaded_on_boot_tool(
+        self, db_session
+    ):
+        db_session.add(
+            Tool(
+                slug="semantic-memory-chromadb",
+                name="semantic-memory-chromadb",
+                is_in_manifest=True,
+                lifecycle_state="loaded-on-boot",
+                pin_status="always-pinned",
+            )
+        )
+        db_session.commit()
+        client = _ui_client(db_session)
+        body = client.get("/partials/tool-registry").text
+        assert "badge-pin-always-pinned" in body
+        assert "always-pinned" in body
+
+    def test_auto_managed_badge_shown_for_loaded_on_boot_tool(
+        self, db_session
+    ):
+        db_session.add(
+            Tool(
+                slug="firefox-devtools",
+                name="firefox-devtools",
+                is_in_manifest=True,
+                lifecycle_state="loaded-on-boot",
+                # pin_status omitted — defaults to auto-managed
+            )
+        )
+        db_session.commit()
+        client = _ui_client(db_session)
+        body = client.get("/partials/tool-registry").text
+        assert "badge-pin-auto-managed" in body
+
+    def test_no_pin_badge_for_non_boot_tool(self, db_session):
+        """The contrast: a `discovered` tool carries the `auto-managed`
+        default but is not boot-resident, so no pin badge renders —
+        pin status is not surfaced where it has no meaning."""
+        db_session.add(
+            Tool(
+                slug="ripgrep",
+                name="ripgrep",
+                is_in_manifest=True,
+                lifecycle_state="discovered",
+            )
+        )
+        db_session.commit()
+        client = _ui_client(db_session)
+        body = client.get("/partials/tool-registry").text
+        # The lifecycle badge renders; the pin badge does not.
+        assert "badge-discovered" in body
+        assert "badge-pin-" not in body

@@ -35,6 +35,7 @@ def _to_out(tool: Tool) -> ToolOut:
         is_in_manifest=tool.is_in_manifest,
         is_active=tool.is_active,
         lifecycle_state=tool.lifecycle_state,
+        pin_status=tool.pin_status,
         path=tool.path,
         ambient_loading=tool.ambient_loading,
         agent_owner=tool.agent_owner,

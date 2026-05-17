@@ -42,6 +42,7 @@ def _tool(slug: str, **overrides) -> ToolOut:
         is_in_manifest=True,
         is_active=True,
         lifecycle_state="installed",
+        pin_status="auto-managed",
         path=None,
         ambient_loading=None,
         agent_owner=None,

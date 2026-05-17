@@ -20,6 +20,9 @@ class ToolOut(BaseModel):
     is_in_manifest: bool
     is_active: bool
     lifecycle_state: str
+    # Operator-pin authority class (D77). NOT-NULL on the model —
+    # every row carries it (`auto-managed` default); not Optional.
+    pin_status: str
     path: Optional[str] = None
     ambient_loading: Optional[bool] = None
     # Catalog metadata extension (Stage 1A items 4+7). Surfaced on the
