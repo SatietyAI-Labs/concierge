@@ -140,6 +140,60 @@ def test_list_tools_dormant_filter(client_with_db, db_session):
     assert data["items"][0]["lifecycle_state"] == "discovered"
 
 
+def test_od1b_active_dormant_boundary(client_with_db, db_session):
+    """OD-1b boundary guard (DECISIONS D112). Seeds one row in each of
+    the seven lifecycle states, ALL is_in_manifest=True — so the
+    manifest gate does NO exclusion work and the lifecycle predicate
+    alone must classify every row.
+
+    Load-bearing: `?dormant=true` (and /health `tools_dormant`) must
+    EXCLUDE the retired and on-demand rows — settled states per D107,
+    not activation candidates — even though they are is_in_manifest=True.
+    That exclusion is the agent-facing misclassification OD-1b was
+    decided to prevent; this test goes red if DORMANT_LIFECYCLE_STATES
+    regresses to include retired / on-demand / used.
+    """
+    db_session.add_all([
+        Tool(slug="boot-tool", name="boot", is_in_manifest=True,
+             lifecycle_state="loaded-on-boot"),
+        Tool(slug="od-tool", name="od", is_in_manifest=True,
+             lifecycle_state="on-demand"),
+        Tool(slug="ret-tool", name="ret", is_in_manifest=True,
+             lifecycle_state="retired"),
+        Tool(slug="used-tool", name="used", is_in_manifest=True,
+             lifecycle_state="used"),
+        Tool(slug="disc-tool", name="disc", is_in_manifest=True,
+             lifecycle_state="discovered"),
+        Tool(slug="pend-tool", name="pend", is_in_manifest=True,
+             lifecycle_state="pending"),
+        Tool(slug="pd-tool", name="pd", is_in_manifest=True,
+             lifecycle_state="pending-decision"),
+    ])
+    db_session.commit()
+
+    # /health catalog counts derive from lifecycle_state (D112).
+    catalog = client_with_db.get("/health").json()["catalog"]
+    assert catalog["tools"] == 7
+    assert catalog["tools_active"] == 1    # loaded-on-boot only
+    assert catalog["tools_dormant"] == 3   # discovered + pending + pending-decision
+
+    # ?active=true → exactly the loaded-on-boot row.
+    active = client_with_db.get("/tools?active=true").json()
+    assert {i["slug"] for i in active["items"]} == {"boot-tool"}
+
+    # ?dormant=true → the activation-candidate set, and ONLY that set.
+    dormant = client_with_db.get("/tools?dormant=true").json()
+    dormant_slugs = {i["slug"] for i in dormant["items"]}
+    assert dormant_slugs == {"disc-tool", "pend-tool", "pd-tool"}
+    # LOAD-BEARING: retired + on-demand + used are is_in_manifest=True
+    # yet must NOT be classed dormant — settled / already-exercised
+    # states are not activation candidates (D107). Regressing
+    # DORMANT_LIFECYCLE_STATES turns these three assertions red.
+    assert "ret-tool" not in dormant_slugs
+    assert "od-tool" not in dormant_slugs
+    assert "used-tool" not in dormant_slugs
+
+
 def test_list_tools_by_slug(client_with_db, db_session):
     _seed(db_session)
     resp = client_with_db.get("/tools?slug=ripgrep")
