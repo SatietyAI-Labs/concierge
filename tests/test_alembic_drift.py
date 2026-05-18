@@ -50,6 +50,12 @@ def _normalize_check_sql(sqltext: str | None) -> str:
     the comparison robust to that rendering noise while staying sensitive
     to a real difference: a changed value list, operator, or column name
     survives normalization and is still caught.
+
+    Forward-note (DECISIONS D110 bundle): collapsing *all* whitespace is
+    sound only because no current enum value contains an internal space.
+    A future enum value with a space (e.g. ``'on demand'``) would
+    normalize identically to the same value without it — revisit this
+    normalizer if a space-containing enum value is ever added.
     """
     return "".join((sqltext or "").split())
 
